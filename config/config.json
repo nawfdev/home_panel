@@ -1,0 +1,54 @@
+{
+  "server": {
+    "port": 3000,
+    "host": "0.0.0.0"
+  },
+  "session": {
+    "secret": "a7f9d8e6c5b4a3210fedcba9876543210abcdef1234567890fedcba987654321",
+    "maxAge": 86400000
+  },
+  "cloudflare": {
+    "tunnelName": "",
+    "tunnelId": "",
+    "domain": ""
+  },
+  "defaultAdmin": {
+    "username": "admin",
+    "password": "$2b$10$xK7vN9zQ8mP6wR4tY3sL5eF1gH2jK8lM9nO0pQ1rS2tU3vW4xY5zA"
+  },
+  "telegram": {
+    "botToken": "YOUR_BOT_TOKEN_HERE",
+    "chatId": "YOUR_CHAT_ID_HERE",
+    "enableNotifications": true,
+    "commands": {
+      "status": true,
+      "docker": true,
+      "pm2": true,
+      "ip": true,
+      "restart": true,
+      "logs": true
+    }
+  },
+  "alerts": {
+    "enabled": true,
+    "cooldown": 300000,
+    "thresholds": {
+      "cpu": {
+        "warning": 70,
+        "critical": 85
+      },
+      "memory": {
+        "warning": 75,
+        "critical": 90
+      },
+      "disk": {
+        "warning": 80,
+        "critical": 90
+      },
+      "temperature": {
+        "warning": 70,
+        "critical": 85
+      }
+    }
+  }
+}
