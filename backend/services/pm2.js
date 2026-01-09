@@ -38,20 +38,33 @@ async function checkPm2Available() {
 
             // Try finding in NVM directories
             try {
-                const nvmDir = path.join(process.env.HOME || '/root', '.nvm', 'versions', 'node');
-                if (fs.existsSync(nvmDir)) {
-                    const versions = fs.readdirSync(nvmDir);
-                    for (const ver of versions) {
-                        const pm2Path = path.join(nvmDir, ver, 'bin', 'pm2');
-                        if (fs.existsSync(pm2Path)) {
-                            await execPromise(`"${pm2Path}" --version`);
-                            pm2Available = true;
-                            return { available: true, path: pm2Path };
+                // Check multiple possible NVM locations
+                const nvmLocations = [
+                    path.join(process.env.HOME || '', '.nvm', 'versions', 'node'),
+                    '/root/.nvm/versions/node',
+                    '/home/*/.nvm/versions/node'
+                ];
+
+                for (const nvmDir of nvmLocations) {
+                    if (nvmDir.includes('*')) continue; // Skip glob patterns for now
+                    if (fs.existsSync(nvmDir)) {
+                        const versions = fs.readdirSync(nvmDir);
+                        for (const ver of versions) {
+                            const pm2Path = path.join(nvmDir, ver, 'bin', 'pm2');
+                            if (fs.existsSync(pm2Path)) {
+                                try {
+                                    await execPromise(`"${pm2Path}" --version`);
+                                    pm2Available = true;
+                                    return { available: true, path: pm2Path };
+                                } catch {
+                                    // pm2 exists but can't execute
+                                }
+                            }
                         }
                     }
                 }
-            } catch {
-                // NVM search failed
+            } catch (err) {
+                console.log('NVM search error:', err.message);
             }
         }
 
