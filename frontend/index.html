@@ -630,6 +630,33 @@
             </button>
           </form>
         </div>
+
+        <!-- Telegram Notifications -->
+        <div class="bg-gray-800 rounded-lg p-6 mt-6">
+          <h3 class="font-bold mb-4 flex items-center">
+            <i class="fab fa-telegram text-blue-400 mr-2"></i> Telegram Notifications
+          </h3>
+          <p class="text-sm text-gray-400 mb-4">Receive alerts for High CPU, Tunnel Down, and more.</p>
+          <form id="telegram-settings-form" class="max-w-md">
+            <div class="mb-4">
+              <label class="block text-gray-400 mb-2 text-sm">Bot Token</label>
+              <input type="password" id="tg-bot-token" placeholder="123456789:ABCdef..."
+                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2">
+            </div>
+            <div class="mb-4">
+              <label class="block text-gray-400 mb-2 text-sm">Chat ID (Your User ID)</label>
+              <input type="text" id="tg-chat-id" placeholder="e.g 12345678"
+                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2">
+            </div>
+            <div class="mb-4 flex items-center">
+              <input type="checkbox" id="tg-enabled" class="mr-2 h-4 w-4" checked>
+              <label class="text-gray-300 text-sm">Enable Notification Alerts</label>
+            </div>
+            <button type="submit" class="bg-blue-500 hover:bg-blue-600 px-4 py-2 rounded w-full">
+              <i class="fas fa-paper-plane mr-2"></i> Save & Send Test Message
+            </button>
+          </form>
+        </div>
       </div>
     </main>
   </div>
