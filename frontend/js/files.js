@@ -79,14 +79,14 @@ function closeFileEditor() {
 }
 
 async function deleteItem(path) {
-    if (!confirm(`Delete ${path}?`)) return;
-
-    try {
-        await api('/files/delete', { method: 'POST', body: JSON.stringify({ path }) });
-        loadDirectory(currentPath);
-    } catch (err) {
-        alert('Error deleting: ' + err.message);
-    }
+    showConfirm(`Delete ${path}?`, async () => {
+        try {
+            await api('/files/delete', { method: 'POST', body: JSON.stringify({ path }) });
+            loadDirectory(currentPath);
+        } catch (err) {
+            alert('Error deleting: ' + err.message);
+        }
+    });
 }
 
 function downloadFile(path) {

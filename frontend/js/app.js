@@ -411,24 +411,24 @@ async function systemdAction(action) {
 }
 
 async function setTunnelProtocol(protocol) {
-  if (!confirm(`Change protocol to ${protocol}? This will restart the tunnel.`)) return;
+  showConfirm(`Change protocol to ${protocol}? This will restart the tunnel.`, async () => {
 
-  try {
-    const result = await api("/tunnel/systemd/protocol", {
-      method: "POST",
-      body: JSON.stringify({ protocol })
-    });
-    if (result.success) {
-      alert(result.message);
-    } else {
-      alert("Error: " + result.error);
+    try {
+      const result = await api("/tunnel/systemd/protocol", {
+        method: "POST",
+        body: JSON.stringify({ protocol })
+      });
+      if (result.success) {
+        alert(result.message);
+      } else {
+        alert("Error: " + result.error);
+      }
+      loadTunnelPage();
+    } catch (err) {
+      alert("Error: " + err.message);
     }
-    loadTunnelPage();
-  } catch (err) {
-    alert("Error: " + err.message);
-  }
+  });
 }
-
 document.getElementById("start-tunnel-btn").addEventListener("click", async () => {
   try {
     const result = await api("/tunnel/start", { method: "POST" });
@@ -562,15 +562,15 @@ async function restartProject(id) {
 }
 
 async function deleteProject(id) {
-  if (!confirm("Are you sure you want to delete this project?")) return;
-  try {
-    await api(`/projects/${id}`, { method: "DELETE" });
-    loadProjects();
-  } catch (err) {
-    alert("Error: " + err.message);
-  }
+  showConfirm("Are you sure you want to delete this project?", async () => {
+    try {
+      await api(`/projects/${id}`, { method: "DELETE" });
+      loadProjects();
+    } catch (err) {
+      alert("Error: " + err.message);
+    }
+  });
 }
-
 document.getElementById("add-project-btn").addEventListener("click", () => {
   document.getElementById("project-modal").classList.remove("hidden");
   document.getElementById("project-modal").classList.add("flex");

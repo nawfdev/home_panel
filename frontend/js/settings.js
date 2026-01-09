@@ -174,16 +174,15 @@ async function checkForUpdates() {
 }
 
 async function applyUpdate() {
-    if (!confirm('This will update the panel and requires a server restart. Continue?')) return;
+    showConfirm('This will update the panel and requires a server restart. Continue?', async () => {
+        const statusEl = document.getElementById('update-status');
+        statusEl.innerHTML = '<p class="text-yellow-400"><i class="fas fa-spinner fa-spin mr-2"></i>Applying update... Please wait.</p>';
 
-    const statusEl = document.getElementById('update-status');
-    statusEl.innerHTML = '<p class="text-yellow-400"><i class="fas fa-spinner fa-spin mr-2"></i>Applying update... Please wait.</p>';
+        try {
+            const res = await api('/update/apply', { method: 'POST' });
 
-    try {
-        const res = await api('/update/apply', { method: 'POST' });
-
-        if (res.success) {
-            statusEl.innerHTML = `
+            if (res.success) {
+                statusEl.innerHTML = `
                 <div class="bg-green-900/30 border border-green-700 rounded p-4">
                     <div class="flex items-center gap-2 mb-2">
                         <i class="fas fa-check-circle text-green-400 text-xl"></i>
@@ -193,20 +192,21 @@ async function applyUpdate() {
                     <p class="text-sm text-yellow-400 mt-2"><i class="fas fa-redo mr-1"></i>Please restart the server to apply changes.</p>
                 </div>
             `;
-        } else {
-            statusEl.innerHTML = `
+            } else {
+                statusEl.innerHTML = `
                 <div class="bg-red-900/30 border border-red-700 rounded p-4">
                     <p class="text-red-400"><i class="fas fa-exclamation-circle mr-2"></i>Update failed: ${res.error}</p>
                 </div>
             `;
-        }
-    } catch (err) {
-        statusEl.innerHTML = `
+            }
+        } catch (err) {
+            statusEl.innerHTML = `
             <div class="bg-red-900/30 border border-red-700 rounded p-4">
                 <p class="text-red-400"><i class="fas fa-exclamation-circle mr-2"></i>Error: ${err.message}</p>
             </div>
         `;
-    }
+        }
+    });
 }
 
 // Check Update Button

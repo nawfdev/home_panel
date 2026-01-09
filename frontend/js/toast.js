@@ -4,7 +4,7 @@ toastContainer.id = 'toast-container';
 toastContainer.className = 'fixed top-4 right-4 z-50 flex flex-col gap-2';
 document.body.appendChild(toastContainer);
 
-function showToast(message, type = 'info', duration = 3000) {
+function showToast(message, type = 'info', duration = 4000) {
     const toast = document.createElement('div');
 
     const icons = {
@@ -55,16 +55,16 @@ window.alert = function (message) {
     let type = 'info';
     if (message.includes('Error') || message.includes('Failed') || message.includes('❌')) {
         type = 'error';
-    } else if (message.includes('success') || message.includes('Success') || message.includes('✅') || message.includes('saved') || message.includes('created')) {
+    } else if (message.includes('success') || message.includes('Success') || message.includes('✅') || message.includes('saved') || message.includes('created') || message.includes('Copied')) {
         type = 'success';
-    } else if (message.includes('Warning') || message.includes('⚠️')) {
+    } else if (message.includes('Warning') || message.includes('⚠️') || message.includes('required')) {
         type = 'warning';
     }
 
     showToast(message, type);
 };
 
-// Confirm dialog replacement
+// Confirm dialog replacement (callback-based)
 function showConfirm(message, onConfirm, onCancel) {
     const overlay = document.createElement('div');
     overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
@@ -104,3 +104,15 @@ function showConfirm(message, onConfirm, onCancel) {
         }
     });
 }
+
+// Promise-based confirm (replacement for native confirm)
+function confirmAsync(message) {
+    return new Promise((resolve) => {
+        showConfirm(message, () => resolve(true), () => resolve(false));
+    });
+}
+
+// Override native confirm() - NOTE: This makes confirm() async!
+// Code using confirm() will need to be updated to use await or .then()
+window.originalConfirm = window.confirm;
+// We can't fully override confirm() to be async, so we provide confirmAsync instead
