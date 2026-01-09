@@ -14,7 +14,7 @@
   },
   "defaultAdmin": {
     "username": "admin",
-    "password": "$2b$10$xK7vN9zQ8mP6wR4tY3sL5eF1gH2jK8lM9nO0pQ1rS2tU3vW4xY5zA"
+    "password": "$2a$10$enO3LkEnNOu7XwZf0b93b.JXTINgFZ6Ick.rbosGN.Z3aroe.3oZu"
   },
   "telegram": {
     "botToken": "YOUR_BOT_TOKEN_HERE",

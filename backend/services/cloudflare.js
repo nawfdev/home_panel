@@ -1,4 +1,4 @@
-const fetch = require('node-fetch'); // Check node version, built-in in Node 18+
+// Using native fetch (Node 18+)
 const { getSetting } = require('./database');
 
 const CF_API_URL = 'https://api.cloudflare.com/client/v4';

@@ -7,7 +7,7 @@ const path = require("path");
 const fs = require("fs");
 
 const config = require("../config/config.json");
-const { initDatabase } = require("./services/database");
+const { initDefaultAdmin } = require("./services/database");
 
 const authRoutes = require("./routes/auth");
 const dashboardRoutes = require("./routes/dashboard");
@@ -22,6 +22,8 @@ const logsRoutes = require("./routes/logs");
 const servicesRoutes = require("./routes/services");
 const metricsRoutes = require("./routes/metrics");
 const filesRoutes = require("./routes/files");
+const settingsRoutes = require("./routes/settings");
+const cloudflareRoutes = require("./routes/cloudflare");
 
 const app = express();
 
@@ -34,13 +36,13 @@ app.use(helmet({
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // Limit each IP to 100 requests per windowMs
-  message: "Too many requests from this IP, please try again later."
+  message: { error: "Too many requests from this IP, please try again later." }
 });
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5, // Only 5 login attempts per 15 minutes
-  message: "Too many login attempts, please try again later.",
+  max: 10, // 10 login attempts per 15 minutes (increased from 5)
+  message: { error: "Too many login attempts, please try again later." },
   skipSuccessfulRequests: true
 });
 
@@ -89,7 +91,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Something went wrong!" });
 });
 
-initDatabase();
+initDefaultAdmin();
 
 // Initialize Telegram Bot
 const { initBot } = require("./services/telegram");
@@ -109,7 +111,7 @@ const HOST = config.server.host || "0.0.0.0";
 const server = app.listen(PORT, HOST, () => {
   console.log(`Home Panel - Server Started`);
   console.log(`URL: http://${HOST}:${PORT}`);
-  console.log(`Default Login: admin / SecurePass2026!`);
+  console.log(`Default Login: admin / admin123`);
 });
 
 // Initialize Web Terminal with session authentication
