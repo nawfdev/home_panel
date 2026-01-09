@@ -159,6 +159,7 @@ document.querySelectorAll(".nav-link").forEach(link => {
         // Load settings data when navigating to settings page
         if (typeof loadCfSettings === 'function') loadCfSettings();
         if (typeof loadTelegramSettings === 'function') loadTelegramSettings();
+        if (typeof loadServicePaths === 'function') loadServicePaths();
         break;
     }
   });

@@ -90,4 +90,54 @@ router.post('/telegram', isAuthenticated, async (req, res) => {
     }
 });
 
+// Get Service Paths
+router.get('/paths', isAuthenticated, (req, res) => {
+    const paths = getSetting('servicePaths') || {};
+    res.json({
+        success: true,
+        paths: {
+            pm2: paths.pm2 || '',
+            docker: paths.docker || '',
+            cloudflared: paths.cloudflared || ''
+        }
+    });
+});
+
+// Save Service Paths
+router.post('/paths', isAuthenticated, (req, res) => {
+    try {
+        const { pm2, docker, cloudflared } = req.body;
+        setSetting('servicePaths', {
+            pm2: pm2 || '',
+            docker: docker || '',
+            cloudflared: cloudflared || ''
+        });
+        res.json({ success: true, message: 'Service paths saved!' });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Auto-detect service path
+router.get('/paths/detect/:service', isAuthenticated, async (req, res) => {
+    const { exec } = require('child_process');
+    const { promisify } = require('util');
+    const execPromise = promisify(exec);
+
+    const service = req.params.service;
+
+    try {
+        const { stdout } = await execPromise(`which ${service} 2>/dev/null || command -v ${service} 2>/dev/null`);
+        const path = stdout.trim();
+        if (path) {
+            res.json({ success: true, path });
+        } else {
+            res.json({ success: false, error: 'Not found' });
+        }
+    } catch {
+        res.json({ success: false, error: `${service} not found in PATH` });
+    }
+});
+
 module.exports = router;
+
