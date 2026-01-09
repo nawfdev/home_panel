@@ -90,11 +90,53 @@ async function getTemperature() {
   try {
     const temp = await si.cpuTemperature();
 
+    // If systeminformation works, use it
+    if (temp.main !== null && temp.main !== -1 && temp.main > 0) {
+      return {
+        main: temp.main,
+        cores: temp.cores || [],
+        max: temp.max || null,
+        available: true
+      };
+    }
+
+    // Linux fallback: read from /sys/class/thermal/
+    if (os.platform() === 'linux') {
+      try {
+        const thermalZones = [
+          '/sys/class/thermal/thermal_zone0/temp',
+          '/sys/class/thermal/thermal_zone1/temp',
+          '/sys/class/hwmon/hwmon0/temp1_input',
+          '/sys/class/hwmon/hwmon1/temp1_input'
+        ];
+
+        for (const zone of thermalZones) {
+          try {
+            const data = fs.readFileSync(zone, 'utf8');
+            const tempValue = parseInt(data.trim()) / 1000; // Convert millidegrees to degrees
+            if (tempValue > 0 && tempValue < 150) { // Sanity check
+              return {
+                main: Math.round(tempValue),
+                cores: [],
+                max: null,
+                available: true,
+                source: 'sysfs'
+              };
+            }
+          } catch {
+            // Try next zone
+          }
+        }
+      } catch {
+        // Fallback failed
+      }
+    }
+
     return {
-      main: temp.main || null,
-      cores: temp.cores || [],
-      max: temp.max || null,
-      available: temp.main !== null && temp.main !== -1
+      main: null,
+      cores: [],
+      max: null,
+      available: false
     };
   } catch (error) {
     console.error("Error getting temperature:", error);
