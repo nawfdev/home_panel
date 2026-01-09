@@ -215,5 +215,64 @@ document.addEventListener('DOMContentLoaded', () => {
     if (checkBtn) {
         checkBtn.addEventListener('click', checkForUpdates);
     }
+
+    // Service Paths Event Listeners
+    document.getElementById('save-paths-btn')?.addEventListener('click', saveServicePaths);
+    document.getElementById('detect-pm2')?.addEventListener('click', () => detectPath('pm2'));
+    document.getElementById('detect-docker')?.addEventListener('click', () => detectPath('docker'));
+    document.getElementById('detect-cloudflared')?.addEventListener('click', () => detectPath('cloudflared'));
 });
 
+// === Service Paths Functions ===
+async function loadServicePaths() {
+    try {
+        const res = await api('/settings/paths');
+        if (res.success && res.paths) {
+            document.getElementById('path-pm2').value = res.paths.pm2 || '';
+            document.getElementById('path-docker').value = res.paths.docker || '';
+            document.getElementById('path-cloudflared').value = res.paths.cloudflared || '';
+        }
+    } catch (err) {
+        console.error('Error loading service paths:', err);
+    }
+}
+
+async function saveServicePaths() {
+    try {
+        const res = await api('/settings/paths', {
+            method: 'POST',
+            body: JSON.stringify({
+                pm2: document.getElementById('path-pm2').value,
+                docker: document.getElementById('path-docker').value,
+                cloudflared: document.getElementById('path-cloudflared').value
+            })
+        });
+        alert(res.message || 'Paths saved!');
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+async function detectPath(service) {
+    const btn = document.getElementById(`detect-${service}`);
+    const input = document.getElementById(`path-${service}`);
+    const originalText = btn.innerHTML;
+
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    btn.disabled = true;
+
+    try {
+        const res = await api(`/settings/paths/detect/${service}`);
+        if (res.success && res.path) {
+            input.value = res.path;
+            alert(`Detected: ${res.path}`);
+        } else {
+            alert(`${service} not found - please install or set path manually`);
+        }
+    } catch (err) {
+        alert('Detection failed: ' + err.message);
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
