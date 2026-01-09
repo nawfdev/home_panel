@@ -1,7 +1,8 @@
 const bcrypt = require('bcryptjs');
 
-// In-memory user storage (simple implementation)
+// In-memory storage
 let users = [];
+let settings = {};
 
 // Initialize default admin
 function initDefaultAdmin() {
@@ -50,4 +51,14 @@ function getDb() {
   };
 }
 
-module.exports = { getDb, initDefaultAdmin };
+// Simple settings store functions
+function getSetting(key) {
+  return settings[key];
+}
+
+function setSetting(key, value) {
+  settings[key] = value;
+  return value;
+}
+
+module.exports = { getDb, initDefaultAdmin, getSetting, setSetting };
