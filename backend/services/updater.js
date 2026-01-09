@@ -11,17 +11,41 @@ const projectRoot = path.join(__dirname, '../..');
 // Check if there are updates available
 async function checkForUpdates() {
     try {
-        // Fetch latest from remote
-        await execPromise('git fetch origin', { cwd: projectRoot });
+        // Check if git is available first
+        try {
+            await execPromise('git --version', { cwd: projectRoot, timeout: 5000 });
+        } catch (gitErr) {
+            return { error: 'Git is not installed or not in PATH', updateAvailable: false };
+        }
+
+        // Fetch latest from remote with timeout
+        try {
+            await execPromise('git fetch origin', { cwd: projectRoot, timeout: 30000 });
+        } catch (fetchErr) {
+            console.error('Git fetch error:', fetchErr.message);
+            // Continue anyway - we can still compare local commits
+        }
 
         // Get current commit
         const { stdout: localCommit } = await execPromise('git rev-parse HEAD', { cwd: projectRoot });
 
-        // Get remote commit
-        const { stdout: remoteCommit } = await execPromise('git rev-parse origin/main', { cwd: projectRoot });
+        // Get remote commit (might fail if fetch didn't work)
+        let remoteCommit = localCommit; // Default to same
+        try {
+            const { stdout } = await execPromise('git rev-parse origin/main', { cwd: projectRoot });
+            remoteCommit = stdout;
+        } catch {
+            // Remote tracking branch might not exist
+        }
 
         // Get commit counts
-        const { stdout: behindCount } = await execPromise('git rev-list HEAD..origin/main --count', { cwd: projectRoot });
+        let behindCount = '0';
+        try {
+            const { stdout } = await execPromise('git rev-list HEAD..origin/main --count', { cwd: projectRoot });
+            behindCount = stdout;
+        } catch {
+            // Ignore
+        }
 
         // Get current version from package.json
         const packagePath = path.join(projectRoot, 'package.json');
@@ -30,11 +54,15 @@ async function checkForUpdates() {
         // Get commit messages for pending updates
         let pendingChanges = [];
         if (parseInt(behindCount.trim()) > 0) {
-            const { stdout: logOutput } = await execPromise(
-                'git log HEAD..origin/main --oneline --format="%s"',
-                { cwd: projectRoot }
-            );
-            pendingChanges = logOutput.trim().split('\n').filter(Boolean);
+            try {
+                const { stdout: logOutput } = await execPromise(
+                    'git log HEAD..origin/main --oneline --format="%s"',
+                    { cwd: projectRoot }
+                );
+                pendingChanges = logOutput.trim().split('\n').filter(Boolean);
+            } catch {
+                // Ignore
+            }
         }
 
         return {
@@ -48,7 +76,7 @@ async function checkForUpdates() {
     } catch (error) {
         console.error('Update check error:', error.message);
         return {
-            error: error.message,
+            error: `Check failed: ${error.message}`,
             updateAvailable: false
         };
     }
