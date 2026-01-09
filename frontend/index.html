@@ -46,15 +46,18 @@
   <!-- Main Panel -->
   <div id="main-panel" class="hidden">
     <!-- Mobile Header -->
-    <header id="mobile-header"
-      class="fixed top-0 left-0 right-0 bg-gray-800 p-4 flex items-center justify-between z-20 md:hidden">
-      <div class="flex items-center">
+    <header id="mobile-header" class="fixed top-0 left-0 right-0 bg-gray-800 p-4 flex items-center z-20 md:hidden">
+      <!-- Hamburger Menu (Left) - Large touch target -->
+      <button id="hamburger-btn" class="text-2xl text-gray-300 hover:text-white p-3" onclick="toggleSidebar(true)">
+        <i class="fas fa-bars"></i>
+      </button>
+      <!-- Logo/Title (Center) - will hide smoothly when sidebar opens -->
+      <div id="mobile-header-logo" class="flex-1 flex items-center justify-center transition-opacity duration-300">
         <i class="fas fa-home text-2xl text-blue-400 mr-2"></i>
         <span class="font-bold">Home Panel</span>
       </div>
-      <button id="hamburger-btn" class="text-2xl text-gray-300 hover:text-white">
-        <i class="fas fa-bars"></i>
-      </button>
+      <!-- Spacer for balance (Right) -->
+      <div class="w-10"></div>
     </header>
 
     <!-- Sidebar Overlay (mobile) -->
@@ -72,8 +75,9 @@
               <p class="text-xs text-gray-400">Server Management</p>
             </div>
           </div>
-          <button id="close-sidebar-btn" class="text-gray-400 hover:text-white md:hidden">
-            <i class="fas fa-times text-xl"></i>
+          <button id="close-sidebar-btn" class="text-gray-400 hover:text-white md:hidden p-3 -mr-3"
+            onclick="toggleSidebar(false)">
+            <i class="fas fa-times text-2xl"></i>
           </button>
         </div>
       </div>
