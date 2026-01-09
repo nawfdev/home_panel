@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { isAuthenticated } = require('../services/auth');
+const { isAuthenticated } = require('../routes/auth');
 const { getSetting, setSetting } = require('../services/database');
-const fetch = require('node-fetch'); // Need to install if not present, or use native in Node 18+
+// Note: Node 18+ has native fetch, no need for node-fetch
 
 // Get Cloudflare Settings
 router.get('/cloudflare', isAuthenticated, (req, res) => {
