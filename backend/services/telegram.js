@@ -1,6 +1,5 @@
 const TelegramBot = require("node-telegram-bot-api");
 const baseConfig = require("../../config/config.json"); // Renamed to avoid confusion
-const { getTunnelStatus } = require("./cloudflared");
 const { getSystemStats } = require("./monitor");
 const { getSetting, setSetting } = require("./database");
 
@@ -133,6 +132,7 @@ Selamat datang! Bot ini bisa membantu Anda memantau dan mengelola server.
 // Command Handlers (Compact version)
 async function handleStatusCommand(chatId) {
     try {
+        const { getTunnelStatus } = require("./cloudflared");
         const [tunnelStatus, systemStats] = await Promise.all([getTunnelStatus(), getSystemStats()]);
         const emoji = tunnelStatus.processRunning ? "🟢" : "🔴";
         const message = `
@@ -222,6 +222,7 @@ async function startMonitoring() {
     stopMonitoring();
     monitoringInterval = setInterval(async () => {
         try {
+            const { getTunnelStatus } = require("./cloudflared");
             const status = await getTunnelStatus();
             const isRunning = status.processRunning;
             if (lastTunnelStatus !== null && lastTunnelStatus !== isRunning) {
