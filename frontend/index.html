@@ -32,6 +32,10 @@
             class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2 focus:outline-none focus:border-orange-500"
             required>
         </div>
+        <div class="mb-4 flex items-center gap-2">
+          <input type="checkbox" id="remember-me" class="h-4 w-4">
+          <label for="remember-me" class="text-gray-400 text-sm">Remember me</label>
+        </div>
         <button type="submit"
           class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded transition">Login</button>
         <p id="login-error" class="text-red-500 text-center mt-4 hidden"></p>
@@ -52,12 +56,18 @@
           </div>
         </div>
       </div>
-      <nav class="p-4">
+      <nav class="p-4 overflow-y-auto" style="max-height: calc(100vh - 140px);">
         <a href="#" class="nav-link active" data-page="dashboard">
           <i class="fas fa-home w-6"></i> Dashboard
         </a>
         <a href="#" class="nav-link" data-page="tunnel">
           <i class="fas fa-network-wired w-6"></i> Tunnel
+        </a>
+        <a href="#" class="nav-link" data-page="cloudflare">
+          <i class="fas fa-cloud w-6"></i> Cloudflare
+        </a>
+        <a href="#" class="nav-link" data-page="telegram">
+          <i class="fab fa-telegram w-6"></i> Telegram
         </a>
         <a href="#" class="nav-link" data-page="network">
           <i class="fas fa-globe w-6"></i> Network
@@ -258,6 +268,109 @@
         </div>
       </div>
 
+      <!-- Cloudflare API Page -->
+      <div id="page-cloudflare" class="page hidden">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold"><i class="fas fa-cloud mr-2 text-orange-400"></i>Cloudflare API</h2>
+          <button id="refresh-cf-btn" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition">
+            <i class="fas fa-sync-alt mr-2"></i>Refresh
+          </button>
+        </div>
+
+        <!-- API Status -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="font-bold mb-4"><i class="fas fa-key mr-2 text-yellow-500"></i>API Connection</h3>
+            <div id="cf-api-status" class="space-y-3">
+              <p class="text-gray-400">Checking...</p>
+            </div>
+          </div>
+          <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="font-bold mb-4"><i class="fas fa-user mr-2 text-blue-500"></i>Account Info</h3>
+            <div id="cf-account-info" class="space-y-2">
+              <p class="text-gray-400">Loading...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tunnels List -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+          <h3 class="font-bold mb-4"><i class="fas fa-network-wired mr-2 text-green-500"></i>Tunnels</h3>
+          <div id="cf-tunnels-list" class="space-y-3">
+            <p class="text-gray-400">Loading tunnels...</p>
+          </div>
+        </div>
+
+        <!-- Zones/Domains -->
+        <div class="bg-gray-800 rounded-lg p-6">
+          <h3 class="font-bold mb-4"><i class="fas fa-globe mr-2 text-purple-500"></i>Zones (Domains)</h3>
+          <div id="cf-zones-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <p class="text-gray-400">Loading zones...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Telegram Page -->
+      <div id="page-telegram" class="page hidden">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold"><i class="fab fa-telegram mr-2 text-blue-400"></i>Telegram Bot</h2>
+          <button id="refresh-telegram-btn" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition">
+            <i class="fas fa-sync-alt mr-2"></i>Refresh
+          </button>
+        </div>
+
+        <!-- Bot Status -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="font-bold mb-4"><i class="fas fa-robot mr-2 text-green-500"></i>Bot Status</h3>
+            <div id="telegram-bot-status" class="space-y-3">
+              <p class="text-gray-400">Checking...</p>
+            </div>
+          </div>
+          <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="font-bold mb-4"><i class="fas fa-cog mr-2 text-yellow-500"></i>Configuration</h3>
+            <div id="telegram-config" class="space-y-2">
+              <p class="text-gray-400">Loading...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Test Message -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+          <h3 class="font-bold mb-4"><i class="fas fa-paper-plane mr-2 text-blue-400"></i>Send Test Message</h3>
+          <div class="flex gap-4">
+            <input type="text" id="telegram-test-message" placeholder="Test message..."
+              class="flex-1 bg-gray-700 border border-gray-600 rounded px-4 py-2" value="🔔 Test from Home Panel">
+            <button id="send-telegram-test" class="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded transition">
+              <i class="fas fa-paper-plane mr-2"></i>Send Test
+            </button>
+          </div>
+        </div>
+
+        <!-- Notification Settings -->
+        <div class="bg-gray-800 rounded-lg p-6">
+          <h3 class="font-bold mb-4"><i class="fas fa-bell mr-2 text-orange-500"></i>Notification Triggers</h3>
+          <div id="telegram-triggers" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="flex items-center gap-3 bg-gray-700 rounded p-3">
+              <input type="checkbox" id="tg-notify-tunnel" class="h-5 w-5" checked>
+              <label for="tg-notify-tunnel">Tunnel Up/Down</label>
+            </div>
+            <div class="flex items-center gap-3 bg-gray-700 rounded p-3">
+              <input type="checkbox" id="tg-notify-cpu" class="h-5 w-5" checked>
+              <label for="tg-notify-cpu">High CPU Alert</label>
+            </div>
+            <div class="flex items-center gap-3 bg-gray-700 rounded p-3">
+              <input type="checkbox" id="tg-notify-memory" class="h-5 w-5" checked>
+              <label for="tg-notify-memory">High Memory Alert</label>
+            </div>
+            <div class="flex items-center gap-3 bg-gray-700 rounded p-3">
+              <input type="checkbox" id="tg-notify-docker" class="h-5 w-5">
+              <label for="tg-notify-docker">Docker Container Status</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Docker Page -->
       <div id="page-docker" class="page hidden">
         <div class="flex justify-between items-center mb-6">
@@ -376,7 +489,7 @@
 
         <div class="bg-gray-800 rounded-lg p-6">
           <h3 class="font-bold mb-4"><i class="fas fa-list mr-2"></i>Services</h3>
-          <div id="services-list" class="space-y-3">
+          <div id="services-list" class="space-y-3 max-h-96 overflow-y-auto">
             <p class="text-gray-400">Loading services...</p>
           </div>
         </div>
@@ -707,6 +820,7 @@
   </div>
 
   <script src="/js/chart.min.js"></script>
+  <script src="/js/toast.js"></script>
   <script src="/js/app.js"></script>
   <script src="/js/docker.js"></script>
   <script src="/js/pm2.js"></script>
@@ -716,6 +830,8 @@
   <script src="/js/files.js"></script>
   <script src="/js/terminal.js"></script>
   <script src="/js/settings.js"></script>
+  <script src="/js/cloudflare.js"></script>
+  <script src="/js/telegram-page.js"></script>
   <script src="/js/projects.js"></script>
 </body>
 

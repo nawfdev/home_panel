@@ -1,13 +1,13 @@
 const bcrypt = require('bcryptjs');
+const config = require('../../config/config.json');
 
 // In-memory storage
 let users = [];
 let projects = []; // Add projects storage
-let settings = {};
 
 // Initialize default admin
 function initDefaultAdmin() {
-  const config = require('../../config/config.json');
+
 
   // Check if password is already hashed (bcrypt prefixes: $2a$ or $2b$)
   const isHashed = config.defaultAdmin.password.startsWith('$2a$') || config.defaultAdmin.password.startsWith('$2b$');
@@ -110,6 +110,41 @@ function getDb() {
   };
 }
 
+const fs = require('fs');
+const path = require('path');
+
+const SETTINGS_FILE = path.join(__dirname, '../../config/settings.json');
+
+// Load settings from file on startup
+function loadSettings() {
+  try {
+    if (fs.existsSync(SETTINGS_FILE)) {
+      const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error('Failed to load settings:', e.message);
+  }
+  // Default from config
+  return {
+    cloudflare: config.cloudflare || {},
+    telegram: config.telegram || {},
+    alerts: config.alerts || {}
+  };
+}
+
+// Save settings to file
+function saveSettings() {
+  try {
+    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+  } catch (e) {
+    console.error('Failed to save settings:', e.message);
+  }
+}
+
+// Initialize settings from file
+let settings = loadSettings();
+
 // Simple settings store functions
 function getSetting(key) {
   return settings[key];
@@ -117,6 +152,7 @@ function getSetting(key) {
 
 function setSetting(key, value) {
   settings[key] = value;
+  saveSettings(); // Persist to file
   return value;
 }
 

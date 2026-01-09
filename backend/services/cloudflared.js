@@ -30,19 +30,58 @@ async function checkCloudflaredInstalled() {
   });
 }
 
+const METRICS_PORT = 36500;
+const METRICS_URL = `http://127.0.0.1:${METRICS_PORT}`;
+
 async function getTunnelStatus() {
   const db = getDb();
   const tunnel = db.prepare("SELECT * FROM tunnels ORDER BY id DESC LIMIT 1").get();
+
+  // Check if actually ready via metrics
+  let isReady = false;
+  let connCount = 0;
+
+  if (tunnelProcess && !tunnelProcess.killed) {
+    try {
+      // Short timeout for local check
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 500);
+
+      const res = await fetch(`${METRICS_URL}/ready`, { signal: controller.signal });
+      if (res.ok) {
+        isReady = true;
+      }
+
+      // Try to get connection count from /metrics (text format)
+      // cloudflared_tunnel_total_sessions gauge
+      // This is optional/advanced, just readiness is good for now
+    } catch (e) {
+      // Not ready yet
+    }
+  }
+
+  // Calculate next retry time if in backoff
+  let nextRetryIn = 0;
+  if (autoRestart && !tunnelProcess && restartCount > 0) {
+    const delays = [5000, 10000, 30000, 60000, 300000];
+    const delay = delays[Math.min(restartCount - 1, delays.length - 1)]; // restartCount is already incremented after crash
+    const nextTime = lastRestartTime + delay;
+    nextRetryIn = Math.max(0, Math.ceil((nextTime - Date.now()) / 1000));
+  }
 
   return {
     configured: !!tunnel,
     tunnel: tunnel || null,
     processRunning: tunnelProcess !== null && !tunnelProcess.killed,
+    isReady,
     pid: tunnelProcess ? tunnelProcess.pid : null,
     autoRestart,
-    restartCount
+    restartCount,
+    nextRetryIn // Seconds until next retry
   };
 }
+
+
 
 async function createTunnel(name) {
   return new Promise((resolve, reject) => {
@@ -116,7 +155,12 @@ async function startTunnel(manualStart = false) {
   }
 
   try {
-    tunnelProcess = spawn("cloudflared", ["tunnel", "run"], {
+    // Add metrics flag and use HTTP2 protocol (avoids ISP QUIC blocks)
+    tunnelProcess = spawn("cloudflared", [
+      "tunnel", "run",
+      "--protocol", "http2",
+      "--metrics", `127.0.0.1:${METRICS_PORT}`
+    ], {
       detached: false,
       stdio: ["ignore", "pipe", "pipe"]
     });
@@ -127,10 +171,12 @@ async function startTunnel(manualStart = false) {
     // Log output for debugging
     tunnelProcess.stdout.on("data", (data) => {
       const output = data.toString();
+      // ... same logging ...
       if (output.includes("Connection") || output.includes("error")) {
         console.log(`[Tunnel] ${output.trim()}`);
       }
     });
+
 
     tunnelProcess.stderr.on("data", (data) => {
       console.error(`[Tunnel Error] ${data.toString().trim()}`);
