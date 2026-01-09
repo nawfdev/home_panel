@@ -1,22 +1,3 @@
-// Global API helper with credentials
-async function api(url, options = {}) {
-    const defaultOptions = {
-        credentials: 'include',
-        headers: {
-            'Content-Type': 'application/json',
-            ...options.headers
-        }
-    };
-
-    const res = await fetch('/api' + url, { ...defaultOptions, ...options });
-
-    if (res.status === 401) {
-        throw new Error('Unauthorized');
-    }
-
-    return res.json();
-}
-
 // Toast Notification System
 const toastContainer = document.createElement('div');
 toastContainer.id = 'toast-container';
