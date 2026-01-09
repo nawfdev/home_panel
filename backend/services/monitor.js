@@ -1,4 +1,6 @@
 const si = require("systeminformation");
+const os = require("os");
+const fs = require("fs");
 
 async function getSystemStats() {
   try {

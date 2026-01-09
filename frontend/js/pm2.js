@@ -6,7 +6,7 @@ async function loadPm2Page() {
     if (!statusData.available) {
       const install = statusData.install || { command: 'npm install -g pm2', note: '' };
       document.getElementById("pm2-status").innerHTML = `
-  < div class="bg-yellow-900 border border-yellow-700 rounded-lg p-4" >
+        <div class="bg-yellow-900 border border-yellow-700 rounded-lg p-4">
     <div class="flex items-start">
       <i class="fas fa-exclamation-triangle text-yellow-400 text-xl mr-3 mt-1"></i>
       <div class="flex-1">
