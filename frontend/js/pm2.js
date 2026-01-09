@@ -31,7 +31,7 @@ async function loadPm2Page() {
         </button>
       </div>
     </div>
-        </div >
+        </div>
   `;
       document.getElementById("pm2-processes").innerHTML = `
         <p class="text-gray-500">PM2 is not available</p>
