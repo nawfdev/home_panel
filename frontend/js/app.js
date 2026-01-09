@@ -76,32 +76,31 @@ document.querySelectorAll(".nav-link").forEach(link => {
     document.querySelectorAll(".page").forEach(p => p.classList.add("hidden"));
     document.getElementById(`page-${page}`).classList.remove("hidden");
 
-    // Clear all page-specific intervals
-    if (systemRefreshInterval) {
-      clearInterval(systemRefreshInterval);
-      systemRefreshInterval = null;
-    }
-    if (networkRefreshInterval) {
-      clearInterval(networkRefreshInterval);
-      networkRefreshInterval = null;
-    }
+    // Clear intervals
+    if (systemRefreshInterval) clearInterval(systemRefreshInterval);
+    if (networkRefreshInterval) clearInterval(networkRefreshInterval);
 
-    if (page === "tunnel") loadTunnelPage();
-    if (page === "projects") loadProjects();
-    if (page === "system") {
-      loadSystemPage();
-      systemRefreshInterval = setInterval(loadSystemPage, 5000); // 5 seconds
+    // Initial load
+    if (page === 'dashboard') loadDashboard();
+
+    switch (page) {
+      case 'tunnel': loadTunnelPage(); break;
+      case 'projects': loadProjectsPage(); break;
+      case 'system':
+        loadSystemPage();
+        systemRefreshInterval = setInterval(loadSystemPage, 5000);
+        break;
+      case 'network':
+        loadNetworkPage();
+        networkRefreshInterval = setInterval(loadNetworkPage, 10000);
+        break;
+      case 'docker': loadDockerPage(); break;
+      case 'pm2': loadPm2Page(); break;
+      case 'logs': loadLogsPage(); break;
+      case 'services': loadServicesPage(); break;
+      case 'files': loadFilesPage(); break;
+      case 'terminal': loadTerminalPage(); break;
     }
-    if (page === "network") {
-      loadNetworkPage();
-      networkRefreshInterval = setInterval(loadNetworkPage, 10000); // 10 seconds
-    }
-    if (page === "docker") loadDockerPage();
-    if (page === "pm2") loadPm2Page();
-    if (page === "logs") loadLogsPage();
-    if (page === "services") loadServicesPage();
-    if (page === "files") loadFilesPage();
-    if (page === "terminal") loadTerminalPage();
   });
 });
 
