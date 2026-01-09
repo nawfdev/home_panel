@@ -75,8 +75,15 @@
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 .loading {
@@ -103,17 +110,121 @@
 
 /* Mobile Responsive Styles */
 @media (max-width: 768px) {
-  /* Dashboard stats grid */
-  .grid-cols-2,
-  .grid-cols-3,
-  .grid-cols-4 {
-    grid-template-columns: 1fr !important;
+
+  /* Fix mobile header - make it a single line */
+  #mobile-header {
+    display: flex !important;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    padding: 0 16px;
+    z-index: 40;
+    background: #1f2937;
+    border-bottom: 1px solid #374151;
   }
 
-  /* Two columns for smaller cards on mobile */
-  .grid.grid-cols-2.sm\:grid-cols-4,
-  .grid.gap-4.grid-cols-2 {
+  /* Hamburger button - ensure clickable */
+  #hamburger-btn {
+    position: relative;
+    z-index: 41;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    pointer-events: auto !important;
+    -webkit-tap-highlight-color: rgba(249, 115, 22, 0.3);
+    touch-action: manipulation;
+  }
+
+  #hamburger-btn:active {
+    background: rgba(249, 115, 22, 0.2);
+    border-radius: 8px;
+  }
+
+  #hamburger-btn i {
+    font-size: 24px;
+    pointer-events: none;
+  }
+
+  /* Close sidebar button - ensure clickable */
+  #close-sidebar-btn {
+    position: relative;
+    z-index: 51;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    min-width: 48px;
+    min-height: 48px;
+    cursor: pointer;
+    pointer-events: auto !important;
+    -webkit-tap-highlight-color: rgba(239, 68, 68, 0.3);
+    touch-action: manipulation;
+    border-radius: 8px;
+  }
+
+  #close-sidebar-btn:active {
+    background: rgba(239, 68, 68, 0.2);
+  }
+
+  #close-sidebar-btn i {
+    font-size: 24px;
+    pointer-events: none;
+  }
+
+  /* Main content area - add proper top padding for fixed header */
+  #main-panel>main {
+    padding-top: 72px !important;
+    padding-left: 16px;
+    padding-right: 16px;
+    margin-left: 0 !important;
+  }
+
+  /* Sidebar overlay - show as dark backdrop when sidebar is open */
+  #sidebar-overlay {
+    background: rgba(0, 0, 0, 0.6) !important;
+    backdrop-filter: blur(2px);
+    z-index: 45 !important;
+  }
+
+  /* Sidebar styling for mobile */
+  #sidebar {
+    z-index: 50;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
+  }
+
+  #sidebar.open {
+    transform: translateX(0) !important;
+  }
+
+  /* Dashboard stats grid - 2 columns on mobile */
+  .grid.grid-cols-1.md\:grid-cols-2.lg\:grid-cols-4 {
     grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  /* Single column for larger sections */
+  .grid.grid-cols-1.lg\:grid-cols-2 {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Stat cards - smaller padding on mobile */
+  .stat-card {
+    padding: 12px !important;
+  }
+
+  .stat-card .text-2xl {
+    font-size: 1.25rem !important;
+  }
+
+  .stat-card .text-3xl {
+    font-size: 1.5rem !important;
   }
 
   /* Make tables scrollable */
@@ -123,60 +234,173 @@
     white-space: nowrap;
   }
 
-  /* Smaller text on mobile */
-  h2 {
-    font-size: 1.25rem;
+  /* Page titles - proper sizing */
+  h2.text-2xl {
+    font-size: 1.375rem;
+    margin-bottom: 16px;
   }
 
-  /* Stack flex items vertically */
+  /* Flex containers - stack on mobile when needed */
   .flex.justify-between.items-center {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Header with title and button - proper stacking */
+  .page>.flex.justify-between.items-center:first-child {
     flex-direction: column;
-    align-items: flex-start;
-    gap: 0.5rem;
+    align-items: stretch;
+    gap: 12px;
   }
 
-  /* Full width buttons on mobile */
-  button.px-4 {
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
+  .page>.flex.justify-between.items-center:first-child h2 {
+    margin-bottom: 0;
   }
 
-  /* Adjust modal positioning */
+  .page>.flex.justify-between.items-center:first-child button,
+  .page>.flex.justify-between.items-center:first-child .flex.gap-2 {
+    width: 100%;
+  }
+
+  .page>.flex.justify-between.items-center:first-child .flex.gap-2 button {
+    flex: 1;
+  }
+
+  /* Tunnel page - form inputs stack vertically */
+  .grid.grid-cols-1.md\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Logs page - filters stack */
+  .grid.grid-cols-1.md\:grid-cols-4 {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* Cards and sections - reduce padding */
+  .bg-gray-800.rounded-lg.p-6 {
+    padding: 16px !important;
+  }
+
+  .bg-gray-800.rounded-lg.p-4 {
+    padding: 12px !important;
+  }
+
+  /* Input and button sizing */
+  input,
+  select,
+  button {
+    font-size: 16px !important;
+    /* Prevents iOS zoom */
+    min-height: 44px;
+  }
+
+  /* Modals - full width on mobile */
   .fixed.inset-0 .max-w-2xl,
-  .fixed.inset-0 .max-w-md {
-    margin: 1rem;
-    max-width: calc(100vw - 2rem);
+  .fixed.inset-0 .max-w-md,
+  .fixed.inset-0 .max-w-4xl {
+    margin: 12px !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: calc(100vh - 24px) !important;
   }
 
   /* Code blocks wrap */
-  code {
+  code,
+  pre {
     word-break: break-all;
     white-space: pre-wrap;
+    font-size: 12px !important;
   }
 
   /* Toast positioning */
   #toast-container {
-    left: 1rem;
-    right: 1rem;
-    max-width: none;
+    left: 12px !important;
+    right: 12px !important;
+    bottom: 12px !important;
+    max-width: none !important;
+  }
+
+  /* Performance charts - smaller height */
+  .bg-gray-800.rounded-lg.p-4>div[style*="height: 200px"] {
+    height: 150px !important;
+  }
+
+  /* Network page grid */
+  .grid.grid-cols-1.md\:grid-cols-2.lg\:grid-cols-3 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Telegram test message - stack */
+  .flex.gap-4:has(#telegram-test-message) {
+    flex-direction: column;
+  }
+
+  /* Settings form max-width override */
+  .max-w-md {
+    max-width: 100% !important;
+  }
+
+  /* File browser buttons */
+  #page-files .flex.gap-2 button {
+    padding: 8px 12px !important;
+    font-size: 14px !important;
+  }
+
+  /* Terminal input area */
+  #page-terminal .flex.gap-2 {
+    flex-direction: column;
+  }
+
+  #page-terminal .flex.gap-2 input {
+    width: 100%;
+  }
+
+  #page-terminal .flex.gap-2 button {
+    width: 100%;
   }
 }
 
 /* Small mobile (< 480px) */
 @media (max-width: 480px) {
-  .grid-cols-2 {
+
+  /* Single column for stat cards on very small screens */
+  .grid.grid-cols-1.md\:grid-cols-2.lg\:grid-cols-4 {
     grid-template-columns: 1fr !important;
   }
 
-  .text-2xl {
-    font-size: 1.125rem;
+  /* Even smaller padding */
+  .stat-card {
+    padding: 10px !important;
   }
 
-  .p-6 {
-    padding: 1rem;
+  /* Smaller icons in stat cards */
+  .stat-card .text-3xl {
+    font-size: 1.25rem !important;
   }
 
-  .p-4 {
-    padding: 0.75rem;
+  /* Page padding */
+  #main-panel>main {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  /* Smaller section padding */
+  .bg-gray-800.rounded-lg.p-6 {
+    padding: 12px !important;
+  }
+
+  /* Page title */
+  h2.text-2xl {
+    font-size: 1.25rem;
+  }
+
+  /* Modal even smaller margins */
+  .fixed.inset-0 .max-w-2xl,
+  .fixed.inset-0 .max-w-md,
+  .fixed.inset-0 .max-w-4xl {
+    margin: 8px !important;
+    max-width: calc(100vw - 16px) !important;
   }
 }

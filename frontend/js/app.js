@@ -120,12 +120,24 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
 function toggleSidebar(show) {
   const sidebar = document.getElementById("sidebar");
   const overlay = document.getElementById("sidebar-overlay");
+  const headerLogo = document.getElementById("mobile-header-logo");
+
   if (show) {
     sidebar.classList.remove("-translate-x-full");
     overlay.classList.remove("hidden");
+    // Fade out the center logo smoothly (only on mobile)
+    if (headerLogo && window.innerWidth < 768) {
+      headerLogo.style.opacity = "0";
+      headerLogo.style.pointerEvents = "none";
+    }
   } else {
     sidebar.classList.add("-translate-x-full");
     overlay.classList.add("hidden");
+    // Fade in the center logo smoothly (only on mobile)
+    if (headerLogo && window.innerWidth < 768) {
+      headerLogo.style.opacity = "1";
+      headerLogo.style.pointerEvents = "auto";
+    }
   }
 }
 
