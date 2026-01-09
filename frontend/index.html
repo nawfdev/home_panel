@@ -713,6 +713,20 @@
       <!-- Settings Page -->
       <div id="page-settings" class="page hidden">
         <h2 class="text-2xl font-bold mb-6">Settings</h2>
+
+        <!-- Update Section -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="font-bold"><i class="fas fa-sync-alt mr-2 text-blue-400"></i>System Update</h3>
+            <button id="check-update-btn" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition text-sm">
+              <i class="fas fa-search mr-2"></i>Check for Updates
+            </button>
+          </div>
+          <div id="update-status" class="space-y-3">
+            <p class="text-gray-400">Click "Check for Updates" to check for new versions.</p>
+          </div>
+        </div>
+
         <div class="bg-gray-800 rounded-lg p-6 mb-6">
           <h3 class="font-bold mb-4">Change Password</h3>
           <form id="change-password-form" class="max-w-md">
