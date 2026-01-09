@@ -116,6 +116,30 @@ document.getElementById("logout-btn").addEventListener("click", async () => {
   showLogin();
 });
 
+// Mobile Sidebar Toggle
+function toggleSidebar(show) {
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("sidebar-overlay");
+  if (show) {
+    sidebar.classList.remove("-translate-x-full");
+    overlay.classList.remove("hidden");
+  } else {
+    sidebar.classList.add("-translate-x-full");
+    overlay.classList.add("hidden");
+  }
+}
+
+document.getElementById("hamburger-btn")?.addEventListener("click", () => toggleSidebar(true));
+document.getElementById("close-sidebar-btn")?.addEventListener("click", () => toggleSidebar(false));
+document.getElementById("sidebar-overlay")?.addEventListener("click", () => toggleSidebar(false));
+
+// Close sidebar when nav link clicked on mobile
+document.querySelectorAll(".nav-link").forEach(link => {
+  link.addEventListener("click", () => {
+    if (window.innerWidth < 768) toggleSidebar(false);
+  });
+});
+
 document.querySelectorAll(".nav-link").forEach(link => {
   link.addEventListener("click", (e) => {
     e.preventDefault();
