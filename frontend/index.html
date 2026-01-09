@@ -602,8 +602,31 @@
               <input type="password" id="new-password"
                 class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" required>
             </div>
-            <button type="submit" class="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded transition">
-              <i class="fas fa-save mr-2"></i>Change Password
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded w-full">Change
+              Password</button>
+          </form>
+        </div>
+
+        <!-- Cloudflare Integration -->
+        <div class="bg-gray-800 rounded-lg p-6">
+          <h3 class="font-bold mb-4 flex items-center">
+            <i class="fas fa-cloud text-orange-500 mr-2"></i> Cloudflare Integration
+          </h3>
+          <p class="text-sm text-gray-400 mb-4">Connect to Cloudflare API to manage Tunnels and DNS records directly.
+          </p>
+          <form id="cf-settings-form" class="max-w-md">
+            <div class="mb-4">
+              <label class="block text-gray-400 mb-2 text-sm">API Token (Edit Zone DNS)</label>
+              <input type="password" id="cf-api-token" placeholder="Global API Key or Token"
+                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2">
+            </div>
+            <div class="mb-4">
+              <label class="block text-gray-400 mb-2 text-sm">Account ID (Optional)</label>
+              <input type="text" id="cf-account-id" placeholder="Get this from Cloudflare Dashboard URL"
+                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2">
+            </div>
+            <button type="submit" class="bg-orange-600 hover:bg-orange-700 px-4 py-2 rounded w-full">
+              <i class="fas fa-save mr-2"></i> Save & Verify Connection
             </button>
           </form>
         </div>
@@ -654,6 +677,8 @@
   <script src="/js/graphs.js"></script>
   <script src="/js/files.js"></script>
   <script src="/js/terminal.js"></script>
+  <script src="/js/settings.js"></script>
+  <script src="/js/projects.js"></script>
 </body>
 
 </html>

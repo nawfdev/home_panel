@@ -63,6 +63,7 @@ app.use(session({
 
 app.use(express.static(path.join(__dirname, "../frontend")));
 
+// Register Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/tunnel", tunnelRoutes);
@@ -76,6 +77,8 @@ app.use("/api/logs", logsRoutes);
 app.use("/api/services", servicesRoutes);
 app.use("/api/metrics", metricsRoutes);
 app.use("/api/files", filesRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/cloudflare", cloudflareRoutes);
 
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "../frontend/index.html"));
