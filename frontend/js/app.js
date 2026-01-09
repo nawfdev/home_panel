@@ -188,6 +188,19 @@ async function loadDashboard() {
       }
     }
 
+    // Uptime display
+    if (data.system.uptime) {
+      const uptimeSec = data.system.uptime;
+      const days = Math.floor(uptimeSec / 86400);
+      const hours = Math.floor((uptimeSec % 86400) / 3600);
+      const minutes = Math.floor((uptimeSec % 3600) / 60);
+      document.getElementById("system-uptime").textContent = `${days}d ${hours}h ${minutes}m`;
+
+      // Calculate boot time
+      const bootTime = new Date(Date.now() - uptimeSec * 1000);
+      document.getElementById("uptime-since").textContent = `Since ${bootTime.toLocaleDateString()} ${bootTime.toLocaleTimeString()}`;
+    }
+
     document.getElementById("system-info").innerHTML = `
       <p><span class="text-gray-400">OS:</span> ${data.system.os.distro} ${data.system.os.release}</p>
       <p><span class="text-gray-400">Hostname:</span> ${data.system.os.hostname}</p>
