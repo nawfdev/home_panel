@@ -163,7 +163,7 @@ async function pm2Action(processName, action) {
 
 // PM2 delete with confirmation
 async function pm2Delete(processName) {
-  if (confirm(`Are you sure you want to delete process "${processName}"?`)) {
+  showConfirm(`Are you sure you want to delete process "${processName}"?`, async () => {
     try {
       const result = await api(`/pm2/processes/${processName}`, { method: 'DELETE' });
       if (result.success) {
@@ -172,7 +172,7 @@ async function pm2Delete(processName) {
     } catch (err) {
       alert(`Failed to delete process: ${err.message}`);
     }
-  }
+  });
 }
 
 // Show PM2 logs
