@@ -83,14 +83,16 @@ Home Panel is a **powerful, all-in-one web dashboard** for managing your homelab
 </tr>
 </table>
 
-### 🔔 **Alerts & Notifications**
-- Threshold monitoring (CPU, RAM, Disk, Temp)
-- Telegram bot integration
-- Automatic alerts
-- Cooldown periods
-- Recovery notifications
+### **Advanced Features**
+- 📈 **Historical Graphs** - CPU & Memory usage over time with Chart.js
+- 🔔 **Smart Alerts** - Configurable thresholds with Telegram notifications
+- 📝 **Centralized Logs** - View logs from Panel, Docker, PM2 in one place
+- 🌐 **Network Monitor** - Real-time bandwidth, IP addresses, connections
+- 🔋 **Power Monitoring** - Battery status & charging state
+- ☁️ **Cloudflare Integration** - **[NEW]** Sync Tunnels & DNS directly from Cloudflare API
+- 🔄 **Auto-Sync** - Real-time status of Cloudflare Tunnels (Online/Down)
 
-### 🔒 **Security**
+### **Security & Reliability** ⭐
 - ✅ Rate limiting (API & login)
 - ✅ Input validation & sanitization
 - ✅ Path traversal protection
@@ -227,6 +229,13 @@ server {
     }
 }
 ```
+
+### **Cloudflare API Integration** (New!)
+
+1. Go to Panel **Settings** page.
+2. Enter your **Cloudflare API Token** (Permissions: `Zone:Read`, `Tunnel:Read`).
+3. Click **Save & Verify**.
+4. Your Tunnels list will now auto-sync with Cloudflare!
 
 ---
 
