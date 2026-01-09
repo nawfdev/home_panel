@@ -3,6 +3,26 @@ const Docker = require("dockerode");
 let docker = null;
 let dockerAvailable = false;
 
+// Get install command based on platform
+function getInstallCommand() {
+    if (process.platform === 'win32') {
+        return {
+            command: 'Download from https://www.docker.com/products/docker-desktop',
+            note: 'Install Docker Desktop for Windows'
+        };
+    } else if (process.platform === 'darwin') {
+        return {
+            command: 'brew install --cask docker',
+            note: 'Or download from https://www.docker.com/products/docker-desktop'
+        };
+    } else {
+        return {
+            command: 'curl -fsSL https://get.docker.com | sh',
+            note: 'Then run: sudo usermod -aG docker $USER && newgrp docker'
+        };
+    }
+}
+
 // Initialize Docker
 function initDocker() {
     try {
@@ -23,15 +43,22 @@ async function checkDockerAvailable() {
     }
 
     if (!dockerAvailable) {
-        throw new Error("Docker not available on this system");
+        return {
+            available: false,
+            reason: 'Docker not installed',
+            install: getInstallCommand()
+        };
     }
 
     try {
         await docker.ping();
-        return true;
+        return { available: true };
     } catch (error) {
-        dockerAvailable = false;
-        throw new Error("Docker daemon not running");
+        return {
+            available: false,
+            reason: 'Docker daemon not running',
+            install: getInstallCommand()
+        };
     }
 }
 

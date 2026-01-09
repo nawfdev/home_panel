@@ -20,12 +20,41 @@ try {
 
 async function checkCloudflaredInstalled() {
   return new Promise((resolve) => {
+    // First try the PATH
     exec("cloudflared --version", (error, stdout) => {
-      if (error) {
-        resolve({ installed: false, version: null });
-      } else {
+      if (!error && stdout) {
         resolve({ installed: true, version: stdout.trim() });
+        return;
       }
+
+      // Fallback: check common locations
+      const commonPaths = process.platform === 'win32'
+        ? [
+          'C:\\Program Files\\Cloudflare\\cloudflared.exe',
+          'C:\\Program Files (x86)\\Cloudflare\\cloudflared.exe',
+          path.join(process.env.USERPROFILE || '', 'cloudflared.exe')
+        ]
+        : [
+          '/usr/local/bin/cloudflared',
+          '/usr/bin/cloudflared',
+          '/opt/cloudflared/cloudflared',
+          path.join(process.env.HOME || '', '.cloudflared/bin/cloudflared')
+        ];
+
+      for (const cfPath of commonPaths) {
+        if (fs.existsSync(cfPath)) {
+          exec(`"${cfPath}" --version`, (err, out) => {
+            if (!err && out) {
+              resolve({ installed: true, version: out.trim(), path: cfPath });
+            } else {
+              resolve({ installed: true, version: 'Unknown', path: cfPath });
+            }
+          });
+          return;
+        }
+      }
+
+      resolve({ installed: false, version: null });
     });
   });
 }
