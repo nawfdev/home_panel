@@ -33,29 +33,14 @@ function initTerminal() {
     };
 
     terminalWs.onmessage = (event) => {
+        if (event.data === 'AUTH_FAILED') {
+            terminalWs.close(4001); // Trigger special handling in onclose
+            return;
+        }
         appendTerminalOutput(escapeHtml(event.data));
     };
 
     terminalWs.onerror = (error) => {
-        appendTerminalOutput(`<div class="text-red-400">✗ Connection error</div>\n`);
-    };
-
-    terminalWs.onclose = () => {
-        appendTerminalOutput(`<div class="text-yellow-400">✗ Terminal disconnected</div>\n`);
-
-        // Auto-reconnect
-        if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
-            reconnectAttempts++;
-            const delay = RECONNECT_DELAY * reconnectAttempts;
-            appendTerminalOutput(`<div class="text-blue-400">⟳ Reconnecting in ${delay / 1000}s... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})</div>\n`);
-
-            reconnectTimer = setTimeout(() => {
-                appendTerminalOutput(`<div class="text-blue-400">⟳ Attempting to reconnect...</div>\n`);
-                initTerminal();
-            }, delay);
-        } else {
-            appendTerminalOutput(`<div class="text-red-400">✗ Max reconnection attempts reached. Click Terminal tab to retry.</div>\n`);
-        }
     };
 }
 

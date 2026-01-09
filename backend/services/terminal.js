@@ -26,19 +26,26 @@ function initTerminalServer(server, sessionParser) {
     const wss = new WebSocket.Server({
         server,
         path: '/terminal',
+        // verifyClient removed or set to true, we check inside connection
         verifyClient: (info, cb) => {
-            // Verify session authentication
             sessionParser(info.req, {}, () => {
-                if (!info.req.session || !info.req.session.user) {
-                    cb(false, 401, 'Unauthorized');
-                } else {
-                    cb(true);
-                }
+                // Pass session to connection handler
+                info.req.session = info.req.session;
+                cb(true);
             });
         }
     });
 
     wss.on('connection', (ws, req) => {
+        // Auth Check
+        if (!req.session || !req.session.user) {
+            console.log('monitor: Rejected unauthorized terminal connection');
+            ws.send('\x1b[31mError: Unauthorized via WebSocket. Please refresh.\x1b[0m');
+            ws.send('AUTH_FAILED'); // Protocol message
+            ws.close(4001, 'Unauthorized');
+            return;
+        }
+
         const user = req.session.user;
         console.log(`🖥️  Terminal connected: ${user.username}`);
 

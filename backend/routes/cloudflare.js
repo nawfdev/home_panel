@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { isAuthenticated } = require('../services/auth');
+const { isAuthenticated } = require('../routes/auth');
 const cfService = require('../services/cloudflare');
 const { getSetting } = require('../services/database');
 
