@@ -13,17 +13,22 @@ async function loadDockerPage() {
               <h4 class="font-bold text-yellow-300 mb-1">Docker Not Available</h4>
               <p class="text-sm text-yellow-200 mb-3">${statusData.reason || 'Docker is not installed or not running on this system.'}</p>
               
-              <div class="bg-gray-800 rounded p-3 mb-2">
+              <div class="bg-gray-800 rounded p-3 mb-3">
                 <p class="text-xs text-gray-400 mb-1">Install command:</p>
                 <div class="flex items-center gap-2">
                   <code class="flex-1 text-sm text-green-400 font-mono">${install.command}</code>
                   <button onclick="navigator.clipboard.writeText('${install.command.replace(/'/g, "\\'")}'); alert('Copied!')" 
-                    class="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs">
+                    class="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs" title="Copy">
                     <i class="fas fa-copy"></i>
                   </button>
                 </div>
                 ${install.note ? `<p class="text-xs text-gray-400 mt-2">${install.note}</p>` : ''}
               </div>
+              
+              <button onclick="openTerminalWithCommand('${install.command.replace(/'/g, "\\'")}')" 
+                class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition">
+                <i class="fas fa-terminal mr-2"></i>Install Now (Open Terminal)
+              </button>
             </div>
           </div>
         </div>
