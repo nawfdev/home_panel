@@ -52,7 +52,8 @@ app.use("/api/auth/login", authLimiter);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use(session({
+// SHARED session parser for Express and WebSocket
+const sessionParser = session({
   secret: config.session.secret,
   resave: false,
   saveUninitialized: false,
@@ -61,7 +62,9 @@ app.use(session({
     httpOnly: true,
     maxAge: config.session.maxAge
   }
-}));
+});
+
+app.use(sessionParser);
 
 app.use(express.static(path.join(__dirname, "../frontend")));
 
@@ -105,7 +108,7 @@ startAlertMonitoring();
 const { startMetricsCollection } = require("./services/metrics");
 startMetricsCollection();
 
-const PORT = config.server.port || 3000;
+const PORT = config.server.port || 9689;
 const HOST = config.server.host || "0.0.0.0";
 
 const server = app.listen(PORT, HOST, () => {
@@ -114,10 +117,6 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Default Login: admin / admin123`);
 });
 
-// Initialize Web Terminal with session authentication
+// Initialize Web Terminal with SHARED session parser
 const { initTerminalServer } = require("./services/terminal");
-initTerminalServer(server, session({
-  secret: config.session.secret,
-  resave: false,
-  saveUninitialized: false
-}));
+initTerminalServer(server, sessionParser);

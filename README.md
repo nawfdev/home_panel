@@ -122,7 +122,7 @@ npm install
 npm start
 ```
 
-**Access:** http://localhost:3000
+**Access:** http://localhost:9689
 
 **Default Login:**
 - Username: `admin`
@@ -164,7 +164,7 @@ Edit `config/config.json`:
 
 ```json
 {
-  "server": { "port": 3000, "host": "0.0.0.0" },
+  "server": { "port": 9689, "host": "0.0.0.0" },
   "session": { "secret": "your-random-secret" },
   "alerts": {
     "cpu": { "warning": 80, "critical": 90 },
@@ -222,7 +222,7 @@ server {
     ssl_certificate_key /path/to/key.pem;
     
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://localhost:9689;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -243,7 +243,7 @@ server {
 
 ### Common Issues
 
-**Q: Port 3000 already in use?**  
+**Q: Port 9689 already in use?**  
 A: Change port in `config/config.json`
 
 **Q: Terminal won't connect?**  

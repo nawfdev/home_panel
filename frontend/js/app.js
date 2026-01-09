@@ -100,6 +100,11 @@ document.querySelectorAll(".nav-link").forEach(link => {
       case 'services': loadServicesPage(); break;
       case 'files': loadFilesPage(); break;
       case 'terminal': loadTerminalPage(); break;
+      case 'settings':
+        // Load settings data when navigating to settings page
+        if (typeof loadCfSettings === 'function') loadCfSettings();
+        if (typeof loadTelegramSettings === 'function') loadTelegramSettings();
+        break;
     }
   });
 });
