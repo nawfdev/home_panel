@@ -63,13 +63,21 @@ async function applyUpdates() {
         // Pull latest changes
         const { stdout, stderr } = await execPromise('git pull origin main', { cwd: projectRoot });
 
-        // Install any new dependencies
-        await execPromise('npm install --production', { cwd: projectRoot });
+        // Try to install any new dependencies (optional - don't fail if this errors)
+        let npmOutput = '';
+        try {
+            const { stdout: npmStdout } = await execPromise('npm install --omit=dev', { cwd: projectRoot, timeout: 60000 });
+            npmOutput = npmStdout;
+        } catch (npmErr) {
+            console.warn('npm install warning (non-fatal):', npmErr.message);
+            npmOutput = 'npm install skipped (may need manual run)';
+        }
 
         return {
             success: true,
             message: 'Update applied successfully. Please restart the server.',
             output: stdout || stderr,
+            npmOutput,
             needsRestart: true
         };
     } catch (error) {
