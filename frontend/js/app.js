@@ -2,6 +2,7 @@ const API = "/api";
 let refreshInterval;
 let systemRefreshInterval;
 let networkRefreshInterval;
+let tunnelRefreshInterval;
 
 async function api(endpoint, options = {}) {
   const res = await fetch(`${API}${endpoint}`, {
@@ -24,6 +25,23 @@ async function checkAuth() {
     loadDashboard();
     loadGraphs(); // Load graphs on dashboard
   } catch {
+    // Try auto-login with saved credentials
+    const saved = localStorage.getItem('hp_auth');
+    if (saved) {
+      try {
+        const { username, password } = JSON.parse(saved);
+        await api("/auth/login", {
+          method: "POST",
+          body: JSON.stringify({ username, password })
+        });
+        showPanel();
+        loadDashboard();
+        loadGraphs();
+        return;
+      } catch {
+        localStorage.removeItem('hp_auth');
+      }
+    }
     showLogin();
   }
 }
@@ -34,6 +52,7 @@ function showLogin() {
   if (refreshInterval) clearInterval(refreshInterval);
   if (systemRefreshInterval) clearInterval(systemRefreshInterval);
   if (networkRefreshInterval) clearInterval(networkRefreshInterval);
+  if (tunnelRefreshInterval) clearInterval(tunnelRefreshInterval);
 }
 
 function showPanel() {
@@ -46,6 +65,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const username = document.getElementById("username").value;
   const password = document.getElementById("password").value;
+  const rememberMe = document.getElementById("remember-me").checked;
   const errorEl = document.getElementById("login-error");
 
   try {
@@ -53,6 +73,14 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
       method: "POST",
       body: JSON.stringify({ username, password })
     });
+
+    // Save credentials if remember me is checked
+    if (rememberMe) {
+      localStorage.setItem('hp_auth', JSON.stringify({ username, password }));
+    } else {
+      localStorage.removeItem('hp_auth');
+    }
+
     errorEl.classList.add("hidden");
     showPanel();
     loadDashboard();
@@ -63,6 +91,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
 });
 
 document.getElementById("logout-btn").addEventListener("click", async () => {
+  localStorage.removeItem('hp_auth'); // Clear saved credentials
   await api("/auth/logout", { method: "POST" });
   showLogin();
 });
@@ -79,12 +108,18 @@ document.querySelectorAll(".nav-link").forEach(link => {
     // Clear intervals
     if (systemRefreshInterval) clearInterval(systemRefreshInterval);
     if (networkRefreshInterval) clearInterval(networkRefreshInterval);
+    if (tunnelRefreshInterval) clearInterval(tunnelRefreshInterval);
 
     // Initial load
     if (page === 'dashboard') loadDashboard();
 
     switch (page) {
-      case 'tunnel': loadTunnelPage(); break;
+      case 'tunnel':
+        loadTunnelPage();
+        tunnelRefreshInterval = setInterval(loadTunnelPage, 2000);
+        break;
+      case 'cloudflare': loadCloudflarePage(); break;
+      case 'telegram': loadTelegramPage(); break;
       case 'projects': loadProjectsPage(); break;
       case 'system':
         loadSystemPage();
@@ -119,9 +154,20 @@ async function loadDashboard() {
     document.getElementById("mem-usage").textContent = `${data.system.memory.usagePercent}%`;
     document.getElementById("mem-bar").style.width = `${data.system.memory.usagePercent}%`;
 
-    const tunnelStatus = data.tunnel.processRunning ? "Online" : "Offline";
-    document.getElementById("tunnel-status").textContent = tunnelStatus;
-    document.getElementById("tunnel-status").className = `text-2xl font-bold ${data.tunnel.processRunning ? "text-green-500" : "text-red-500"}`;
+    // Tunnel Status - show Cloudflare API info if available
+    const tunnelEl = document.getElementById("tunnel-status");
+    if (data.tunnel.apiConnected && data.tunnel.tunnels) {
+      // Cloudflare API connected - show real status
+      const healthy = data.tunnel.healthyCount || 0;
+      const total = data.tunnel.totalCount || 0;
+      tunnelEl.textContent = `${healthy}/${total} Healthy`;
+      tunnelEl.className = `text-2xl font-bold ${healthy > 0 ? "text-green-500" : "text-red-500"}`;
+    } else {
+      // Fallback to local cloudflared process status
+      const tunnelStatus = data.tunnel.processRunning ? "Online" : "Offline";
+      tunnelEl.textContent = tunnelStatus;
+      tunnelEl.className = `text-2xl font-bold ${data.tunnel.processRunning ? "text-green-500" : "text-red-500"}`;
+    }
 
     document.getElementById("running-projects").textContent = data.projects.running;
     document.getElementById("total-projects").textContent = data.projects.total;
@@ -235,16 +281,35 @@ async function loadTunnelPage() {
 
     let tunnelHtml = "";
     if (data.tunnel) {
+      // Determine status display
+      let statusHtml = '';
+      if (data.processRunning) {
+        if (data.isReady) {
+          statusHtml = `<span class="status-badge status-online">Connected</span>`;
+        } else {
+          statusHtml = `<span class="status-badge bg-yellow-600 text-white animate-pulse">Starting...</span>`;
+        }
+      } else {
+        if (data.autoRestart && data.nextRetryIn > 0) {
+          statusHtml = `<span class="status-badge bg-orange-600 text-white">Reconnecting in ${data.nextRetryIn}s...</span>`;
+        } else {
+          statusHtml = `<span class="status-badge status-offline">Stopped</span>`;
+        }
+      }
+
+      if (data.restartCount > 0) {
+        statusHtml += `<div class="text-xs text-gray-400 mt-1">Restart attempts: ${data.restartCount}</div>`;
+      }
+
       tunnelHtml = `
         <p><span class="text-gray-400">Name:</span> ${data.tunnel.name || "N/A"}</p>
         <p><span class="text-gray-400">Tunnel ID:</span> ${data.tunnel.tunnel_id || "N/A"}</p>
         <p><span class="text-gray-400">Domain:</span> ${data.tunnel.domain || "Not configured"}</p>
         <p><span class="text-gray-400">Local Port:</span> ${data.tunnel.local_port || "N/A"}</p>
-        <p><span class="text-gray-400">Status:</span> 
-          <span class="status-badge ${data.processRunning ? "status-online" : "status-offline"}">
-            ${data.processRunning ? "Running" : "Stopped"}
-          </span>
-        </p>
+        <div class="mt-2">
+           <span class="text-gray-400">Status:</span> 
+           ${statusHtml}
+        </div>
       `;
     } else {
       tunnelHtml = "<p class=\"text-gray-400\">No tunnel configured. Create one below.</p>";
