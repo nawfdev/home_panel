@@ -53,4 +53,29 @@ router.delete('/tunnels/:id', isAuthenticated, async (req, res) => {
     }
 });
 
+// Get Tunnel Config (Ingress Rules)
+router.get('/tunnels/:id/config', isAuthenticated, async (req, res) => {
+    try {
+        const config = await cfService.getTunnelConfig(req.params.id);
+        res.json({ success: true, config });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Update Tunnel Config (Ingress Rules)
+router.put('/tunnels/:id/config', isAuthenticated, async (req, res) => {
+    try {
+        const { config } = req.body;
+        if (!config) {
+            return res.status(400).json({ success: false, error: 'config required' });
+        }
+        const result = await cfService.updateTunnelConfig(req.params.id, config);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 module.exports = router;
+
