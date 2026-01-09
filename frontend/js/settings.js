@@ -1,9 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // Load settings on page load
-    if (document.getElementById('page-settings')) {
-        loadCfSettings();
-        loadTelegramSettings();
-    }
+    // Settings will be loaded when navigating to settings page via loadSettings() in app.js
+    // Do NOT load here to avoid 401 errors before login
 
     // Cloudflare Form
     const cfForm = document.getElementById('cf-settings-form');

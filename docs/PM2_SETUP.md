@@ -87,7 +87,7 @@ pm2 save
 ## ✅ Verifikasi
 
 Cek panel berjalan:
-1. Buka **http://localhost:3000**
+1. Buka **http://localhost:9689**
 2. Panel harus accessible
 3. Cek `pm2 logs` untuk memastikan tidak ada error
 
