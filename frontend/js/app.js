@@ -4,6 +4,26 @@ let systemRefreshInterval;
 let networkRefreshInterval;
 let tunnelRefreshInterval;
 
+// Helper function to open terminal with a command ready to run
+function openTerminalWithCommand(command) {
+  // Navigate to terminal page
+  document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+  document.querySelector('[data-page="terminal"]').classList.add('active');
+  document.getElementById('page-terminal').classList.remove('hidden');
+
+  // Load terminal and send command after a short delay
+  if (typeof loadTerminalPage === 'function') {
+    loadTerminalPage();
+    setTimeout(() => {
+      if (typeof sendToTerminal === 'function') {
+        sendToTerminal(command);
+      }
+    }, 1000);
+  }
+
+  alert(`Command ready in terminal. Press Enter to run:\n\n${command}`);
+}
 async function api(endpoint, options = {}) {
   const res = await fetch(`${API}${endpoint}`, {
     ...options,
