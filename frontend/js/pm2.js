@@ -6,31 +6,36 @@ async function loadPm2Page() {
     if (!statusData.available) {
       const install = statusData.install || { command: 'npm install -g pm2', note: '' };
       document.getElementById("pm2-status").innerHTML = `
-        <div class="bg-yellow-900 border border-yellow-700 rounded-lg p-4">
-          <div class="flex items-start">
-            <i class="fas fa-exclamation-triangle text-yellow-400 text-xl mr-3 mt-1"></i>
-            <div class="flex-1">
-              <h4 class="font-bold text-yellow-300 mb-1">PM2 Not Available</h4>
-              <p class="text-sm text-yellow-200 mb-3">PM2 is not installed on this system.</p>
-              
-              <div class="bg-gray-800 rounded p-3 mb-2">
-                <p class="text-xs text-gray-400 mb-1">Install command:</p>
-                <div class="flex items-center gap-2">
-                  <code class="flex-1 text-sm text-green-400 font-mono">${install.command}</code>
-                  <button onclick="navigator.clipboard.writeText('${install.command}'); alert('Copied!')" 
-                    class="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs">
-                    <i class="fas fa-copy"></i>
-                  </button>
-                </div>
-                ${install.note ? `<p class="text-xs text-gray-400 mt-2">${install.note}</p>` : ''}
-              </div>
-            </div>
+  < div class="bg-yellow-900 border border-yellow-700 rounded-lg p-4" >
+    <div class="flex items-start">
+      <i class="fas fa-exclamation-triangle text-yellow-400 text-xl mr-3 mt-1"></i>
+      <div class="flex-1">
+        <h4 class="font-bold text-yellow-300 mb-1">PM2 Not Available</h4>
+        <p class="text-sm text-yellow-200 mb-3">PM2 is not installed on this system.</p>
+
+        <div class="bg-gray-800 rounded p-3 mb-3">
+          <p class="text-xs text-gray-400 mb-1">Install command:</p>
+          <div class="flex items-center gap-2">
+            <code class="flex-1 text-sm text-green-400 font-mono">${install.command}</code>
+            <button onclick="navigator.clipboard.writeText('${install.command}'); alert('Copied!')"
+              class="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs" title="Copy">
+              <i class="fas fa-copy"></i>
+            </button>
           </div>
+          ${install.note ? `<p class="text-xs text-gray-400 mt-2">${install.note}</p>` : ''}
         </div>
-      `;
+
+        <button onclick="openTerminalWithCommand('${install.command}')"
+          class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition">
+          <i class="fas fa-terminal mr-2"></i>Install Now (Open Terminal)
+        </button>
+      </div>
+    </div>
+        </div >
+  `;
       document.getElementById("pm2-processes").innerHTML = `
-        <p class="text-gray-500">PM2 is not available</p>
-      `;
+  < p class="text-gray-500" > PM2 is not available</p >
+    `;
       return;
     }
 
@@ -42,7 +47,7 @@ async function loadPm2Page() {
         const statusColor = isOnline ? "green" : "red";
 
         return `
-          <div class="bg-gray-700 rounded-lg p-4">
+    < div class="bg-gray-700 rounded-lg p-4" >
             <div class="flex items-center justify-between mb-3">
               <div class="flex items-center">
                 <i class="fas fa-circle text-${statusColor}-500 mr-3"></i>
@@ -95,59 +100,59 @@ async function loadPm2Page() {
                 <i class="fas fa-trash mr-1"></i>Delete
               </button>
             </div>
-          </div>
-        `;
+          </div >
+  `;
       }).join('');
 
       document.getElementById("pm2-status").innerHTML = `
-        <div class="bg-green-900 border border-green-700 rounded-lg p-4">
-          <div class="flex items-center">
-            <i class="fas fa-check-circle text-green-400 text-xl mr-3"></i>
-            <div>
-              <h4 class="font-bold text-green-300">PM2 is running</h4>
-              <p class="text-sm text-green-200">${data.processes.length} process(es) found</p>
-            </div>
-          </div>
-        </div>
-      `;
+  < div class="bg-green-900 border border-green-700 rounded-lg p-4" >
+    <div class="flex items-center">
+      <i class="fas fa-check-circle text-green-400 text-xl mr-3"></i>
+      <div>
+        <h4 class="font-bold text-green-300">PM2 is running</h4>
+        <p class="text-sm text-green-200">${data.processes.length} process(es) found</p>
+      </div>
+    </div>
+        </div >
+  `;
     } else {
       document.getElementById("pm2-processes").innerHTML = `
-        <p class="text-gray-400">No processes found</p>
-      `;
+  < p class="text-gray-400" > No processes found</p >
+    `;
 
       document.getElementById("pm2-status").innerHTML = `
-        <div class="bg-blue-900 border border-blue-700 rounded-lg p-4">
-          <div class="flex items-center">
-            <i class="fas fa-info-circle text-blue-400 text-xl mr-3"></i>
-            <div>
-              <h4 class="font-bold text-blue-300">PM2 is ready</h4>
-              <p class="text-sm text-blue-200">No processes running</p>
-            </div>
-          </div>
+    < div class="bg-blue-900 border border-blue-700 rounded-lg p-4" >
+      <div class="flex items-center">
+        <i class="fas fa-info-circle text-blue-400 text-xl mr-3"></i>
+        <div>
+          <h4 class="font-bold text-blue-300">PM2 is ready</h4>
+          <p class="text-sm text-blue-200">No processes running</p>
         </div>
-      `;
+      </div>
+        </div >
+  `;
     }
 
   } catch (err) {
     console.error("PM2 page error:", err);
     document.getElementById("pm2-status").innerHTML = `
-      <div class="bg-red-900 border border-red-700 rounded-lg p-4">
-        <div class="flex items-center">
-          <i class="fas fa-exclamation-circle text-red-400 text-xl mr-3"></i>
-          <div>
-            <h4 class="font-bold text-red-300">Error loading PM2</h4>
-            <p class="text-sm text-red-200">${err.message}</p>
-          </div>
-        </div>
+  < div class="bg-red-900 border border-red-700 rounded-lg p-4" >
+    <div class="flex items-center">
+      <i class="fas fa-exclamation-circle text-red-400 text-xl mr-3"></i>
+      <div>
+        <h4 class="font-bold text-red-300">Error loading PM2</h4>
+        <p class="text-sm text-red-200">${err.message}</p>
       </div>
-    `;
+    </div>
+      </div >
+  `;
   }
 }
 
 // PM2 action handler
 async function pm2Action(processName, action) {
   try {
-    const result = await api(`/pm2/processes/${processName}/${action}`, { method: 'POST' });
+    const result = await api(`/ pm2 / processes / ${processName}/${action}`, { method: 'POST' });
     if (result.success) {
       await loadPm2Page();
     }
