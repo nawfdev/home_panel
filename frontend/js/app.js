@@ -294,6 +294,61 @@ async function loadDashboard() {
 
 async function loadTunnelPage() {
   try {
+    // First check if systemd service is available (Linux)
+    const systemdStatus = await api("/tunnel/systemd/status").catch(() => ({ available: false }));
+
+    if (systemdStatus.available) {
+      // Show systemd-based tunnel UI
+      document.getElementById("cloudflared-version").textContent = "Running via Systemd";
+
+      const statusColor = systemdStatus.active ? 'green' : 'red';
+      const statusText = systemdStatus.active ? 'Active (Running)' : 'Stopped';
+
+      document.getElementById("tunnel-info").innerHTML = `
+        <div class="bg-gray-700 rounded-lg p-4 mb-4">
+          <div class="flex items-center justify-between mb-3">
+            <h4 class="font-bold text-blue-400"><i class="fas fa-cog mr-2"></i>Systemd Service</h4>
+            <span class="px-3 py-1 rounded text-xs font-bold ${systemdStatus.active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}">
+              ${statusText}
+            </span>
+          </div>
+          <p><span class="text-gray-400">Status:</span> ${systemdStatus.state} (${systemdStatus.subState})</p>
+          <p><span class="text-gray-400">PID:</span> ${systemdStatus.pid || 'N/A'}</p>
+          <p><span class="text-gray-400">Protocol:</span> <strong class="text-blue-400">${systemdStatus.protocol || 'auto'}</strong></p>
+          ${systemdStatus.startTime ? `<p><span class="text-gray-400">Started:</span> ${systemdStatus.startTime}</p>` : ''}
+        </div>
+        
+        <!-- Controls -->
+        <div class="flex flex-wrap gap-2 mb-4">
+          ${systemdStatus.active ? `
+            <button onclick="systemdAction('restart')" class="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded transition">
+              <i class="fas fa-redo mr-2"></i>Restart
+            </button>
+            <button onclick="systemdAction('stop')" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded transition">
+              <i class="fas fa-stop mr-2"></i>Stop
+            </button>
+          ` : `
+            <button onclick="systemdAction('start')" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition">
+              <i class="fas fa-play mr-2"></i>Start
+            </button>
+          `}
+        </div>
+        
+        <!-- Protocol Selector -->
+        <div class="bg-gray-700 rounded-lg p-4">
+          <h5 class="font-bold mb-2 text-sm">Change Protocol</h5>
+          <p class="text-xs text-gray-400 mb-3">HTTP2 is recommended if QUIC is blocked by your ISP.</p>
+          <div class="flex gap-2">
+            <button onclick="setTunnelProtocol('http2')" class="px-3 py-1 rounded text-sm ${systemdStatus.protocol === 'http2' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}">HTTP/2</button>
+            <button onclick="setTunnelProtocol('quic')" class="px-3 py-1 rounded text-sm ${systemdStatus.protocol === 'quic' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}">QUIC</button>
+            <button onclick="setTunnelProtocol('auto')" class="px-3 py-1 rounded text-sm ${systemdStatus.protocol === 'auto' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}">Auto</button>
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    // Fallback: Original config.yml based tunnel status
     const data = await api("/tunnel/status");
 
     document.getElementById("cloudflared-version").textContent =
@@ -332,11 +387,45 @@ async function loadTunnelPage() {
         </div>
       `;
     } else {
-      tunnelHtml = "<p class=\"text-gray-400\">No tunnel configured. Create one below.</p>";
+      tunnelHtml = "<p class=\"text-gray-400\">No tunnel configured. Create one below or use systemd service.</p>";
     }
     document.getElementById("tunnel-info").innerHTML = tunnelHtml;
   } catch (err) {
     console.error("Tunnel page error:", err);
+  }
+}
+
+// Systemd control functions
+async function systemdAction(action) {
+  try {
+    const result = await api(`/tunnel/systemd/${action}`, { method: "POST" });
+    if (result.success) {
+      alert(result.message);
+    } else {
+      alert("Error: " + result.error);
+    }
+    loadTunnelPage();
+  } catch (err) {
+    alert("Error: " + err.message);
+  }
+}
+
+async function setTunnelProtocol(protocol) {
+  if (!confirm(`Change protocol to ${protocol}? This will restart the tunnel.`)) return;
+
+  try {
+    const result = await api("/tunnel/systemd/protocol", {
+      method: "POST",
+      body: JSON.stringify({ protocol })
+    });
+    if (result.success) {
+      alert(result.message);
+    } else {
+      alert("Error: " + result.error);
+    }
+    loadTunnelPage();
+  } catch (err) {
+    alert("Error: " + err.message);
   }
 }
 

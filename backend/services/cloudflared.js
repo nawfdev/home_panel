@@ -354,6 +354,134 @@ async function listTunnels() {
   });
 }
 
+// ===== SYSTEMD INTEGRATION =====
+const { promisify } = require('util');
+const execPromise = promisify(exec);
+
+// Check if cloudflared is running as systemd service
+async function getSystemdStatus() {
+  if (process.platform !== 'linux') {
+    return { available: false, reason: 'Systemd only available on Linux' };
+  }
+
+  try {
+    const { stdout } = await execPromise('systemctl is-active cloudflared');
+    const isActive = stdout.trim() === 'active';
+
+    // Get more details
+    const { stdout: statusOut } = await execPromise('systemctl show cloudflared --property=MainPID,ActiveState,SubState,ExecMainStartTimestamp');
+    const props = {};
+    statusOut.split('\n').forEach(line => {
+      const [key, val] = line.split('=');
+      if (key && val) props[key] = val;
+    });
+
+    // Get protocol from service file
+    let protocol = 'auto';
+    try {
+      const { stdout: serviceContent } = await execPromise('cat /etc/systemd/system/cloudflared.service');
+      if (serviceContent.includes('--protocol http2')) protocol = 'http2';
+      else if (serviceContent.includes('--protocol quic')) protocol = 'quic';
+    } catch { }
+
+    return {
+      available: true,
+      active: isActive,
+      state: props.ActiveState || 'unknown',
+      subState: props.SubState || 'unknown',
+      pid: props.MainPID || null,
+      startTime: props.ExecMainStartTimestamp || null,
+      protocol
+    };
+  } catch (error) {
+    // Service doesn't exist or systemd not available
+    return { available: false, reason: error.message };
+  }
+}
+
+// Restart cloudflared systemd service
+async function restartSystemdService() {
+  if (process.platform !== 'linux') {
+    return { success: false, error: 'Systemd only available on Linux' };
+  }
+
+  try {
+    await execPromise('sudo systemctl restart cloudflared');
+    return { success: true, message: 'Cloudflared service restarted' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Stop cloudflared systemd service
+async function stopSystemdService() {
+  if (process.platform !== 'linux') {
+    return { success: false, error: 'Systemd only available on Linux' };
+  }
+
+  try {
+    await execPromise('sudo systemctl stop cloudflared');
+    return { success: true, message: 'Cloudflared service stopped' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Start cloudflared systemd service
+async function startSystemdService() {
+  if (process.platform !== 'linux') {
+    return { success: false, error: 'Systemd only available on Linux' };
+  }
+
+  try {
+    await execPromise('sudo systemctl start cloudflared');
+    return { success: true, message: 'Cloudflared service started' };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Change protocol in systemd service file
+async function setSystemdProtocol(protocol) {
+  if (process.platform !== 'linux') {
+    return { success: false, error: 'Systemd only available on Linux' };
+  }
+
+  if (!['http2', 'quic', 'auto'].includes(protocol)) {
+    return { success: false, error: 'Invalid protocol. Use: http2, quic, or auto' };
+  }
+
+  try {
+    // Read current service file
+    const { stdout: serviceContent } = await execPromise('cat /etc/systemd/system/cloudflared.service');
+
+    // Replace or add protocol flag
+    let newContent = serviceContent;
+    if (protocol === 'auto') {
+      // Remove protocol flags
+      newContent = newContent.replace(/--protocol\s+(http2|quic)\s*/g, '');
+    } else {
+      if (newContent.includes('--protocol')) {
+        newContent = newContent.replace(/--protocol\s+(http2|quic|auto)/g, `--protocol ${protocol}`);
+      } else {
+        // Add protocol before 'tunnel run'
+        newContent = newContent.replace('tunnel run', `--protocol ${protocol} tunnel run`);
+      }
+    }
+
+    // Write back (requires sudo)
+    const tempFile = '/tmp/cloudflared.service.tmp';
+    fs.writeFileSync(tempFile, newContent);
+    await execPromise(`sudo cp ${tempFile} /etc/systemd/system/cloudflared.service`);
+    await execPromise('sudo systemctl daemon-reload');
+    await execPromise('sudo systemctl restart cloudflared');
+
+    return { success: true, message: `Protocol changed to ${protocol}. Service restarted.` };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   checkCloudflaredInstalled,
   getTunnelStatus,
@@ -364,6 +492,11 @@ module.exports = {
   stopTunnel,
   listTunnels,
   setAutoRestart,
-  stopHealthCheck
+  stopHealthCheck,
+  // Systemd functions
+  getSystemdStatus,
+  restartSystemdService,
+  stopSystemdService,
+  startSystemdService,
+  setSystemdProtocol
 };
-
