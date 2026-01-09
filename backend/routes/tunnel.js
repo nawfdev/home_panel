@@ -82,4 +82,55 @@ router.post("/stop", isAuthenticated, async (req, res) => {
   }
 });
 
+// ===== SYSTEMD ROUTES =====
+router.get("/systemd/status", isAuthenticated, async (req, res) => {
+  try {
+    const result = await cloudflared.getSystemdStatus();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/systemd/restart", isAuthenticated, async (req, res) => {
+  try {
+    const result = await cloudflared.restartSystemdService();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/systemd/stop", isAuthenticated, async (req, res) => {
+  try {
+    const result = await cloudflared.stopSystemdService();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/systemd/start", isAuthenticated, async (req, res) => {
+  try {
+    const result = await cloudflared.startSystemdService();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/systemd/protocol", isAuthenticated, async (req, res) => {
+  try {
+    const { protocol } = req.body;
+    if (!protocol) {
+      return res.status(400).json({ error: "protocol required (http2, quic, or auto)" });
+    }
+    const result = await cloudflared.setSystemdProtocol(protocol);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
+
