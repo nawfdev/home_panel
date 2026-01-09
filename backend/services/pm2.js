@@ -22,7 +22,40 @@ async function checkPm2Available() {
         pm2Available = true;
         return { available: true };
     } catch (error) {
-        // Try fallback paths
+        // Try using 'which' command on Linux
+        if (process.platform !== 'win32') {
+            try {
+                const { stdout } = await execPromise("which pm2 2>/dev/null || command -v pm2 2>/dev/null");
+                const pm2Path = stdout.trim();
+                if (pm2Path) {
+                    await execPromise(`"${pm2Path}" --version`);
+                    pm2Available = true;
+                    return { available: true, path: pm2Path };
+                }
+            } catch {
+                // which failed
+            }
+
+            // Try finding in NVM directories
+            try {
+                const nvmDir = path.join(process.env.HOME || '/root', '.nvm', 'versions', 'node');
+                if (fs.existsSync(nvmDir)) {
+                    const versions = fs.readdirSync(nvmDir);
+                    for (const ver of versions) {
+                        const pm2Path = path.join(nvmDir, ver, 'bin', 'pm2');
+                        if (fs.existsSync(pm2Path)) {
+                            await execPromise(`"${pm2Path}" --version`);
+                            pm2Available = true;
+                            return { available: true, path: pm2Path };
+                        }
+                    }
+                }
+            } catch {
+                // NVM search failed
+            }
+        }
+
+        // Try static fallback paths
         const fallbackPaths = process.platform === 'win32'
             ? [
                 path.join(process.env.APPDATA || '', 'npm', 'pm2.cmd'),
@@ -31,7 +64,8 @@ async function checkPm2Available() {
             : [
                 '/usr/local/bin/pm2',
                 '/usr/bin/pm2',
-                path.join(process.env.HOME || '', '.npm-global', 'bin', 'pm2')
+                path.join(process.env.HOME || '', '.npm-global', 'bin', 'pm2'),
+                '/root/.local/bin/pm2'
             ];
 
         for (const pm2Path of fallbackPaths) {
