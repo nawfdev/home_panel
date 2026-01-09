@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Home Panel - Server Management</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+
+<body class="bg-gray-900 text-white min-h-screen">
+  <!-- Login Page -->
+  <div id="login-page" class="min-h-screen flex items-center justify-center">
+    <div class="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-md">
+      <div class="text-center mb-8">
+        <i class="fas fa-home text-5xl text-blue-400 mb-4"></i>
+        <h1 class="text-2xl font-bold">Home Panel</h1>
+        <p class="text-gray-400">Login to manage your server</p>
+      </div>
+      <form id="login-form">
+        <div class="mb-4">
+          <label class="block text-gray-400 mb-2">Username</label>
+          <input type="text" id="username"
+            class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2 focus:outline-none focus:border-orange-500"
+            required>
+        </div>
+        <div class="mb-6">
+          <label class="block text-gray-400 mb-2">Password</label>
+          <input type="password" id="password"
+            class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2 focus:outline-none focus:border-orange-500"
+            required>
+        </div>
+        <button type="submit"
+          class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded transition">Login</button>
+        <p id="login-error" class="text-red-500 text-center mt-4 hidden"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main Panel -->
+  <div id="main-panel" class="hidden">
+    <!-- Sidebar -->
+    <aside class="fixed left-0 top-0 h-full w-64 bg-gray-800 shadow-xl z-10">
+      <div class="p-4 border-b border-gray-700">
+        <div class="flex items-center">
+          <i class="fas fa-home text-3xl text-blue-400 mr-3"></i>
+          <div>
+            <h1 class="font-bold">Home Panel</h1>
+            <p class="text-xs text-gray-400">Server Management</p>
+          </div>
+        </div>
+      </div>
+      <nav class="p-4">
+        <a href="#" class="nav-link active" data-page="dashboard">
+          <i class="fas fa-home w-6"></i> Dashboard
+        </a>
+        <a href="#" class="nav-link" data-page="tunnel">
+          <i class="fas fa-network-wired w-6"></i> Tunnel
+        </a>
+        <a href="#" class="nav-link" data-page="network">
+          <i class="fas fa-globe w-6"></i> Network
+        </a>
+        <a href="#" class="nav-link" data-page="docker">
+          <i class="fab fa-docker w-6"></i> Docker
+        </a>
+        <a href="#" class="nav-link" data-page="pm2">
+          <i class="fas fa-server w-6"></i> PM2
+        </a>
+        <a href="#" class="nav-link" data-page="logs">
+          <i class="fas fa-file-alt w-6"></i> Logs
+        </a>
+        <a href="#" class="nav-link" data-page="services">
+          <i class="fas fa-cogs w-6"></i> Services
+        </a>
+        <a href="#" class="nav-link" data-page="files">
+          <i class="fas fa-folder-open w-6"></i> Files
+        </a>
+        <a href="#" class="nav-link" data-page="terminal">
+          <i class="fas fa-terminal w-6"></i> Terminal
+        </a>
+        <a href="#" class="nav-link" data-page="projects">
+          <i class="fas fa-folder w-6"></i> Projects
+        </a>
+        <a href="#" class="nav-link" data-page="system">
+          <i class="fas fa-server w-6"></i> System
+        </a>
+        <a href="#" class="nav-link" data-page="settings">
+          <i class="fas fa-cog w-6"></i> Settings
+        </a>
+      </nav>
+      <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-700">
+        <button id="logout-btn" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded transition">
+          <i class="fas fa-sign-out-alt mr-2"></i> Logout
+        </button>
+      </div>
+    </aside>
+
+    <!-- Content -->
+    <main class="ml-64 p-6">
+      <!-- Dashboard Page -->
+      <div id="page-dashboard" class="page">
+        <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+
+        <!-- Performance Graphs Section -->
+        <div class="mb-6">
+          <h3 class="text-xl font-bold mb-4"><i class="fas fa-chart-line mr-2"></i>Performance Trends (24h)</h3>
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="bg-gray-800 rounded-lg p-4">
+              <h4 class="font-bold mb-3">CPU Usage</h4>
+              <div style="height: 200px;">
+                <canvas id="cpu-chart"></canvas>
+              </div>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+              <h4 class="font-bold mb-3">Memory Usage</h4>
+              <div style="height: 200px;">
+                <canvas id="memory-chart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div class="stat-card bg-gray-800 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-gray-400 text-sm">CPU Usage</p>
+                <p class="text-2xl font-bold" id="cpu-usage">0%</p>
+              </div>
+              <i class="fas fa-microchip text-3xl text-blue-500"></i>
+            </div>
+            <div class="mt-2 bg-gray-700 rounded-full h-2">
+              <div class="bg-blue-500 h-2 rounded-full transition-all" id="cpu-bar" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="stat-card bg-gray-800 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-gray-400 text-sm">Memory Usage</p>
+                <p class="text-2xl font-bold" id="mem-usage">0%</p>
+              </div>
+              <i class="fas fa-memory text-3xl text-green-500"></i>
+            </div>
+            <div class="mt-2 bg-gray-700 rounded-full h-2">
+              <div class="bg-green-500 h-2 rounded-full transition-all" id="mem-bar" style="width: 0%"></div>
+            </div>
+          </div>
+          <div class="stat-card bg-gray-800 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-gray-400 text-sm">Tunnel Status</p>
+                <p class="text-2xl font-bold" id="tunnel-status">Offline</p>
+              </div>
+              <i class="fas fa-wifi text-3xl text-orange-500"></i>
+            </div>
+          </div>
+          <div class="stat-card bg-gray-800 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-gray-400 text-sm">Projects</p>
+                <p class="text-2xl font-bold"><span id="running-projects">0</span>/<span id="total-projects">0</span>
+                </p>
+              </div>
+              <i class="fas fa-cubes text-3xl text-purple-500"></i>
+            </div>
+          </div>
+
+          <div class="stat-card bg-gray-800 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-gray-400 text-sm">CPU Temp</p>
+                <p class="text-2xl font-bold" id="cpu-temp">N/A</p>
+              </div>
+              <i class="fas fa-thermometer-half text-3xl text-red-500"></i>
+            </div>
+            <div class="mt-2 text-xs text-gray-400" id="temp-status">Checking...</div>
+          </div>
+
+          <div class="stat-card bg-gray-800 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-gray-400 text-sm">Power</p>
+                <p class="text-2xl font-bold" id="power-status">AC</p>
+              </div>
+              <i class="fas fa-plug text-3xl text-yellow-500" id="power-icon"></i>
+            </div>
+            <div class="mt-2 text-xs text-gray-400" id="battery-info">AC Connected</div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="bg-gray-800 rounded-lg p-4">
+            <h3 class="font-bold mb-4"><i class="fas fa-info-circle mr-2"></i>System Info</h3>
+            <div id="system-info" class="space-y-2 text-sm">Loading...</div>
+          </div>
+          <div class="bg-gray-800 rounded-lg p-4">
+            <h3 class="font-bold mb-4"><i class="fas fa-hdd mr-2"></i>Disk Usage</h3>
+            <div id="disk-info" class="space-y-3">Loading...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tunnel Page -->
+      <div id="page-tunnel" class="page hidden">
+        <h2 class="text-2xl font-bold mb-6">Cloudflare Tunnel</h2>
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="font-bold">Tunnel Status</h3>
+              <p class="text-gray-400 text-sm">Cloudflared: <span id="cloudflared-version">Checking...</span></p>
+            </div>
+            <div class="flex gap-2">
+              <button id="start-tunnel-btn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition">
+                <i class="fas fa-play mr-2"></i>Start
+              </button>
+              <button id="stop-tunnel-btn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded transition">
+                <i class="fas fa-stop mr-2"></i>Stop
+              </button>
+            </div>
+          </div>
+          <div id="tunnel-info" class="bg-gray-700 rounded p-4">
+            <p class="text-gray-400">Loading tunnel info...</p>
+          </div>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-6">
+          <h3 class="font-bold mb-4">Create/Configure Tunnel</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label class="block text-gray-400 mb-2 text-sm">Tunnel Name</label>
+              <input type="text" id="tunnel-name" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
+                placeholder="my-tunnel">
+            </div>
+            <div>
+              <label class="block text-gray-400 mb-2 text-sm">Domain</label>
+              <input type="text" id="tunnel-domain" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
+                placeholder="panel.example.com">
+            </div>
+            <div>
+              <label class="block text-gray-400 mb-2 text-sm">Local Port</label>
+              <input type="number" id="tunnel-port" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
+                placeholder="3000" value="3000">
+            </div>
+          </div>
+          <button id="create-tunnel-btn" class="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded transition">
+            <i class="fas fa-plus mr-2"></i>Create Tunnel
+          </button>
+        </div>
+      </div>
+
+      <!-- Docker Page -->
+      <div id="page-docker" class="page hidden">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold"><i class="fab fa-docker mr-2 text-blue-400"></i>Docker Management</h2>
+          <button id="refresh-docker-btn" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition">
+            <i class="fas fa-sync-alt mr-2"></i>Refresh
+          </button>
+        </div>
+
+        <!-- Docker Status -->
+        <div id="docker-status" class="mb-6"></div>
+
+        <!-- Containers List -->
+        <div class="bg-gray-800 rounded-lg p-6">
+          <h3 class="font-bold mb-4"><i class="fas fa-box mr-2"></i>Containers</h3>
+          <div id="docker-containers" class="space-y-4">
+            <p class="text-gray-400">Loading containers...</p>
+          </div>
+        </div>
+
+        <!-- Container Logs Modal (Hidden by default) -->
+        <div id="docker-logs-modal"
+          class="fixed inset-0 bg-black bg-opacity-75 hidden items-center justify-center z-50">
+          <div class="bg-gray-800 rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="font-bold text-xl" id="logs-container-name">Container Logs</h3>
+              <button id="close-logs-btn" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times text-2xl"></i>
+              </button>
+            </div>
+            <div class="bg-gray-900 rounded p-4 font-mono text-sm overflow-auto flex-1">
+              <pre id="docker-logs-content" class="text-green-400">Loading logs...</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- PM2 Page -->
+      <div id="page-pm2" class="page hidden">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold"><i class="fas fa-cogs mr-2 text-green-400"></i>PM2 Management</h2>
+          <button id="refresh-pm2-btn" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition">
+            <i class="fas fa-sync-alt mr-2"></i>Refresh
+          </button>
+        </div>
+
+        <!-- PM2 Status -->
+        <div id="pm2-status" class="mb-6"></div>
+
+        <!-- Processes List -->
+        <div class="bg-gray-800 rounded-lg p-6">
+          <h3 class="font-bold mb-4"><i class="fas fa-tasks mr-2"></i>Processes</h3>
+          <div id="pm2-processes" class="space-y-4">
+            <p class="text-gray-400">Loading processes...</p>
+          </div>
+        </div>
+
+        <!-- Process Logs Modal -->
+        <div id="pm2-logs-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden items-center justify-center z-50">
+          <div class="bg-gray-800 rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+              <h3 class="font-bold text-xl" id="pm2-logs-process-name">Process Logs</h3>
+              <button id="close-pm2-logs-btn" class="text-gray-400 hover:text-white">
+                <i class="fas fa-times text-2xl"></i>
+              </button>
+            </div>
+            <div class="bg-gray-900 rounded p-4 font-mono text-sm overflow-auto flex-1">
+              <pre id="pm2-logs-content" class="text-cyan-400">Loading logs...</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Logs Page -->
+      <div id="page-logs" class="page hidden">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold"><i class="fas fa-file-alt mr-2 text-cyan-400"></i>Logs Viewer</h2>
+          <button id="refresh-logs-btn" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition">
+            <i class="fas fa-sync-alt mr-2"></i>Refresh
+          </button>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg p-6">
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+            <select id="log-source" class="bg-gray-700 border border-gray-600 rounded px-3 py-2">
+              <option value="">Select source...</option>
+            </select>
+            <select id="log-target" class="bg-gray-700 border border-gray-600 rounded px-3 py-2" disabled>
+              <option value="">Select target...</option>
+            </select>
+            <select id="log-lines" class="bg-gray-700 border border-gray-600 rounded px-3 py-2">
+              <option value="100">100 lines</option>
+              <option value="500">500 lines</option>
+              <option value="1000">1000 lines</option>
+            </select>
+            <input id="log-search" type="text" placeholder="Search..."
+              class="bg-gray-700 border border-gray-600 rounded px-3 py-2">
+          </div>
+
+          <div class="bg-gray-900 rounded p-4 h-96 overflow-auto font-mono text-sm">
+            <pre id="logs-content" class="text-green-400">Select a log source to view logs</pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Services Page -->
+      <div id="page-services" class="page hidden">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold"><i class="fas fa-cogs mr-2 text-purple-400"></i>System Services</h2>
+          <button id="refresh-services-btn" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition">
+            <i class="fas fa-sync-alt mr-2"></i>Refresh
+          </button>
+        </div>
+
+        <div id="services-status" class="mb-6"></div>
+
+        <div class="bg-gray-800 rounded-lg p-6">
+          <h3 class="font-bold mb-4"><i class="fas fa-list mr-2"></i>Services</h3>
+          <div id="services-list" class="space-y-3">
+            <p class="text-gray-400">Loading services...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Files Page -->
+      <div id="page-files" class="page hidden">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold"><i class="fas fa-folder-open mr-2 text-blue-400"></i>File Browser</h2>
+          <div class="flex gap-2">
+            <button id="upload-file-btn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition">
+              <i class="fas fa-upload mr-2"></i>Upload
+            </button>
+            <button id="up-dir-btn" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition">
+              <i class="fas fa-level-up-alt mr-2"></i>Up
+            </button>
+          </div>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg p-4 mb-4">
+          <p class="text-sm text-gray-400">Current Path:</p>
+          <p class="font-mono text-green-400" id="current-path">/</p>
+        </div>
+
+        <div class="bg-gray-800 rounded-lg p-6">
+          <div id="files-list" class="space-y-2">
+            <p class="text-gray-400">Loading...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- File Editor Modal -->
+      <div id="file-editor-modal"
+        class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-screen overflow-auto">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold"><i class="fas fa-edit mr-2"></i>Edit File</h3>
+            <button id="close-editor-btn" class="text-gray-400 hover:text-white">
+              <i class="fas fa-times text-2xl"></i>
+            </button>
+          </div>
+          <p class="text-sm text-gray-400 mb-2" id="file-editor-path"></p>
+          <textarea id="file-content" class="w-full bg-gray-900 text-white p-4 font-mono text-sm rounded"
+            rows="20"></textarea>
+          <button id="save-file-btn" class="mt-4 bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded">
+            <i class="fas fa-save mr-2"></i>Save
+          </button>
+        </div>
+      </div>
+
+      <!-- Upload Modal -->
+      <div id="upload-modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md">
+          <div class="flex justify-between items-center mb-4">
+            <h3 class="text-xl font-bold"><i class="fas fa-upload mr-2"></i>Upload File</h3>
+            <button id="close-upload-btn" class="text-gray-400 hover:text-white">
+              <i class="fas fa-times text-2xl"></i>
+            </button>
+          </div>
+          <p class="text-sm text-gray-400 mb-4">Upload to: <span id="upload-path" class="text-green-400"></span></p>
+          <form id="upload-form" enctype="multipart/form-data">
+            <input type="file" id="file-input" class="w-full bg-gray-900 text-white p-3 rounded mb-4">
+            <button type="submit" class="w-full bg-green-600 hover:bg-green-700 px-6 py-2 rounded">
+              <i class="fas fa-upload mr-2"></i>Upload
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Terminal Page -->
+      <div id="page-terminal" class="page hidden">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold"><i class="fas fa-terminal mr-2 text-green-400"></i>Web Terminal</h2>
+          <button id="clear-terminal-btn" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded transition">
+            <i class="fas fa-eraser mr-2"></i>Clear
+          </button>
+        </div>
+
+        <div class="bg-black rounded-lg p-4 font-mono text-sm">
+          <div id="terminal-output" class="text-green-400 whitespace-pre-wrap h-96 overflow-y-auto mb-4"></div>
+          <div class="flex gap-2">
+            <input type="text" id="terminal-input" class="flex-1 bg-gray-900 text-white px-4 py-2 rounded"
+              placeholder="Enter command...">
+            <button id="send-command-btn" class="bg-green-600 hover:bg-green-700 px-6 py-2 rounded">
+              <i class="fas fa-play mr-2"></i>Run
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Projects Page -->
+      <div id="page-projects" class="page hidden">
+        <div class="flex justify-between items-center mb-6">
+          <h2 class="text-2xl font-bold">Projects</h2>
+          <button id="add-project-btn" class="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded transition">
+            <i class="fas fa-plus mr-2"></i>Add Project
+          </button>
+        </div>
+        <div id="projects-list" class="grid gap-4">
+          <p class="text-gray-400">Loading projects...</p>
+        </div>
+      </div>
+
+      <!-- Network Page -->
+      <div id="page-network" class="page hidden">
+        <h2 class="text-2xl font-bold mb-6">Network Information</h2>
+
+        <!-- Info Alert -->
+        <div class="bg-blue-900 border border-blue-700 rounded-lg p-4 mb-6">
+          <div class="flex items-start">
+            <i class="fas fa-info-circle text-blue-400 text-xl mr-3 mt-1"></i>
+            <div>
+              <h4 class="font-bold text-blue-300 mb-1">Informasi IP Public</h4>
+              <p class="text-sm text-blue-200">
+                IP public di bawah ini <strong>hanya untuk informasi</strong>. Untuk membuat project online, gunakan
+                <strong>Cloudflare Tunnel</strong> yang sudah tersedia di tab Tunnel.
+                Indihome menggunakan CGNAT, jadi tidak bisa langsung akses via IP public.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <!-- Public IP Card -->
+          <div class="bg-gray-800 rounded-lg p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="font-bold"><i class="fas fa-globe mr-2 text-orange-500"></i>IP Public (ISP)</h3>
+              <button id="refresh-network-btn"
+                class="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm transition">
+                <i class="fas fa-sync-alt mr-1"></i>Refresh
+              </button>
+            </div>
+            <div class="bg-gray-700 rounded p-4 text-center">
+              <p class="text-gray-400 text-sm mb-2">IP dari Provider Internet Anda</p>
+              <p id="public-ip" class="text-3xl font-bold text-orange-500 mb-2">Loading...</p>
+              <div id="connectivity-status" class="inline-flex items-center text-sm">
+                <i class="fas fa-circle text-gray-500 mr-2"></i>
+                <span class="text-gray-400">Checking...</span>
+              </div>
+            </div>
+            <div class="mt-4 text-sm text-gray-400">
+              <p><i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>Tidak bisa diakses langsung karena
+                CGNAT</p>
+            </div>
+          </div>
+
+          <!-- Cloudflare Tunnel Info -->
+          <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="font-bold mb-4"><i class="fas fa-cloud mr-2 text-blue-500"></i>Cloudflare Tunnel</h3>
+            <div id="cloudflare-info" class="space-y-3">
+              <p class="text-gray-400">Loading...</p>
+            </div>
+            <div class="mt-4">
+              <a href="#"
+                class="nav-link inline-block bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded transition text-sm"
+                data-page="tunnel">
+                <i class="fas fa-arrow-right mr-2"></i>Kelola Tunnel
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+          <!-- Local Network Interfaces -->
+          <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="font-bold mb-4"><i class="fas fa-network-wired mr-2 text-green-500"></i>Network Interfaces Lokal
+            </h3>
+            <div id="local-interfaces" class="space-y-3">
+              <p class="text-gray-400">Loading...</p>
+            </div>
+          </div>
+
+          <!-- DNS & Gateway -->
+          <div class="bg-gray-800 rounded-lg p-6">
+            <h3 class="font-bold mb-4"><i class="fas fa-dns mr-2 text-purple-500"></i>DNS & Gateway</h3>
+            <div id="dns-info" class="space-y-3">
+              <p class="text-gray-400">Loading...</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Network Statistics -->
+        <div class="bg-gray-800 rounded-lg p-6">
+          <h3 class="font-bold mb-4"><i class="fas fa-chart-line mr-2 text-cyan-500"></i>Network Statistics</h3>
+          <div id="network-stats-detail" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <p class="text-gray-400">Loading...</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- System Page -->
+      <div id="page-system" class="page hidden">
+        <h2 class="text-2xl font-bold mb-6">System Monitor</h2>
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+          <h3 class="font-bold mb-4">Top Processes</h3>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-gray-400 border-b border-gray-700">
+                  <th class="text-left py-2">PID</th>
+                  <th class="text-left py-2">Name</th>
+                  <th class="text-left py-2">CPU %</th>
+                  <th class="text-left py-2">MEM %</th>
+                  <th class="text-left py-2">State</th>
+                </tr>
+              </thead>
+              <tbody id="process-list">
+                <tr>
+                  <td colspan="5" class="py-4 text-gray-400">Loading...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="bg-gray-800 rounded-lg p-6">
+          <h3 class="font-bold mb-4">Network Stats</h3>
+          <div id="network-stats" class="grid gap-4">Loading...</div>
+        </div>
+      </div>
+
+      <!-- Settings Page -->
+      <div id="page-settings" class="page hidden">
+        <h2 class="text-2xl font-bold mb-6">Settings</h2>
+        <div class="bg-gray-800 rounded-lg p-6 mb-6">
+          <h3 class="font-bold mb-4">Change Password</h3>
+          <form id="change-password-form" class="max-w-md">
+            <div class="mb-4">
+              <label class="block text-gray-400 mb-2 text-sm">Current Password</label>
+              <input type="password" id="current-password"
+                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" required>
+            </div>
+            <div class="mb-4">
+              <label class="block text-gray-400 mb-2 text-sm">New Password</label>
+              <input type="password" id="new-password"
+                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" required>
+            </div>
+            <button type="submit" class="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded transition">
+              <i class="fas fa-save mr-2"></i>Change Password
+            </button>
+          </form>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Add Project Modal -->
+  <div id="project-modal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-gray-800 rounded-lg p-6 w-full max-w-md">
+      <h3 class="font-bold text-xl mb-4">Add Project</h3>
+      <form id="project-form">
+        <div class="mb-4">
+          <label class="block text-gray-400 mb-2 text-sm">Project Name</label>
+          <input type="text" id="project-name" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
+            required>
+        </div>
+        <div class="mb-4">
+          <label class="block text-gray-400 mb-2 text-sm">Project Path</label>
+          <input type="text" id="project-path" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
+            placeholder="C:\projects\myapp" required>
+        </div>
+        <div class="mb-4">
+          <label class="block text-gray-400 mb-2 text-sm">Port</label>
+          <input type="number" id="project-port" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
+            required>
+        </div>
+        <div class="mb-4">
+          <label class="block text-gray-400 mb-2 text-sm">Domain (optional)</label>
+          <input type="text" id="project-domain" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
+            placeholder="app.example.com">
+        </div>
+        <div class="flex gap-2">
+          <button type="submit" class="flex-1 bg-orange-500 hover:bg-orange-600 py-2 rounded transition">Save</button>
+          <button type="button" id="close-modal"
+            class="flex-1 bg-gray-600 hover:bg-gray-700 py-2 rounded transition">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/docker.js"></script>
+  <script src="/js/pm2.js"></script>
+  <script src="/js/logs.js"></script>
+  <script src="/js/services.js"></script>
+  <script src="/js/graphs.js"></script>
+  <script src="/js/files.js"></script>
+  <script src="/js/terminal.js"></script>
+</body>
+
+</html>
