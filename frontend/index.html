@@ -795,6 +795,80 @@
             </button>
           </form>
         </div>
+
+        <!-- Service Paths Configuration -->
+        <div class="bg-gray-800 rounded-lg p-6 mt-6">
+          <h3 class="font-bold mb-4 flex items-center">
+            <i class="fas fa-cog text-purple-400 mr-2"></i> Service Paths
+          </h3>
+          <p class="text-sm text-gray-400 mb-4">Configure custom paths for services if auto-detection fails.</p>
+
+          <!-- PM2 Path -->
+          <div class="mb-4 p-4 bg-gray-700 rounded">
+            <div class="flex justify-between items-center mb-2">
+              <label class="font-bold text-sm">PM2</label>
+              <button type="button" id="detect-pm2" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-xs">
+                <i class="fas fa-search mr-1"></i>Auto-detect
+              </button>
+            </div>
+            <input type="text" id="path-pm2" placeholder="/usr/local/bin/pm2 or auto"
+              class="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-sm mb-2">
+            <details class="text-xs text-gray-400">
+              <summary class="cursor-pointer hover:text-white">📖 Installation Guide</summary>
+              <div class="mt-2 p-2 bg-gray-800 rounded">
+                <p class="mb-2"><strong>Install PM2:</strong></p>
+                <code class="block bg-gray-900 p-2 rounded mb-2">npm install -g pm2</code>
+                <p><strong>Commands:</strong> pm2 start app.js | pm2 list | pm2 logs | pm2 restart all</p>
+              </div>
+            </details>
+          </div>
+
+          <!-- Docker Path -->
+          <div class="mb-4 p-4 bg-gray-700 rounded">
+            <div class="flex justify-between items-center mb-2">
+              <label class="font-bold text-sm">Docker</label>
+              <button type="button" id="detect-docker" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-xs">
+                <i class="fas fa-search mr-1"></i>Auto-detect
+              </button>
+            </div>
+            <input type="text" id="path-docker" placeholder="/usr/bin/docker or auto"
+              class="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-sm mb-2">
+            <details class="text-xs text-gray-400">
+              <summary class="cursor-pointer hover:text-white">📖 Installation Guide</summary>
+              <div class="mt-2 p-2 bg-gray-800 rounded">
+                <p class="mb-2"><strong>Install Docker (Ubuntu):</strong></p>
+                <code class="block bg-gray-900 p-2 rounded mb-2">curl -fsSL https://get.docker.com | sh</code>
+                <p><strong>Commands:</strong> docker ps | docker images | docker run | docker compose up</p>
+              </div>
+            </details>
+          </div>
+
+          <!-- Cloudflared Path -->
+          <div class="mb-4 p-4 bg-gray-700 rounded">
+            <div class="flex justify-between items-center mb-2">
+              <label class="font-bold text-sm">Cloudflared</label>
+              <button type="button" id="detect-cloudflared"
+                class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-xs">
+                <i class="fas fa-search mr-1"></i>Auto-detect
+              </button>
+            </div>
+            <input type="text" id="path-cloudflared" placeholder="/usr/local/bin/cloudflared or auto"
+              class="w-full bg-gray-600 border border-gray-500 rounded px-3 py-2 text-sm mb-2">
+            <details class="text-xs text-gray-400">
+              <summary class="cursor-pointer hover:text-white">📖 Installation Guide</summary>
+              <div class="mt-2 p-2 bg-gray-800 rounded">
+                <p class="mb-2"><strong>Install Cloudflared:</strong></p>
+                <code
+                  class="block bg-gray-900 p-2 rounded mb-2">curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared</code>
+                <p><strong>Setup:</strong> cloudflared tunnel login | cloudflared tunnel create NAME</p>
+              </div>
+            </details>
+          </div>
+
+          <button type="button" id="save-paths-btn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded w-full">
+            <i class="fas fa-save mr-2"></i>Save Service Paths
+          </button>
+        </div>
       </div>
     </main>
   </div>
