@@ -1,38 +1,48 @@
 // Docker page loader
 async function loadDockerPage() {
-    try {
-        const statusData = await api("/docker/status");
+  try {
+    const statusData = await api("/docker/status");
 
-        if (!statusData.available) {
-            document.getElementById("docker-status").innerHTML = `
+    if (!statusData.available) {
+      const install = statusData.install || { command: 'Visit docker.com', note: '' };
+      document.getElementById("docker-status").innerHTML = `
         <div class="bg-yellow-900 border border-yellow-700 rounded-lg p-4">
           <div class="flex items-start">
             <i class="fas fa-exclamation-triangle text-yellow-400 text-xl mr-3 mt-1"></i>
-            <div>
+            <div class="flex-1">
               <h4 class="font-bold text-yellow-300 mb-1">Docker Not Available</h4>
-              <p class="text-sm text-yellow-200">
-                Docker is not installed or not running on this system.
-                <br>Install Docker: <a href="https://docs.docker.com/get-docker/" target="_blank" class="underline">docs.docker.com/get-docker</a>
-              </p>
+              <p class="text-sm text-yellow-200 mb-3">${statusData.reason || 'Docker is not installed or not running on this system.'}</p>
+              
+              <div class="bg-gray-800 rounded p-3 mb-2">
+                <p class="text-xs text-gray-400 mb-1">Install command:</p>
+                <div class="flex items-center gap-2">
+                  <code class="flex-1 text-sm text-green-400 font-mono">${install.command}</code>
+                  <button onclick="navigator.clipboard.writeText('${install.command.replace(/'/g, "\\'")}'); alert('Copied!')" 
+                    class="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs">
+                    <i class="fas fa-copy"></i>
+                  </button>
+                </div>
+                ${install.note ? `<p class="text-xs text-gray-400 mt-2">${install.note}</p>` : ''}
+              </div>
             </div>
           </div>
         </div>
       `;
-            document.getElementById("docker-containers").innerHTML = `
+      document.getElementById("docker-containers").innerHTML = `
         <p class="text-gray-500">Docker service is not available</p>
       `;
-            return;
-        }
+      return;
+    }
 
-        const data = await api("/docker/containers");
+    const data = await api("/docker/containers");
 
-        if (data.containers && data.containers.length > 0) {
-            document.getElementById("docker-containers").innerHTML = data.containers.map(container => {
-                const isRunning = container.state === "running";
-                const statusColor = isRunning ? "green" : "red";
-                const statusIcon = isRunning ? "play" : "stop";
+    if (data.containers && data.containers.length > 0) {
+      document.getElementById("docker-containers").innerHTML = data.containers.map(container => {
+        const isRunning = container.state === "running";
+        const statusColor = isRunning ? "green" : "red";
+        const statusIcon = isRunning ? "play" : "stop";
 
-                return `
+        return `
           <div class="bg-gray-700 rounded-lg p-4">
             <div class="flex items-center justify-between mb-3">
               <div class="flex items-center">
@@ -85,14 +95,14 @@ async function loadDockerPage() {
             </div>
           </div>
         `;
-            }).join('');
-        } else {
-            document.getElementById("docker-containers").innerHTML = `
+      }).join('');
+    } else {
+      document.getElementById("docker-containers").innerHTML = `
         <p class="text-gray-400">No containers found</p>
       `;
-        }
+    }
 
-        document.getElementById("docker-status").innerHTML = `
+    document.getElementById("docker-status").innerHTML = `
       <div class="bg-green-900 border border-green-700 rounded-lg p-4">
         <div class="flex items-center">
           <i class="fas fa-check-circle text-green-400 text-xl mr-3"></i>
@@ -104,9 +114,9 @@ async function loadDockerPage() {
       </div>
     `;
 
-    } catch (err) {
-        console.error("Docker page error:", err);
-        document.getElementById("docker-status").innerHTML = `
+  } catch (err) {
+    console.error("Docker page error:", err);
+    document.getElementById("docker-status").innerHTML = `
       <div class="bg-red-900 border border-red-700 rounded-lg p-4">
         <div class="flex items-center">
           <i class="fas fa-exclamation-circle text-red-400 text-xl mr-3"></i>
@@ -117,77 +127,77 @@ async function loadDockerPage() {
         </div>
       </div>
     `;
-    }
+  }
 }
 
 // Docker action handler
 async function dockerAction(containerId, action) {
-    try {
-        const result = await api(`/docker/containers/${containerId}/${action}`, { method: 'POST' });
-        if (result.success) {
-            // Reload Docker page
-            await loadDockerPage();
-        }
-    } catch (err) {
-        alert(`Failed to ${action} container: ${err.message}`);
+  try {
+    const result = await api(`/docker/containers/${containerId}/${action}`, { method: 'POST' });
+    if (result.success) {
+      // Reload Docker page
+      await loadDockerPage();
     }
+  } catch (err) {
+    alert(`Failed to ${action} container: ${err.message}`);
+  }
 }
 
 // Show Docker logs
 async function showDockerLogs(containerId, containerName) {
-    const modal = document.getElementById("docker-logs-modal");
-    const logsContent = document.getElementById("docker-logs-content");
-    const nameEl = document.getElementById("logs-container-name");
+  const modal = document.getElementById("docker-logs-modal");
+  const logsContent = document.getElementById("docker-logs-content");
+  const nameEl = document.getElementById("logs-container-name");
 
-    nameEl.textContent = `${containerName} - Logs`;
-    logsContent.textContent = "Loading logs...";
-    modal.classList.remove("hidden");
-    modal.classList.add("flex");
+  nameEl.textContent = `${containerName} - Logs`;
+  logsContent.textContent = "Loading logs...";
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
 
-    try {
-        const result = await api(`/docker/containers/${containerId}/logs?lines=100`);
-        if (result.success) {
-            logsContent.textContent = result.logs || "No logs available";
-        } else {
-            logsContent.textContent = `Error: ${result.error}`;
-        }
-    } catch (err) {
-        logsContent.textContent = `Error loading logs: ${err.message}`;
+  try {
+    const result = await api(`/docker/containers/${containerId}/logs?lines=100`);
+    if (result.success) {
+      logsContent.textContent = result.logs || "No logs available";
+    } else {
+      logsContent.textContent = `Error: ${result.error}`;
     }
+  } catch (err) {
+    logsContent.textContent = `Error loading logs: ${err.message}`;
+  }
 }
 
 // Close logs modal
 document.addEventListener('DOMContentLoaded', () => {
-    const closeBtn = document.getElementById("close-logs-btn");
-    const modal = document.getElementById("docker-logs-modal");
+  const closeBtn = document.getElementById("close-logs-btn");
+  const modal = document.getElementById("docker-logs-modal");
 
-    if (closeBtn) {
-        closeBtn.addEventListener("click", () => {
-            modal.classList.add("hidden");
-            modal.classList.remove("flex");
-        });
-    }
+  if (closeBtn) {
+    closeBtn.addEventListener("click", () => {
+      modal.classList.add("hidden");
+      modal.classList.remove("flex");
+    });
+  }
 
-    // Close on outside click
-    if (modal) {
-        modal.addEventListener("click", (e) => {
-            if (e.target === modal) {
-                modal.classList.add("hidden");
-                modal.classList.remove("flex");
-            }
-        });
-    }
+  // Close on outside click
+  if (modal) {
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) {
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+      }
+    });
+  }
 });
 
 // Refresh Docker button
 document.addEventListener('DOMContentLoaded', () => {
-    const refreshBtn = document.getElementById("refresh-docker-btn");
-    if (refreshBtn) {
-        refreshBtn.addEventListener("click", async () => {
-            const icon = refreshBtn.querySelector("i");
-            icon.classList.add("fa-spin");
-            await loadDockerPage();
-            setTimeout(() => icon.classList.remove("fa-spin"), 500);
-        });
-    }
+  const refreshBtn = document.getElementById("refresh-docker-btn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", async () => {
+      const icon = refreshBtn.querySelector("i");
+      icon.classList.add("fa-spin");
+      await loadDockerPage();
+      setTimeout(() => icon.classList.remove("fa-spin"), 500);
+    });
+  }
 });

@@ -1,19 +1,56 @@
 const { exec } = require("child_process");
 const { promisify } = require("util");
+const fs = require("fs");
+const path = require("path");
 
 const execPromise = promisify(exec);
 
 let pm2Available = false;
 
-// Check if PM2 is available
+// Get install command based on platform
+function getInstallCommand() {
+    return {
+        command: 'npm install -g pm2',
+        note: 'Requires Node.js and npm to be installed'
+    };
+}
+
+// Check if PM2 is available with fallback paths
 async function checkPm2Available() {
     try {
         await execPromise("pm2 --version");
         pm2Available = true;
-        return true;
+        return { available: true };
     } catch (error) {
+        // Try fallback paths
+        const fallbackPaths = process.platform === 'win32'
+            ? [
+                path.join(process.env.APPDATA || '', 'npm', 'pm2.cmd'),
+                path.join(process.env.USERPROFILE || '', 'AppData', 'Roaming', 'npm', 'pm2.cmd')
+            ]
+            : [
+                '/usr/local/bin/pm2',
+                '/usr/bin/pm2',
+                path.join(process.env.HOME || '', '.npm-global', 'bin', 'pm2')
+            ];
+
+        for (const pm2Path of fallbackPaths) {
+            if (fs.existsSync(pm2Path)) {
+                try {
+                    await execPromise(`"${pm2Path}" --version`);
+                    pm2Available = true;
+                    return { available: true, path: pm2Path };
+                } catch {
+                    // Continue to next path
+                }
+            }
+        }
+
         pm2Available = false;
-        throw new Error("PM2 not available on this system. Install with: npm install -g pm2");
+        return {
+            available: false,
+            install: getInstallCommand()
+        };
     }
 }
 

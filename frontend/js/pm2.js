@@ -1,37 +1,47 @@
 // PM2 page loader
 async function loadPm2Page() {
-    try {
-        const statusData = await api("/pm2/status");
+  try {
+    const statusData = await api("/pm2/status");
 
-        if (!statusData.available) {
-            document.getElementById("pm2-status").innerHTML = `
+    if (!statusData.available) {
+      const install = statusData.install || { command: 'npm install -g pm2', note: '' };
+      document.getElementById("pm2-status").innerHTML = `
         <div class="bg-yellow-900 border border-yellow-700 rounded-lg p-4">
           <div class="flex items-start">
             <i class="fas fa-exclamation-triangle text-yellow-400 text-xl mr-3 mt-1"></i>
-            <div>
+            <div class="flex-1">
               <h4 class="font-bold text-yellow-300 mb-1">PM2 Not Available</h4>
-              <p class="text-sm text-yellow-200">
-                PM2 is not installed on this system.
-                <br>Install: <code class="bg-gray-900 px-2 py-1 rounded">npm install -g pm2</code>
-              </p>
+              <p class="text-sm text-yellow-200 mb-3">PM2 is not installed on this system.</p>
+              
+              <div class="bg-gray-800 rounded p-3 mb-2">
+                <p class="text-xs text-gray-400 mb-1">Install command:</p>
+                <div class="flex items-center gap-2">
+                  <code class="flex-1 text-sm text-green-400 font-mono">${install.command}</code>
+                  <button onclick="navigator.clipboard.writeText('${install.command}'); alert('Copied!')" 
+                    class="bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-xs">
+                    <i class="fas fa-copy"></i>
+                  </button>
+                </div>
+                ${install.note ? `<p class="text-xs text-gray-400 mt-2">${install.note}</p>` : ''}
+              </div>
             </div>
           </div>
         </div>
       `;
-            document.getElementById("pm2-processes").innerHTML = `
+      document.getElementById("pm2-processes").innerHTML = `
         <p class="text-gray-500">PM2 is not available</p>
       `;
-            return;
-        }
+      return;
+    }
 
-        const data = await api("/pm2/processes");
+    const data = await api("/pm2/processes");
 
-        if (data.processes && data.processes.length > 0) {
-            document.getElementById("pm2-processes").innerHTML = data.processes.map(proc => {
-                const isOnline = proc.status === "online";
-                const statusColor = isOnline ? "green" : "red";
+    if (data.processes && data.processes.length > 0) {
+      document.getElementById("pm2-processes").innerHTML = data.processes.map(proc => {
+        const isOnline = proc.status === "online";
+        const statusColor = isOnline ? "green" : "red";
 
-                return `
+        return `
           <div class="bg-gray-700 rounded-lg p-4">
             <div class="flex items-center justify-between mb-3">
               <div class="flex items-center">
@@ -87,9 +97,9 @@ async function loadPm2Page() {
             </div>
           </div>
         `;
-            }).join('');
+      }).join('');
 
-            document.getElementById("pm2-status").innerHTML = `
+      document.getElementById("pm2-status").innerHTML = `
         <div class="bg-green-900 border border-green-700 rounded-lg p-4">
           <div class="flex items-center">
             <i class="fas fa-check-circle text-green-400 text-xl mr-3"></i>
@@ -100,12 +110,12 @@ async function loadPm2Page() {
           </div>
         </div>
       `;
-        } else {
-            document.getElementById("pm2-processes").innerHTML = `
+    } else {
+      document.getElementById("pm2-processes").innerHTML = `
         <p class="text-gray-400">No processes found</p>
       `;
 
-            document.getElementById("pm2-status").innerHTML = `
+      document.getElementById("pm2-status").innerHTML = `
         <div class="bg-blue-900 border border-blue-700 rounded-lg p-4">
           <div class="flex items-center">
             <i class="fas fa-info-circle text-blue-400 text-xl mr-3"></i>
@@ -116,11 +126,11 @@ async function loadPm2Page() {
           </div>
         </div>
       `;
-        }
+    }
 
-    } catch (err) {
-        console.error("PM2 page error:", err);
-        document.getElementById("pm2-status").innerHTML = `
+  } catch (err) {
+    console.error("PM2 page error:", err);
+    document.getElementById("pm2-status").innerHTML = `
       <div class="bg-red-900 border border-red-700 rounded-lg p-4">
         <div class="flex items-center">
           <i class="fas fa-exclamation-circle text-red-400 text-xl mr-3"></i>
@@ -131,88 +141,88 @@ async function loadPm2Page() {
         </div>
       </div>
     `;
-    }
+  }
 }
 
 // PM2 action handler
 async function pm2Action(processName, action) {
-    try {
-        const result = await api(`/pm2/processes/${processName}/${action}`, { method: 'POST' });
-        if (result.success) {
-            await loadPm2Page();
-        }
-    } catch (err) {
-        alert(`Failed to ${action} process: ${err.message}`);
+  try {
+    const result = await api(`/pm2/processes/${processName}/${action}`, { method: 'POST' });
+    if (result.success) {
+      await loadPm2Page();
     }
+  } catch (err) {
+    alert(`Failed to ${action} process: ${err.message}`);
+  }
 }
 
 // PM2 delete with confirmation
 async function pm2Delete(processName) {
-    if (confirm(`Are you sure you want to delete process "${processName}"?`)) {
-        try {
-            const result = await api(`/pm2/processes/${processName}`, { method: 'DELETE' });
-            if (result.success) {
-                await loadPm2Page();
-            }
-        } catch (err) {
-            alert(`Failed to delete process: ${err.message}`);
-        }
+  if (confirm(`Are you sure you want to delete process "${processName}"?`)) {
+    try {
+      const result = await api(`/pm2/processes/${processName}`, { method: 'DELETE' });
+      if (result.success) {
+        await loadPm2Page();
+      }
+    } catch (err) {
+      alert(`Failed to delete process: ${err.message}`);
     }
+  }
 }
 
 // Show PM2 logs
 async function showPm2Logs(processName) {
-    const modal = document.getElementById("pm2-logs-modal");
-    const logsContent = document.getElementById("pm2-logs-content");
-    const nameEl = document.getElementById("pm2-logs-process-name");
+  const modal = document.getElementById("pm2-logs-modal");
+  const logsContent = document.getElementById("pm2-logs-content");
+  const nameEl = document.getElementById("pm2-logs-process-name");
 
-    nameEl.textContent = `${processName} - Logs`;
-    logsContent.textContent = "Loading logs...";
-    modal.classList.remove("hidden");
-    modal.classList.add("flex");
+  nameEl.textContent = `${processName} - Logs`;
+  logsContent.textContent = "Loading logs...";
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
 
-    try {
-        const result = await api(`/pm2/processes/${processName}/logs?lines=100`);
-        if (result.success) {
-            logsContent.textContent = result.logs || "No logs available";
-        } else {
-            logsContent.textContent = `Error: ${result.error}`;
-        }
-    } catch (err) {
-        logsContent.textContent = `Error loading logs: ${err.message}`;
+  try {
+    const result = await api(`/pm2/processes/${processName}/logs?lines=100`);
+    if (result.success) {
+      logsContent.textContent = result.logs || "No logs available";
+    } else {
+      logsContent.textContent = `Error: ${result.error}`;
     }
+  } catch (err) {
+    logsContent.textContent = `Error loading logs: ${err.message}`;
+  }
 }
 
 // Event listeners
 document.addEventListener('DOMContentLoaded', () => {
-    // Close PM2 logs
-    const closePm2LogsBtn = document.getElementById("close-pm2-logs-btn");
-    const pm2LogsModal = document.getElementById("pm2-logs-modal");
+  // Close PM2 logs
+  const closePm2LogsBtn = document.getElementById("close-pm2-logs-btn");
+  const pm2LogsModal = document.getElementById("pm2-logs-modal");
 
-    if (closePm2LogsBtn) {
-        closePm2LogsBtn.addEventListener("click", () => {
-            pm2LogsModal.classList.add("hidden");
-            pm2LogsModal.classList.remove("flex");
-        });
-    }
+  if (closePm2LogsBtn) {
+    closePm2LogsBtn.addEventListener("click", () => {
+      pm2LogsModal.classList.add("hidden");
+      pm2LogsModal.classList.remove("flex");
+    });
+  }
 
-    if (pm2LogsModal) {
-        pm2LogsModal.addEventListener("click", (e) => {
-            if (e.target === pm2LogsModal) {
-                pm2LogsModal.classList.add("hidden");
-                pm2LogsModal.classList.remove("flex");
-            }
-        });
-    }
+  if (pm2LogsModal) {
+    pm2LogsModal.addEventListener("click", (e) => {
+      if (e.target === pm2LogsModal) {
+        pm2LogsModal.classList.add("hidden");
+        pm2LogsModal.classList.remove("flex");
+      }
+    });
+  }
 
-    // Refresh PM2
-    const refreshPm2Btn = document.getElementById("refresh-pm2-btn");
-    if (refreshPm2Btn) {
-        refreshPm2Btn.addEventListener("click", async () => {
-            const icon = refreshPm2Btn.querySelector("i");
-            icon.classList.add("fa-spin");
-            await loadPm2Page();
-            setTimeout(() => icon.classList.remove("fa-spin"), 500);
-        });
-    }
+  // Refresh PM2
+  const refreshPm2Btn = document.getElementById("refresh-pm2-btn");
+  if (refreshPm2Btn) {
+    refreshPm2Btn.addEventListener("click", async () => {
+      const icon = refreshPm2Btn.querySelector("i");
+      icon.classList.add("fa-spin");
+      await loadPm2Page();
+      setTimeout(() => icon.classList.remove("fa-spin"), 500);
+    });
+  }
 });
