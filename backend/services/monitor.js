@@ -132,6 +132,30 @@ async function getTemperature() {
       } catch {
         // Fallback failed
       }
+
+      // Try using 'sensors' command (lm-sensors)
+      try {
+        const { exec } = require('child_process');
+        const { promisify } = require('util');
+        const execPromise = promisify(exec);
+
+        const { stdout } = await execPromise('sensors 2>/dev/null | grep -E "temp1:|edge:" | head -1');
+        const match = stdout.match(/\+?(\d+\.?\d*)°C/);
+        if (match) {
+          const tempValue = parseFloat(match[1]);
+          if (tempValue > 0 && tempValue < 150) {
+            return {
+              main: Math.round(tempValue),
+              cores: [],
+              max: null,
+              available: true,
+              source: 'lm-sensors'
+            };
+          }
+        }
+      } catch {
+        // sensors command not available
+      }
     }
 
     return {
