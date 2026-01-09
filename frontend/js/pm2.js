@@ -34,7 +34,7 @@ async function loadPm2Page() {
         </div >
   `;
       document.getElementById("pm2-processes").innerHTML = `
-  < p class="text-gray-500" > PM2 is not available</p >
+        <p class="text-gray-500">PM2 is not available</p>
     `;
       return;
     }
@@ -117,7 +117,7 @@ async function loadPm2Page() {
   `;
     } else {
       document.getElementById("pm2-processes").innerHTML = `
-  < p class="text-gray-400" > No processes found</p >
+        <p class="text-gray-400">No processes found</p>
     `;
 
       document.getElementById("pm2-status").innerHTML = `
