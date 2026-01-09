@@ -144,10 +144,52 @@ async function deleteTunnel(tunnelId) {
     return { success: true };
 }
 
+// Get tunnel configuration (ingress rules)
+async function getTunnelConfig(tunnelId) {
+    const headers = await getHeaders();
+    if (!headers) throw new Error('Not authenticated');
+
+    const accountId = await getAccountId();
+    const res = await fetch(`${CF_API_URL}/accounts/${accountId}/cfd_tunnel/${tunnelId}/configurations`, { headers });
+    const data = await res.json();
+
+    if (!data.success) {
+        // Tunnel might not have remote config, return empty
+        return { ingress: [], originRequest: {} };
+    }
+
+    return data.result.config || { ingress: [], originRequest: {} };
+}
+
+// Update tunnel configuration (ingress rules)
+async function updateTunnelConfig(tunnelId, config) {
+    const headers = await getHeaders();
+    if (!headers) throw new Error('Not authenticated');
+
+    const accountId = await getAccountId();
+    const res = await fetch(`${CF_API_URL}/accounts/${accountId}/cfd_tunnel/${tunnelId}/configurations`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ config })
+    });
+    const data = await res.json();
+
+    if (!data.success) {
+        throw new Error(data.errors?.[0]?.message || 'Failed to update tunnel config');
+    }
+
+    // Clear cache
+    tunnelsCache = { data: null, expiry: 0 };
+
+    return { success: true, config: data.result.config };
+}
+
 module.exports = {
     listTunnels,
     getTunnelDetails,
     getTunnelConnections,
     deleteTunnel,
-    listZones
+    listZones,
+    getTunnelConfig,
+    updateTunnelConfig
 };
