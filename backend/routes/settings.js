@@ -46,4 +46,48 @@ router.post('/cloudflare', isAuthenticated, async (req, res) => {
     }
 });
 
+// === Telegram Settings ===
+
+// Get Telegram Settings
+router.get('/telegram', isAuthenticated, (req, res) => {
+    const telegram = getSetting('telegram') || {};
+    res.json({
+        success: true,
+        botToken: telegram.botToken ? '••••••••' : '', // Masked
+        chatId: telegram.chatId || '',
+        enableNotifications: telegram.enableNotifications !== false // Default true
+    });
+});
+
+// Save Telegram Settings
+router.post('/telegram', isAuthenticated, async (req, res) => {
+    try {
+        const { botToken, chatId, enableNotifications } = req.body;
+
+        // Get existing to preserve token if masked
+        const existing = getSetting('telegram') || {};
+        const newToken = (botToken && botToken !== '••••••••') ? botToken : existing.botToken;
+
+        const { updateConfig, sendMessage } = require('../services/telegram');
+
+        const success = updateConfig({
+            botToken: newToken,
+            chatId,
+            enableNotifications
+        });
+
+        if (success) {
+            // Send test message
+            if (chatId) {
+                await sendMessage(chatId, "🔔 *Home Panel*\nTest notification from Settings!");
+            }
+            res.json({ success: true, message: 'Telegram settings saved & test message sent!' });
+        } else {
+            res.status(400).json({ success: false, error: 'Failed to initialize bot with these settings' });
+        }
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 module.exports = router;
