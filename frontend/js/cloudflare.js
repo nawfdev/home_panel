@@ -196,28 +196,63 @@ async function viewTunnelDetails(tunnelId) {
     }
 }
 
-// Edit ingress route
+// Edit ingress route with modal form
 async function editIngressRoute(tunnelId, routeIndex) {
-    const newService = prompt('Enter new service URL (e.g., http://localhost:3000):');
-    if (!newService) return;
+    // First fetch current config
+    const res = await fetch(`/api/cloudflare/tunnels/${tunnelId}/config`, { credentials: 'include' });
+    const data = await res.json();
 
-    try {
-        // Fetch current config
-        const res = await fetch(`/api/cloudflare/tunnels/${tunnelId}/config`, { credentials: 'include' });
-        const data = await res.json();
+    if (!data.success || !data.config) {
+        alert('Could not load config');
+        return;
+    }
 
-        if (!data.success || !data.config) {
-            alert('Could not load config');
+    const currentRoute = data.config.ingress[routeIndex];
+    if (!currentRoute) return;
+
+    // Create modal
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50';
+    modal.id = 'edit-route-modal';
+    modal.innerHTML = `
+        <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-lg font-bold mb-4"><i class="fas fa-edit mr-2"></i>Edit Route</h3>
+            <div class="mb-4">
+                <label class="block text-gray-400 text-sm mb-1">Hostname</label>
+                <input type="text" id="edit-hostname" value="${currentRoute.hostname || ''}" 
+                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2" 
+                    ${currentRoute.hostname ? '' : 'disabled placeholder="catch-all"'}>
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-400 text-sm mb-1">Service URL</label>
+                <input type="text" id="edit-service" value="${currentRoute.service}" 
+                    placeholder="http://localhost:3000"
+                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2">
+            </div>
+            <div class="flex gap-2">
+                <button id="save-edit-btn" class="flex-1 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded transition">
+                    <i class="fas fa-save mr-2"></i>Save
+                </button>
+                <button onclick="document.getElementById('edit-route-modal').remove()" 
+                    class="flex-1 bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded transition">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    // Save handler
+    document.getElementById('save-edit-btn').addEventListener('click', async () => {
+        const newService = document.getElementById('edit-service').value;
+        if (!newService) {
+            alert('Service URL is required');
             return;
         }
 
-        // Update the specific route
         const config = data.config;
-        if (config.ingress && config.ingress[routeIndex]) {
-            config.ingress[routeIndex].service = newService;
-        }
+        config.ingress[routeIndex].service = newService;
 
-        // Save updated config
         const updateRes = await fetch(`/api/cloudflare/tunnels/${tunnelId}/config`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -226,6 +261,7 @@ async function editIngressRoute(tunnelId, routeIndex) {
         });
         const updateData = await updateRes.json();
 
+        modal.remove();
         if (updateData.success) {
             alert('Route updated successfully');
             document.getElementById('tunnel-detail-modal')?.remove();
@@ -233,27 +269,57 @@ async function editIngressRoute(tunnelId, routeIndex) {
         } else {
             alert('Error: ' + updateData.error);
         }
-    } catch (err) {
-        alert('Error: ' + err.message);
-    }
+    });
 }
 
-// Add new ingress route
+// Add new ingress route with modal form
 async function addIngressRoute(tunnelId) {
-    const hostname = prompt('Enter hostname (e.g., app.example.com):');
-    if (!hostname) return;
+    // Create modal
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50';
+    modal.id = 'add-route-modal';
+    modal.innerHTML = `
+        <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 class="text-lg font-bold mb-4"><i class="fas fa-plus mr-2"></i>Add New Route</h3>
+            <div class="mb-4">
+                <label class="block text-gray-400 text-sm mb-1">Hostname</label>
+                <input type="text" id="add-hostname" placeholder="app.example.com"
+                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2">
+            </div>
+            <div class="mb-4">
+                <label class="block text-gray-400 text-sm mb-1">Service URL</label>
+                <input type="text" id="add-service" placeholder="http://localhost:3000"
+                    class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2">
+            </div>
+            <div class="flex gap-2">
+                <button id="save-add-btn" class="flex-1 bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition">
+                    <i class="fas fa-plus mr-2"></i>Add Route
+                </button>
+                <button onclick="document.getElementById('add-route-modal').remove()" 
+                    class="flex-1 bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded transition">
+                    Cancel
+                </button>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
 
-    const service = prompt('Enter service URL (e.g., http://localhost:3000):');
-    if (!service) return;
+    // Save handler
+    document.getElementById('save-add-btn').addEventListener('click', async () => {
+        const hostname = document.getElementById('add-hostname').value;
+        const service = document.getElementById('add-service').value;
 
-    try {
+        if (!hostname || !service) {
+            alert('Both hostname and service URL are required');
+            return;
+        }
+
         // Fetch current config
         const res = await fetch(`/api/cloudflare/tunnels/${tunnelId}/config`, { credentials: 'include' });
         const data = await res.json();
-
         const config = data.config || { ingress: [] };
 
-        // Insert before catch-all (last item)
+        // Insert before catch-all
         const newRoute = { hostname, service };
         if (config.ingress.length > 0) {
             config.ingress.splice(config.ingress.length - 1, 0, newRoute);
@@ -261,7 +327,6 @@ async function addIngressRoute(tunnelId) {
             config.ingress = [newRoute, { service: 'http_status:404' }];
         }
 
-        // Save updated config
         const updateRes = await fetch(`/api/cloudflare/tunnels/${tunnelId}/config`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
@@ -270,6 +335,7 @@ async function addIngressRoute(tunnelId) {
         });
         const updateData = await updateRes.json();
 
+        modal.remove();
         if (updateData.success) {
             alert('Route added successfully');
             document.getElementById('tunnel-detail-modal')?.remove();
@@ -277,9 +343,7 @@ async function addIngressRoute(tunnelId) {
         } else {
             alert('Error: ' + updateData.error);
         }
-    } catch (err) {
-        alert('Error: ' + err.message);
-    }
+    });
 }
 
 function deleteTunnelConfirm(tunnelId, tunnelName) {
