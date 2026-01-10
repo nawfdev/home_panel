@@ -1,56 +1,81 @@
 const bcrypt = require('bcryptjs');
-const config = require('../../config/config.json');
+const fs = require('fs');
+const path = require('path');
 
-// In-memory storage
+// Persistence paths
+const DB_DIR = path.join(__dirname, '../../data');
+const DB_FILE = path.join(DB_DIR, 'db.json');
+
+// Ensure data directory exists
+if (!fs.existsSync(DB_DIR)) {
+  try { fs.mkdirSync(DB_DIR, { recursive: true }); } catch (e) { }
+}
+
+// In-memory storage (synced to file)
 let users = [];
-let projects = []; // Add projects storage
+let projects = [];
+let settings = {};
+
+// Load Database from file
+function loadDb() {
+  if (fs.existsSync(DB_FILE)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+      users = data.users || [];
+      projects = data.projects || [];
+      settings = data.settings || {};
+      console.log(`📦 Database loaded: ${users.length} users, ${projects.length} projects`);
+    } catch (e) {
+      console.error("❌ Failed to load database:", e.message);
+    }
+  }
+}
+
+// Save Database to file
+function saveDb() {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify({ users, projects, settings }, null, 2));
+  } catch (e) {
+    console.error("❌ Failed to save database:", e.message);
+  }
+}
 
 // Initialize default admin
 function initDefaultAdmin() {
+  if (users.length > 0) return; // Already have users
 
-
-  // Check if password is already hashed (bcrypt prefixes: $2a$ or $2b$)
+  const config = require('../../config/config.json');
   const isHashed = config.defaultAdmin.password.startsWith('$2a$') || config.defaultAdmin.password.startsWith('$2b$');
-  const password = isHashed
-    ? config.defaultAdmin.password
-    : bcrypt.hashSync(config.defaultAdmin.password, 10);
+  const password = isHashed ? config.defaultAdmin.password : bcrypt.hashSync(config.defaultAdmin.password, 10);
 
-  users = [{
-    id: 1,
-    username: 'admin',
-    password: password,
-    role: 'admin'
-  }];
+  users = [{ id: 1, username: 'admin', password, role: 'admin' }];
+  saveDb();
+  console.log("👤 Default admin initialized");
 }
 
-function getDb() {
-  if (users.length === 0) {
-    initDefaultAdmin();
-  }
+// Load on startup
+loadDb();
+initDefaultAdmin();
 
+function getDb() {
   return {
     prepare: (sql) => ({
       get: (param) => {
-        // Users by username
         if (sql.includes('SELECT') && sql.includes('username')) {
           return users.find(u => u.username === param);
         }
-        // Users by id
         if (sql.includes('SELECT') && sql.includes('users') && sql.includes('id')) {
           return users.find(u => u.id === param);
         }
-        // Tunnels - return null
         if (sql.includes('SELECT') && sql.includes('tunnels')) {
           return null;
         }
-        // Projects by id
         if (sql.includes('SELECT') && sql.includes('projects') && sql.includes('id')) {
           return projects.find(p => p.id === param);
         }
         return null;
       },
       all: () => {
-        // Return all projects (for getAllProjects)
         if (sql.includes('SELECT') && sql.includes('projects')) {
           return projects;
         }
@@ -69,6 +94,7 @@ function getDb() {
             created_at: new Date().toISOString()
           };
           projects.push(newProject);
+          saveDb();
           return { lastInsertRowid: newProject.id };
         }
         // INSERT into users
@@ -80,6 +106,7 @@ function getDb() {
             role: params[2] || 'user'
           };
           users.push(newUser);
+          saveDb();
           return { lastInsertRowid: newUser.id };
         }
         // UPDATE password
@@ -87,6 +114,7 @@ function getDb() {
           const user = users.find(u => u.id === params[1]);
           if (user) {
             user.password = params[0];
+            saveDb();
             return { changes: 1 };
           }
         }
@@ -95,64 +123,29 @@ function getDb() {
           const index = projects.findIndex(p => p.id === params[0]);
           if (index > -1) {
             projects.splice(index, 1);
+            saveDb();
             return { changes: 1 };
           }
         }
       }
     }),
-    // Helper for updateProject
     updateProject: (id, data) => {
       const project = projects.find(p => p.id === id);
       if (project) {
         Object.assign(project, data);
+        saveDb();
       }
     }
   };
 }
 
-const fs = require('fs');
-const path = require('path');
-
-const SETTINGS_FILE = path.join(__dirname, '../../config/settings.json');
-
-// Load settings from file on startup
-function loadSettings() {
-  try {
-    if (fs.existsSync(SETTINGS_FILE)) {
-      const data = fs.readFileSync(SETTINGS_FILE, 'utf8');
-      return JSON.parse(data);
-    }
-  } catch (e) {
-    console.error('Failed to load settings:', e.message);
-  }
-  // Default from config
-  return {
-    cloudflare: config.cloudflare || {},
-    telegram: config.telegram || {},
-    alerts: config.alerts || {}
-  };
-}
-
-// Save settings to file
-function saveSettings() {
-  try {
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
-  } catch (e) {
-    console.error('Failed to save settings:', e.message);
-  }
-}
-
-// Initialize settings from file
-let settings = loadSettings();
-
-// Simple settings store functions
 function getSetting(key) {
   return settings[key];
 }
 
 function setSetting(key, value) {
   settings[key] = value;
-  saveSettings(); // Persist to file
+  saveDb();
   return value;
 }
 

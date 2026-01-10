@@ -51,6 +51,7 @@ async function listTunnels() {
     const data = await res.json();
 
     if (!data.success) {
+        console.error("🔴 Cloudflare API Error:", JSON.stringify(data.errors, null, 2));
         throw new Error(data.errors[0]?.message || 'Failed to list tunnels');
     }
 
