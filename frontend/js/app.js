@@ -311,17 +311,23 @@ async function loadDashboard() {
       <p><span class="text-gray-400">CPU Cores:</span> ${data.system.cpu.cores}</p>
     `;
 
-    document.getElementById("disk-info").innerHTML = data.system.disk.map(d => `
-      <div>
-        <div class="flex justify-between text-sm mb-1">
-          <span>${d.mount}</span>
-          <span>${formatBytes(d.used)} / ${formatBytes(d.size)}</span>
+    document.getElementById("disk-info").innerHTML = data.system.disk.map(d => {
+      // Truncate long mount paths for mobile display
+      const mountDisplay = d.mount.length > 15 ? d.mount.slice(-12) + '...' : d.mount;
+      const usagePercent = Math.round(d.usagePercent || 0);
+
+      return `
+        <div class="mb-3">
+          <div class="flex flex-col sm:flex-row sm:justify-between text-sm mb-1 gap-1">
+            <span class="text-gray-300 truncate" title="${d.mount}">${mountDisplay}</span>
+            <span class="text-gray-400 text-xs sm:text-sm">${formatBytes(d.used)} / ${formatBytes(d.size)} (${usagePercent}%)</span>
+          </div>
+          <div class="bg-gray-700 rounded-full h-2">
+            <div class="h-2 rounded-full ${usagePercent > 90 ? 'bg-red-500' : usagePercent > 70 ? 'bg-yellow-500' : 'bg-orange-500'}" style="width: ${usagePercent}%"></div>
+          </div>
         </div>
-        <div class="bg-gray-700 rounded-full h-2">
-          <div class="bg-orange-500 h-2 rounded-full" style="width: ${d.usagePercent}%"></div>
-        </div>
-      </div>
-    `).join("");
+      `;
+    }).join("");
   } catch (err) {
     console.error("Dashboard error:", err);
   }
