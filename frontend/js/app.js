@@ -174,7 +174,7 @@ document.querySelectorAll(".nav-link").forEach(link => {
         break;
       case 'cloudflare': loadCloudflarePage(); break;
       case 'telegram': loadTelegramPage(); break;
-      case 'projects': loadProjectsPage(); break;
+      case 'projects': loadProjects(); break;
       case 'system':
         loadSystemPage();
         systemRefreshInterval = setInterval(loadSystemPage, 5000);
