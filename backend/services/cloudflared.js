@@ -198,19 +198,40 @@ async function startTunnel(manualStart = false) {
     return { success: false, message: "Tunnel is already running" };
   }
 
-  const configPath = path.join(process.env.USERPROFILE || process.env.HOME, ".cloudflared", "config.yml");
+  // Check multiple config locations
+  const possibleConfigPaths = [
+    path.join(process.env.HOME || '/root', '.cloudflared', 'config.yml'),
+    path.join(process.env.USERPROFILE || '', '.cloudflared', 'config.yml'),
+    '/etc/cloudflared/config.yml',
+    '/root/.cloudflared/config.yml',
+    path.join(process.env.HOME || '/root', '.cloudflared', 'config.yaml')
+  ];
 
-  if (!fs.existsSync(configPath)) {
-    return { success: false, message: "Tunnel not configured. Please configure tunnel first." };
+  let configPath = null;
+  for (const p of possibleConfigPaths) {
+    if (fs.existsSync(p)) {
+      configPath = p;
+      console.log(`[Tunnel] Found config at: ${p}`);
+      break;
+    }
+  }
+
+  // If no config found, try running without config (using named tunnel from credentials)
+  // Many tunnels are configured via cloudflared service install and don't need manual config
+  if (!configPath) {
+    console.log("[Tunnel] No config.yml found, trying to run with default settings...");
   }
 
   try {
     // Add metrics flag and use HTTP2 protocol (avoids ISP QUIC blocks)
-    tunnelProcess = spawn("cloudflared", [
-      "tunnel", "run",
-      "--protocol", "http2",
-      "--metrics", `127.0.0.1:${METRICS_PORT}`
-    ], {
+    const args = ["tunnel", "run", "--protocol", "http2", "--metrics", `127.0.0.1:${METRICS_PORT}`];
+
+    // If config found, use it
+    if (configPath) {
+      args.push("--config", configPath);
+    }
+
+    tunnelProcess = spawn("cloudflared", args, {
       detached: false,
       stdio: ["ignore", "pipe", "pipe"]
     });
