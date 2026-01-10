@@ -25,6 +25,7 @@ const filesRoutes = require("./routes/files");
 const settingsRoutes = require("./routes/settings");
 const cloudflareRoutes = require("./routes/cloudflare");
 const updateRoutes = require("./routes/update");
+const exportRoutes = require("./routes/export");
 
 const app = express();
 
@@ -86,6 +87,7 @@ app.use("/api/files", filesRoutes);
 app.use("/api/settings", settingsRoutes);
 app.use("/api/cloudflare", cloudflareRoutes);
 app.use("/api/update", updateRoutes);
+app.use("/api/export", exportRoutes);
 
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "../frontend/index.html"));

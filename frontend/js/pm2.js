@@ -99,6 +99,9 @@ async function loadPm2Page() {
               <button onclick="pm2Delete('${proc.name}')" class="bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded text-sm transition">
                 <i class="fas fa-trash mr-1"></i>Delete
               </button>
+              <button onclick="pm2Export('${proc.name}')" class="bg-purple-600 hover:bg-purple-700 px-3 py-1 rounded text-sm transition" title="Export as ZIP">
+                <i class="fas fa-download mr-1"></i>Export
+              </button>
             </div>
           </div>
   `;
@@ -205,6 +208,21 @@ async function pm2StartNew() {
     }
   } catch (err) {
     alert(`Failed to start app: ${err.message}`);
+  }
+}
+
+// Export PM2 project as ZIP
+async function pm2Export(processName) {
+  try {
+    // Create download link
+    const a = document.createElement('a');
+    a.href = `/api/export/pm2/${encodeURIComponent(processName)}`;
+    a.download = `${processName}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  } catch (err) {
+    alert(`Failed to export: ${err.message}`);
   }
 }
 
