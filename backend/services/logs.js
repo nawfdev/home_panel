@@ -16,7 +16,8 @@ async function getLogSources() {
     // Check Docker availability
     try {
         const dockerService = require("./docker");
-        const dockerAvailable = await dockerService.isDockerAvailable();
+        const dockerStatus = await dockerService.checkDockerAvailable();
+        const dockerAvailable = dockerStatus.available;
         const dockerSource = sources.find(s => s.id === "docker");
         if (dockerSource) dockerSource.available = dockerAvailable;
     } catch (err) {
@@ -26,7 +27,8 @@ async function getLogSources() {
     // Check PM2 availability
     try {
         const pm2Service = require("./pm2");
-        const pm2Available = await pm2Service.isPm2Available();
+        const pm2Status = await pm2Service.checkPm2Available();
+        const pm2Available = pm2Status.available;
         const pm2Source = sources.find(s => s.id === "pm2");
         if (pm2Source) pm2Source.available = pm2Available;
     } catch (err) {
