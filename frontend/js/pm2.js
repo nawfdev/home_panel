@@ -53,7 +53,10 @@ async function loadPm2Page() {
                 <i class="fas fa-circle text-${statusColor}-500 mr-3"></i>
                 <div>
                   <h4 class="font-bold">${proc.name}</h4>
-                  <p class="text-xs text-gray-400">PID: ${proc.pid || 'N/A'} | Mode: ${proc.mode || 'fork'}</p>
+                  <p class="text-xs text-gray-400">
+                    PID: ${proc.pid || 'N/A'} | Mode: ${proc.mode || 'fork'}
+                    ${proc.port ? ` | <span class="text-cyan-400">Port: ${proc.port}</span>` : ''}
+                  </p>
                 </div>
               </div>
               <span class="px-3 py-1 rounded text-xs font-bold ${isOnline ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}">
