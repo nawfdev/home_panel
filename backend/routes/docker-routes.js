@@ -7,7 +7,7 @@ const dockerService = require("../services/docker");
 // List all containers
 router.get("/containers", isAuthenticated, async (req, res) => {
     try {
-        const containers = await dockerService.listContainers();
+        const containers = await dockerService.listContainers(true); // Include stopped
         res.json({ success: true, containers });
     } catch (error) {
         res.status(500).json({
@@ -15,6 +15,30 @@ router.get("/containers", isAuthenticated, async (req, res) => {
             error: error.message,
             dockerAvailable: false
         });
+    }
+});
+
+// Run a new container
+router.post("/run", isAuthenticated, async (req, res) => {
+    try {
+        const { name, image, ports } = req.body;
+        if (!image) {
+            return res.status(400).json({ success: false, error: "Image is required" });
+        }
+        const result = await dockerService.runContainer(name, image, ports);
+        res.json({ success: true, message: "Container started", result });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// Remove container
+router.delete("/containers/:id", isAuthenticated, async (req, res) => {
+    try {
+        const result = await dockerService.removeContainer(req.params.id);
+        res.json({ success: true, message: "Container removed", result });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

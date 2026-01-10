@@ -244,6 +244,88 @@ async function getContainerStats(nameOrId) {
     }
 }
 
+// Run a new container
+async function runContainer(name, image, ports) {
+    const available = await checkDockerAvailable();
+    if (!available.available) {
+        throw new Error("Docker is not available");
+    }
+
+    try {
+        // Parse ports (format: "8080:80" or "3000:3000")
+        const portBindings = {};
+        const exposedPorts = {};
+
+        if (ports) {
+            const portMappings = ports.split(',').map(p => p.trim());
+            for (const mapping of portMappings) {
+                const [hostPort, containerPort] = mapping.split(':');
+                const port = containerPort || hostPort;
+                exposedPorts[`${port}/tcp`] = {};
+                portBindings[`${port}/tcp`] = [{ HostPort: hostPort }];
+            }
+        }
+
+        // Pull image first
+        console.log(`[Docker] Pulling image: ${image}`);
+        await new Promise((resolve, reject) => {
+            docker.pull(image, (err, stream) => {
+                if (err) return reject(err);
+                docker.modem.followProgress(stream, (err) => {
+                    if (err) return reject(err);
+                    resolve();
+                });
+            });
+        });
+
+        // Create container
+        const containerConfig = {
+            Image: image,
+            ExposedPorts: exposedPorts,
+            HostConfig: {
+                PortBindings: portBindings,
+                RestartPolicy: { Name: 'unless-stopped' }
+            }
+        };
+
+        if (name) {
+            containerConfig.name = name;
+        }
+
+        console.log(`[Docker] Creating container from ${image}`);
+        const container = await docker.createContainer(containerConfig);
+        await container.start();
+
+        return { success: true, containerId: container.id };
+    } catch (error) {
+        throw new Error(`Failed to run container: ${error.message}`);
+    }
+}
+
+// Remove container
+async function removeContainer(nameOrId) {
+    const available = await checkDockerAvailable();
+    if (!available.available) {
+        throw new Error("Docker is not available");
+    }
+
+    try {
+        const container = await getContainer(nameOrId);
+
+        // Stop if running
+        try {
+            await container.stop();
+        } catch (e) {
+            // Might already be stopped
+        }
+
+        await container.remove();
+        return { success: true, message: `Container '${nameOrId}' removed` };
+    } catch (error) {
+        throw new Error(`Failed to remove container: ${error.message}`);
+    }
+}
+
 // Initialize on module load
 initDocker();
 
@@ -254,5 +336,7 @@ module.exports = {
     stopContainer,
     restartContainer,
     getContainerLogs,
-    getContainerStats
+    getContainerStats,
+    runContainer,
+    removeContainer
 };

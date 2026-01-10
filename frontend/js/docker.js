@@ -81,7 +81,7 @@ async function loadDockerPage() {
               </div>
             </div>
             
-            <div class="flex gap-2">
+            <div class="flex gap-2 flex-wrap">
               ${isRunning ? `
                 <button onclick="dockerAction('${container.id}', 'stop')" class="bg-red-600 hover:bg-red-700 px-3 py-1 rounded text-sm transition">
                   <i class="fas fa-stop mr-1"></i>Stop
@@ -96,6 +96,9 @@ async function loadDockerPage() {
               `}
               <button onclick="showDockerLogs('${container.id}', '${container.name}')" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm transition">
                 <i class="fas fa-file-alt mr-1"></i>Logs
+              </button>
+              <button onclick="dockerDelete('${container.id}', '${container.name}')" class="bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded text-sm transition">
+                <i class="fas fa-trash mr-1"></i>Remove
               </button>
             </div>
           </div>
@@ -142,10 +145,61 @@ async function dockerAction(containerId, action) {
     if (result.success) {
       // Reload Docker page
       await loadDockerPage();
+    } else {
+      alert(`Error: ${result.error || 'Unknown error'}`);
     }
   } catch (err) {
     alert(`Failed to ${action} container: ${err.message}`);
   }
+}
+
+// Run new container
+async function dockerRunNew() {
+  const name = document.getElementById('docker-new-name').value.trim();
+  const image = document.getElementById('docker-new-image').value.trim();
+  const ports = document.getElementById('docker-new-ports').value.trim();
+
+  if (!image) {
+    alert('Please enter an image name (e.g., nginx:latest)');
+    return;
+  }
+
+  try {
+    const result = await api('/docker/run', {
+      method: 'POST',
+      body: JSON.stringify({ name, image, ports })
+    });
+
+    if (result.success) {
+      // Clear form
+      document.getElementById('docker-new-name').value = '';
+      document.getElementById('docker-new-image').value = '';
+      document.getElementById('docker-new-ports').value = '';
+      // Reload page
+      await loadDockerPage();
+      alert('Container started successfully!');
+    } else {
+      alert(`Error: ${result.error || 'Failed to run container'}`);
+    }
+  } catch (err) {
+    alert(`Failed to run container: ${err.message}`);
+  }
+}
+
+// Delete container
+async function dockerDelete(containerId, containerName) {
+  showConfirm(`Are you sure you want to remove container "${containerName}"?`, async () => {
+    try {
+      const result = await api(`/docker/containers/${containerId}`, { method: 'DELETE' });
+      if (result.success) {
+        await loadDockerPage();
+      } else {
+        alert(`Error: ${result.error}`);
+      }
+    } catch (err) {
+      alert(`Failed to remove container: ${err.message}`);
+    }
+  });
 }
 
 // Show Docker logs
