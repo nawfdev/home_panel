@@ -1,4 +1,8 @@
 const Docker = require("dockerode");
+const { exec } = require("child_process");
+const { promisify } = require("util");
+
+const execPromise = promisify(exec);
 
 let docker = null;
 let dockerAvailable = false;
@@ -23,8 +27,31 @@ function getInstallCommand() {
     }
 }
 
-// Initialize Docker
+// Initialize Docker with multiple socket options
 function initDocker() {
+    const socketPaths = process.platform === 'win32'
+        ? ['//./pipe/docker_engine', 'npipe:////./pipe/docker_engine']
+        : ['/var/run/docker.sock', '/run/docker.sock', `${process.env.HOME}/.docker/run/docker.sock`];
+
+    for (const socketPath of socketPaths) {
+        try {
+            if (process.platform === 'win32') {
+                docker = new Docker({ socketPath });
+            } else {
+                const fs = require('fs');
+                if (fs.existsSync(socketPath)) {
+                    docker = new Docker({ socketPath });
+                    dockerAvailable = true;
+                    console.log(`✅ Docker initialized with socket: ${socketPath}`);
+                    return true;
+                }
+            }
+        } catch (error) {
+            // Try next socket
+        }
+    }
+
+    // Try default (no options)
     try {
         docker = new Docker();
         dockerAvailable = true;
@@ -36,30 +63,54 @@ function initDocker() {
     }
 }
 
-// Check if Docker is available
+// Check if Docker is available (also try CLI)
 async function checkDockerAvailable() {
+    // First try dockerode
     if (!docker) {
         initDocker();
     }
 
-    if (!dockerAvailable) {
-        return {
-            available: false,
-            reason: 'Docker not installed',
-            install: getInstallCommand()
-        };
+    if (docker) {
+        try {
+            await docker.ping();
+            return { available: true, method: 'dockerode' };
+        } catch (error) {
+            // dockerode failed, try CLI
+        }
     }
 
+    // Try docker CLI directly
     try {
-        await docker.ping();
-        return { available: true };
+        const { stdout } = await execPromise("docker info --format '{{.ServerVersion}}'");
+        if (stdout.trim()) {
+            // Docker CLI works, reinitialize dockerode
+            docker = new Docker();
+            dockerAvailable = true;
+            return { available: true, version: stdout.trim(), method: 'cli' };
+        }
     } catch (error) {
-        return {
-            available: false,
-            reason: 'Docker daemon not running',
-            install: getInstallCommand()
-        };
+        // Docker CLI also failed
     }
+
+    // Try docker version command (simpler)
+    try {
+        const { stdout } = await execPromise("docker --version");
+        if (stdout.includes("Docker")) {
+            // Docker is installed but daemon might not be running
+            return {
+                available: false,
+                reason: 'Docker installed but daemon not running. Start Docker Desktop or run: sudo systemctl start docker',
+                install: getInstallCommand()
+            };
+        }
+    } catch { }
+
+    dockerAvailable = false;
+    return {
+        available: false,
+        reason: 'Docker not installed',
+        install: getInstallCommand()
+    };
 }
 
 // List all containers
