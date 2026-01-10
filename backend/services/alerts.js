@@ -15,7 +15,8 @@ const alertStates = {
     cpu: { triggered: false, lastAlert: 0 },
     memory: { triggered: false, lastAlert: 0 },
     disk: { triggered: false, lastAlert: 0 },
-    temperature: { triggered: false, lastAlert: 0 }
+    temperature: { triggered: false, lastAlert: 0 },
+    tunnel: { triggered: false, lastAlert: 0, lastRestart: 0, restartCount: 0 }
 };
 
 let monitoringInterval = null;
@@ -32,10 +33,12 @@ function startAlertMonitoring() {
     // Check every 60 seconds
     monitoringInterval = setInterval(async () => {
         await checkThresholds();
+        await checkTunnelHealth();
     }, 60000);
 
     // Initial check
     checkThresholds();
+    checkTunnelHealth();
 }
 
 // Stop alert monitoring
@@ -167,8 +170,139 @@ function getAlertStatus() {
     };
 }
 
+// Check Cloudflare tunnel health and auto-recover if needed
+async function checkTunnelHealth() {
+    const tunnelState = alertStates.tunnel;
+    const now = Date.now();
+    const cooldown = 120000; // 2 minutes between restarts
+    const maxRestarts = 5; // Max restarts before giving up temporarily
+    const resetAfter = 600000; // Reset restart count after 10 minutes of success
+
+    try {
+        // Try to get CF API status first
+        const { getSetting } = require("./database");
+        const cfConfig = getSetting('cloudflare');
+
+        let isHealthy = false;
+        let healthyCount = 0;
+        let totalCount = 0;
+
+        // Check via Cloudflare API if configured
+        if (cfConfig && cfConfig.apiToken) {
+            try {
+                const cfService = require("./cloudflare");
+                const tunnels = await cfService.listTunnels();
+
+                if (tunnels && tunnels.length > 0) {
+                    healthyCount = tunnels.filter(t => t.status === 'healthy').length;
+                    totalCount = tunnels.length;
+                    isHealthy = healthyCount === totalCount && totalCount > 0;
+                }
+            } catch (e) {
+                // CF API error, skip this check
+                return;
+            }
+        } else {
+            // No CF API config, check local process
+            const { getTunnelStatus } = require("./cloudflared");
+            const status = await getTunnelStatus();
+            isHealthy = status.processRunning;
+        }
+
+        // If healthy, reset state
+        if (isHealthy) {
+            if (tunnelState.triggered) {
+                // Recovered!
+                tunnelState.triggered = false;
+
+                const message = `✅ *Tunnel Recovered*\n\nCloudflare tunnel is now healthy (${healthyCount}/${totalCount}).\n` +
+                    `Time: ${new Date().toLocaleTimeString()}`;
+
+                console.log(`✅ Tunnel recovered: ${healthyCount}/${totalCount} healthy`);
+
+                if (sendNotification) {
+                    await sendNotification(message, "success");
+                }
+            }
+
+            // Reset restart count after period of success
+            if (now - tunnelState.lastRestart > resetAfter) {
+                tunnelState.restartCount = 0;
+            }
+            return;
+        }
+
+        // Tunnel is NOT healthy
+        console.log(`⚠️ Tunnel unhealthy: ${healthyCount}/${totalCount}`);
+
+        // Check if we're in cooldown
+        if (now - tunnelState.lastRestart < cooldown) {
+            return; // Wait for cooldown
+        }
+
+        // Check if we've hit max restarts
+        if (tunnelState.restartCount >= maxRestarts) {
+            if (!tunnelState.triggered) {
+                tunnelState.triggered = true;
+                tunnelState.lastAlert = now;
+
+                const message = `🔴 *Tunnel Auto-Recovery Failed*\n\n` +
+                    `Tunnel unhealthy after ${maxRestarts} restart attempts.\n` +
+                    `Please check manually.\n` +
+                    `Time: ${new Date().toLocaleTimeString()}`;
+
+                console.log(`🔴 Tunnel auto-recovery failed after ${maxRestarts} attempts`);
+
+                if (sendNotification) {
+                    await sendNotification(message, "critical");
+                }
+            }
+            return;
+        }
+
+        // Attempt to restart tunnel
+        console.log(`🔄 Auto-restarting tunnel (attempt ${tunnelState.restartCount + 1}/${maxRestarts})...`);
+
+        try {
+            // Try systemd restart first on Linux
+            if (process.platform === 'linux') {
+                const { restartSystemdService } = require("./cloudflared");
+                await restartSystemdService();
+            } else {
+                // Fallback: stop and start via cloudflared module
+                const { stopTunnel, startTunnel } = require("./cloudflared");
+                await stopTunnel();
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                await startTunnel();
+            }
+
+            tunnelState.lastRestart = now;
+            tunnelState.restartCount++;
+
+            // Notify about restart attempt
+            const message = `🔄 *Tunnel Auto-Restart*\n\n` +
+                `Tunnel was unhealthy (${healthyCount}/${totalCount}), attempting restart...\n` +
+                `Attempt: ${tunnelState.restartCount}/${maxRestarts}\n` +
+                `Time: ${new Date().toLocaleTimeString()}`;
+
+            console.log(`🔄 Tunnel restart initiated (attempt ${tunnelState.restartCount})`);
+
+            if (sendNotification) {
+                await sendNotification(message, "warning");
+            }
+
+        } catch (restartError) {
+            console.error("Tunnel restart error:", restartError.message);
+        }
+
+    } catch (error) {
+        console.error("Tunnel health check error:", error.message);
+    }
+}
+
 module.exports = {
     startAlertMonitoring,
     stopAlertMonitoring,
-    getAlertStatus
+    getAlertStatus,
+    checkTunnelHealth
 };
