@@ -211,17 +211,42 @@ async function loadDashboard() {
 
     // Tunnel Status - show Cloudflare API info if available
     const tunnelEl = document.getElementById("tunnel-status");
+    const tunnelDetail = document.getElementById("tunnel-detail");
+    const tunnelIcon = document.getElementById("tunnel-icon");
+    const tunnelAutoRestart = document.getElementById("tunnel-auto-restart");
+
     if (data.tunnel.apiConnected && data.tunnel.tunnels) {
       // Cloudflare API connected - show real status
       const healthy = data.tunnel.healthyCount || 0;
       const total = data.tunnel.totalCount || 0;
       tunnelEl.textContent = `${healthy}/${total} Healthy`;
       tunnelEl.className = `text-2xl font-bold ${healthy > 0 ? "text-green-500" : "text-red-500"}`;
+      tunnelIcon.className = `fas fa-wifi text-3xl ${healthy > 0 ? "text-green-500" : "text-red-500"}`;
+      tunnelDetail.textContent = healthy > 0 ? "All tunnels healthy" : "Tunnels need attention";
     } else {
       // Fallback to local cloudflared process status
-      const tunnelStatus = data.tunnel.processRunning ? "Online" : "Offline";
-      tunnelEl.textContent = tunnelStatus;
-      tunnelEl.className = `text-2xl font-bold ${data.tunnel.processRunning ? "text-green-500" : "text-red-500"}`;
+      const isRunning = data.tunnel.processRunning;
+      tunnelEl.textContent = isRunning ? "Online" : "Offline";
+      tunnelEl.className = `text-2xl font-bold ${isRunning ? "text-green-500" : "text-red-500"}`;
+      tunnelIcon.className = `fas fa-wifi text-3xl ${isRunning ? "text-green-500" : "text-red-500"}`;
+
+      // Show downtime or uptime info
+      if (isRunning && data.tunnel.uptime) {
+        tunnelDetail.textContent = `Up: ${data.tunnel.uptime}`;
+        tunnelDetail.className = "text-xs mt-1 text-green-400";
+      } else if (!isRunning) {
+        tunnelDetail.textContent = "Tunnel not running";
+        tunnelDetail.className = "text-xs mt-1 text-red-400";
+      } else {
+        tunnelDetail.textContent = "Click to view details";
+        tunnelDetail.className = "text-xs mt-1 text-gray-400";
+      }
+    }
+
+    // Auto-restart indicator
+    if (data.tunnel.autoRestart !== undefined) {
+      tunnelAutoRestart.textContent = data.tunnel.autoRestart ? "⟳ Auto" : "";
+      tunnelAutoRestart.className = "text-xs mt-1 text-blue-400";
     }
 
     document.getElementById("running-projects").textContent = data.projects.running;

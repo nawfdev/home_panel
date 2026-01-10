@@ -187,13 +187,18 @@
               <div class="bg-green-500 h-2 rounded-full transition-all" id="mem-bar" style="width: 0%"></div>
             </div>
           </div>
-          <div class="stat-card bg-gray-800 rounded-lg p-4">
+          <div class="stat-card bg-gray-800 rounded-lg p-4 cursor-pointer hover:bg-gray-750"
+            onclick="navigateTo('tunnel')">
             <div class="flex items-center justify-between">
               <div>
                 <p class="text-gray-400 text-sm">Tunnel Status</p>
                 <p class="text-2xl font-bold" id="tunnel-status">Offline</p>
+                <p class="text-xs mt-1" id="tunnel-detail">Click to view details</p>
               </div>
-              <i class="fas fa-wifi text-3xl text-orange-500"></i>
+              <div class="text-right">
+                <i class="fas fa-wifi text-3xl" id="tunnel-icon"></i>
+                <p class="text-xs mt-1" id="tunnel-auto-restart"></p>
+              </div>
             </div>
           </div>
           <div class="stat-card bg-gray-800 rounded-lg p-4">
