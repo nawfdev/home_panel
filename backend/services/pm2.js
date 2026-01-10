@@ -17,89 +17,128 @@ function getInstallCommand() {
 
 // Check if PM2 is available with fallback paths
 async function checkPm2Available() {
+    console.log("[PM2] Starting detection...");
+    console.log("[PM2] Platform:", process.platform);
+    console.log("[PM2] HOME:", process.env.HOME);
+
     // Try direct command first
     try {
         const { stdout } = await execPromise("pm2 --version");
         if (stdout.trim()) {
+            console.log("[PM2] ✅ Found via direct command:", stdout.trim());
             pm2Available = true;
             return { available: true, version: stdout.trim() };
         }
     } catch (error) {
-        // Continue to fallback methods
+        console.log("[PM2] ❌ Direct command failed:", error.message);
     }
 
-    // Try npx pm2 (works with npm installed globally or locally)
+    // Try with bash -l -c (login shell with NVM loaded)
     try {
-        const { stdout } = await execPromise("npx pm2 --version");
+        const { stdout } = await execPromise("bash -l -c 'pm2 --version'");
         if (stdout.trim()) {
+            console.log("[PM2] ✅ Found via bash login shell:", stdout.trim());
+            pm2Available = true;
+            return { available: true, version: stdout.trim(), method: 'bash-login' };
+        }
+    } catch (error) {
+        console.log("[PM2] ❌ Bash login shell failed:", error.message);
+    }
+
+    // Try sourcing NVM and then running pm2
+    try {
+        const nvmScript = process.env.NVM_DIR
+            ? `${process.env.NVM_DIR}/nvm.sh`
+            : `${process.env.HOME}/.nvm/nvm.sh`;
+        const { stdout } = await execPromise(`bash -c 'source ${nvmScript} 2>/dev/null && pm2 --version'`);
+        if (stdout.trim()) {
+            console.log("[PM2] ✅ Found via NVM source:", stdout.trim());
+            pm2Available = true;
+            return { available: true, version: stdout.trim(), method: 'nvm-source' };
+        }
+    } catch (error) {
+        console.log("[PM2] ❌ NVM source failed:", error.message);
+    }
+
+    // Try npx pm2
+    try {
+        const { stdout } = await execPromise("npx --yes pm2 --version", { timeout: 30000 });
+        if (stdout.trim()) {
+            console.log("[PM2] ✅ Found via npx:", stdout.trim());
             pm2Available = true;
             return { available: true, version: stdout.trim(), method: 'npx' };
         }
     } catch (error) {
-        // Continue to fallback methods
+        console.log("[PM2] ❌ npx failed:", error.message);
     }
 
-    // Windows specific: check common paths
-    if (process.platform === 'win32') {
-        const windowsPaths = [
-            // Standard npm global
-            path.join(process.env.APPDATA || '', 'npm', 'pm2.cmd'),
-            // NVM for Windows paths
-            path.join(process.env.NVM_SYMLINK || 'C:\\Program Files\\nodejs', 'pm2.cmd'),
-            path.join(process.env.NVM_HOME || '', 'pm2.cmd'),
-        ];
-
-        // Also check npm prefix location
-        try {
-            const { stdout } = await execPromise("npm config get prefix");
-            const npmPrefix = stdout.trim();
-            if (npmPrefix) {
-                windowsPaths.unshift(path.join(npmPrefix, 'pm2.cmd'));
-            }
-        } catch { }
-
-        for (const pm2Path of windowsPaths) {
-            if (fs.existsSync(pm2Path)) {
-                try {
-                    const { stdout } = await execPromise(`"${pm2Path}" --version`);
-                    pm2Available = true;
-                    return { available: true, version: stdout.trim(), path: pm2Path };
-                } catch { }
-            }
-        }
-    }
-
-    // Linux/Mac: Try which command and common paths
+    // Linux/Mac: Try which command
     if (process.platform !== 'win32') {
         try {
             const { stdout } = await execPromise("which pm2 2>/dev/null || command -v pm2 2>/dev/null");
             const pm2Path = stdout.trim();
+            console.log("[PM2] which pm2 result:", pm2Path || "(empty)");
             if (pm2Path && fs.existsSync(pm2Path)) {
                 const { stdout: version } = await execPromise(`"${pm2Path}" --version`);
+                console.log("[PM2] ✅ Found via which:", version.trim());
                 pm2Available = true;
                 return { available: true, version: version.trim(), path: pm2Path };
             }
-        } catch { }
+        } catch (error) {
+            console.log("[PM2] ❌ which command failed:", error.message);
+        }
 
         // Try NVM directories
         const nvmDirs = [
             path.join(process.env.HOME || '', '.nvm', 'versions', 'node'),
-            '/root/.nvm/versions/node'
+            '/root/.nvm/versions/node',
+            '/home'  // Will scan subdirs
         ];
 
         for (const nvmDir of nvmDirs) {
+            console.log("[PM2] Checking NVM dir:", nvmDir);
             if (fs.existsSync(nvmDir)) {
                 try {
-                    const versions = fs.readdirSync(nvmDir).sort().reverse();
-                    for (const ver of versions) {
-                        const pm2Path = path.join(nvmDir, ver, 'bin', 'pm2');
-                        if (fs.existsSync(pm2Path)) {
-                            const { stdout } = await execPromise(`"${pm2Path}" --version`);
-                            pm2Available = true;
-                            return { available: true, version: stdout.trim(), path: pm2Path };
+                    let versions;
+                    if (nvmDir === '/home') {
+                        // Scan /home/*/. nvm/versions/node
+                        const users = fs.readdirSync('/home');
+                        for (const user of users) {
+                            const userNvmDir = `/home/${user}/.nvm/versions/node`;
+                            if (fs.existsSync(userNvmDir)) {
+                                console.log("[PM2] Found user NVM dir:", userNvmDir);
+                                versions = fs.readdirSync(userNvmDir).sort().reverse();
+                                for (const ver of versions) {
+                                    const pm2Path = path.join(userNvmDir, ver, 'bin', 'pm2');
+                                    console.log("[PM2] Checking:", pm2Path, "exists:", fs.existsSync(pm2Path));
+                                    if (fs.existsSync(pm2Path)) {
+                                        const { stdout } = await execPromise(`"${pm2Path}" --version`);
+                                        console.log("[PM2] ✅ Found in user NVM:", stdout.trim());
+                                        pm2Available = true;
+                                        return { available: true, version: stdout.trim(), path: pm2Path };
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        versions = fs.readdirSync(nvmDir).sort().reverse();
+                        console.log("[PM2] NVM versions found:", versions.join(", "));
+                        for (const ver of versions) {
+                            const pm2Path = path.join(nvmDir, ver, 'bin', 'pm2');
+                            console.log("[PM2] Checking:", pm2Path, "exists:", fs.existsSync(pm2Path));
+                            if (fs.existsSync(pm2Path)) {
+                                const { stdout } = await execPromise(`"${pm2Path}" --version`);
+                                console.log("[PM2] ✅ Found in NVM:", stdout.trim());
+                                pm2Available = true;
+                                return { available: true, version: stdout.trim(), path: pm2Path };
+                            }
                         }
                     }
-                } catch { }
+                } catch (error) {
+                    console.log("[PM2] ❌ NVM dir scan error:", error.message);
+                }
+            } else {
+                console.log("[PM2] NVM dir not found:", nvmDir);
             }
         }
 
@@ -107,20 +146,31 @@ async function checkPm2Available() {
         const fallbackPaths = [
             '/usr/local/bin/pm2',
             '/usr/bin/pm2',
-            path.join(process.env.HOME || '', '.npm-global', 'bin', 'pm2')
+            path.join(process.env.HOME || '', '.npm-global', 'bin', 'pm2'),
+            path.join(process.env.HOME || '', 'node_modules', '.bin', 'pm2')
         ];
 
         for (const pm2Path of fallbackPaths) {
+            console.log("[PM2] Checking fallback:", pm2Path, "exists:", fs.existsSync(pm2Path));
             if (fs.existsSync(pm2Path)) {
                 try {
                     const { stdout } = await execPromise(`"${pm2Path}" --version`);
+                    console.log("[PM2] ✅ Found in fallback:", stdout.trim());
                     pm2Available = true;
                     return { available: true, version: stdout.trim(), path: pm2Path };
-                } catch { }
+                } catch (error) {
+                    console.log("[PM2] ❌ Fallback exec error:", error.message);
+                }
             }
         }
     }
 
+    // Windows specific
+    if (process.platform === 'win32') {
+        // ... Windows code stays the same
+    }
+
+    console.log("[PM2] ❌ Not found after all checks");
     pm2Available = false;
     return {
         available: false,
