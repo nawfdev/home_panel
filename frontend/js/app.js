@@ -4,6 +4,15 @@ let systemRefreshInterval;
 let networkRefreshInterval;
 let tunnelRefreshInterval;
 
+// Helper function to format duration in seconds to human readable
+function formatDuration(seconds) {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  const hours = Math.floor(seconds / 3600);
+  const mins = Math.floor((seconds % 3600) / 60);
+  return `${hours}h ${mins}m`;
+}
+
 // Helper function to open terminal with a command ready to run
 function openTerminalWithCommand(command) {
   // Navigate to terminal page
@@ -330,6 +339,40 @@ async function loadTunnelPage() {
       const statusColor = systemdStatus.active ? 'green' : 'red';
       const statusText = systemdStatus.active ? 'Active (Running)' : 'Stopped';
 
+      // Build downtime info HTML
+      let downtimeHtml = '';
+      if (systemdStatus.downtime) {
+        const dt = systemdStatus.downtime;
+        downtimeHtml = `
+          <div class="bg-gray-700 rounded-lg p-4 mt-4">
+            <h5 class="font-bold mb-2 text-sm"><i class="fas fa-clock mr-2"></i>Downtime Tracking</h5>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span class="text-gray-400">Current Downtime:</span>
+                <span class="${dt.isDown ? 'text-red-400 font-bold' : 'text-green-400'}">${dt.isDown ? formatDuration(dt.currentDowntimeSec) : 'Online'}</span>
+              </div>
+              <div>
+                <span class="text-gray-400">Total (Session):</span>
+                <span class="text-yellow-400">${formatDuration(dt.totalDowntimeSec)}</span>
+              </div>
+            </div>
+            ${dt.history && dt.history.length > 0 ? `
+              <div class="mt-3 pt-3 border-t border-gray-600">
+                <span class="text-xs text-gray-400">Recent Downtimes:</span>
+                <div class="mt-1 space-y-1">
+                  ${dt.history.slice(-3).reverse().map(h => `
+                    <div class="text-xs text-gray-300">
+                      <i class="fas fa-exclamation-triangle text-red-400 mr-1"></i>
+                      ${new Date(h.start).toLocaleTimeString()} - ${formatDuration(h.durationSec)}
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
+
       document.getElementById("tunnel-info").innerHTML = `
         <div class="bg-gray-700 rounded-lg p-4 mb-4">
           <div class="flex items-center justify-between mb-3">
@@ -370,6 +413,8 @@ async function loadTunnelPage() {
             <button onclick="setTunnelProtocol('auto')" class="px-3 py-1 rounded text-sm ${systemdStatus.protocol === 'auto' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}">Auto</button>
           </div>
         </div>
+        
+        ${downtimeHtml}
       `;
       return;
     }
@@ -402,6 +447,34 @@ async function loadTunnelPage() {
         statusHtml += `<div class="text-xs text-gray-400 mt-1">Restart attempts: ${data.restartCount}</div>`;
       }
 
+      // Build downtime HTML for config.yml tunnel
+      let downtimeHtml = '';
+      if (data.downtime) {
+        const dt = data.downtime;
+        downtimeHtml = `
+          <div class="mt-4 pt-4 border-t border-gray-600">
+            <h5 class="font-bold mb-2 text-sm"><i class="fas fa-clock mr-2"></i>Downtime Tracking</h5>
+            <div class="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span class="text-gray-400">Current:</span>
+                <span class="${dt.isDown ? 'text-red-400 font-bold' : 'text-green-400'}">${dt.isDown ? formatDuration(dt.currentDowntimeSec) : 'Online'}</span>
+              </div>
+              <div>
+                <span class="text-gray-400">Total (Session):</span>
+                <span class="text-yellow-400">${formatDuration(dt.totalDowntimeSec)}</span>
+              </div>
+            </div>
+            ${dt.history && dt.history.length > 0 ? `
+              <div class="mt-2 text-xs text-gray-400">
+                Recent: ${dt.history.slice(-3).reverse().map(h =>
+          `${new Date(h.start).toLocaleTimeString()} (${formatDuration(h.durationSec)})`
+        ).join(', ')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
+
       tunnelHtml = `
         <p><span class="text-gray-400">Name:</span> ${data.tunnel.name || "N/A"}</p>
         <p><span class="text-gray-400">Tunnel ID:</span> ${data.tunnel.tunnel_id || "N/A"}</p>
@@ -411,6 +484,7 @@ async function loadTunnelPage() {
            <span class="text-gray-400">Status:</span> 
            ${statusHtml}
         </div>
+        ${downtimeHtml}
       `;
     } else {
       tunnelHtml = "<p class=\"text-gray-400\">No tunnel configured. Create one below or use systemd service.</p>";

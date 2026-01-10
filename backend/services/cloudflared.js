@@ -9,6 +9,12 @@ let restartCount = 0;
 let lastRestartTime = 0;
 let healthCheckInterval = null;
 
+// Downtime tracking
+let downtimeStartTime = null; // When tunnel went down (null = running)
+let totalDowntimeMs = 0; // Total accumulated downtime in this session
+let downtimeHistory = []; // Array of { start, end, duration } for recent downtimes
+const MAX_DOWNTIME_HISTORY = 10; // Keep last 10 downtime events
+
 // Get Telegram notification function (optional, only if configured)
 let sendNotification = null;
 try {
@@ -98,6 +104,12 @@ async function getTunnelStatus() {
     nextRetryIn = Math.max(0, Math.ceil((nextTime - Date.now()) / 1000));
   }
 
+  // Calculate current downtime if tunnel is down
+  let currentDowntimeMs = 0;
+  if (downtimeStartTime) {
+    currentDowntimeMs = Date.now() - downtimeStartTime;
+  }
+
   return {
     configured: !!tunnel,
     tunnel: tunnel || null,
@@ -106,7 +118,16 @@ async function getTunnelStatus() {
     pid: tunnelProcess ? tunnelProcess.pid : null,
     autoRestart,
     restartCount,
-    nextRetryIn // Seconds until next retry
+    nextRetryIn, // Seconds until next retry
+    // Downtime info
+    downtime: {
+      isDown: downtimeStartTime !== null,
+      currentDowntimeMs,
+      currentDowntimeSec: Math.floor(currentDowntimeMs / 1000),
+      totalDowntimeMs,
+      totalDowntimeSec: Math.floor(totalDowntimeMs / 1000),
+      history: downtimeHistory.slice(-5) // Last 5 events
+    }
   };
 }
 
@@ -216,6 +237,12 @@ async function startTunnel(manualStart = false) {
       console.log(`🔴 Tunnel process exited with code ${code}`);
       tunnelProcess = null;
 
+      // Start downtime tracking
+      if (!downtimeStartTime) {
+        downtimeStartTime = Date.now();
+        console.log(`⏱️ Downtime started at ${new Date(downtimeStartTime).toISOString()}`);
+      }
+
       const db = getDb();
       db.prepare("UPDATE tunnels SET status = ? WHERE id = (SELECT MAX(id) FROM tunnels)").run("stopped");
 
@@ -271,6 +298,29 @@ async function startTunnel(manualStart = false) {
 
     const db = getDb();
     db.prepare("UPDATE tunnels SET status = ? WHERE id = (SELECT MAX(id) FROM tunnels)").run("running");
+
+    // End downtime tracking if was down
+    if (downtimeStartTime) {
+      const downtimeEnd = Date.now();
+      const duration = downtimeEnd - downtimeStartTime;
+      totalDowntimeMs += duration;
+
+      // Add to history
+      downtimeHistory.push({
+        start: downtimeStartTime,
+        end: downtimeEnd,
+        durationMs: duration,
+        durationSec: Math.floor(duration / 1000)
+      });
+
+      // Keep only last N entries
+      if (downtimeHistory.length > MAX_DOWNTIME_HISTORY) {
+        downtimeHistory = downtimeHistory.slice(-MAX_DOWNTIME_HISTORY);
+      }
+
+      console.log(`⏱️ Downtime ended. Duration: ${Math.floor(duration / 1000)}s. Total: ${Math.floor(totalDowntimeMs / 1000)}s`);
+      downtimeStartTime = null;
+    }
 
     // Start health monitoring
     startHealthCheck();
@@ -384,6 +434,32 @@ async function getSystemdStatus() {
       else if (serviceContent.includes('--protocol quic')) protocol = 'quic';
     } catch { }
 
+    // Track downtime for systemd service
+    if (!isActive && !downtimeStartTime) {
+      downtimeStartTime = Date.now();
+    } else if (isActive && downtimeStartTime) {
+      // Service came back up
+      const downtimeEnd = Date.now();
+      const duration = downtimeEnd - downtimeStartTime;
+      totalDowntimeMs += duration;
+      downtimeHistory.push({
+        start: downtimeStartTime,
+        end: downtimeEnd,
+        durationMs: duration,
+        durationSec: Math.floor(duration / 1000)
+      });
+      if (downtimeHistory.length > MAX_DOWNTIME_HISTORY) {
+        downtimeHistory = downtimeHistory.slice(-MAX_DOWNTIME_HISTORY);
+      }
+      downtimeStartTime = null;
+    }
+
+    // Calculate current downtime
+    let currentDowntimeMs = 0;
+    if (downtimeStartTime) {
+      currentDowntimeMs = Date.now() - downtimeStartTime;
+    }
+
     return {
       available: true,
       active: isActive,
@@ -391,7 +467,16 @@ async function getSystemdStatus() {
       subState: props.SubState || 'unknown',
       pid: props.MainPID || null,
       startTime: props.ExecMainStartTimestamp || null,
-      protocol
+      protocol,
+      // Downtime info
+      downtime: {
+        isDown: !isActive,
+        currentDowntimeMs,
+        currentDowntimeSec: Math.floor(currentDowntimeMs / 1000),
+        totalDowntimeMs,
+        totalDowntimeSec: Math.floor(totalDowntimeMs / 1000),
+        history: downtimeHistory.slice(-5)
+      }
     };
   } catch (error) {
     // Service doesn't exist or systemd not available
