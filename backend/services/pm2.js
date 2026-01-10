@@ -6,6 +6,7 @@ const path = require("path");
 const execPromise = promisify(exec);
 
 let pm2Available = false;
+let pm2Command = "pm2"; // Will be updated if we find PM2 in a specific path
 
 // Get install command based on platform
 function getInstallCommand() {
@@ -15,159 +16,145 @@ function getInstallCommand() {
     };
 }
 
+// Execute PM2 command using the correct path/method
+async function execPm2(args) {
+    // Try stored command first
+    try {
+        const { stdout, stderr } = await execPromise(`${pm2Command} ${args}`);
+        return stdout;
+    } catch (error) {
+        // If stored command fails, try bash -l -c (login shell)
+        if (process.platform !== 'win32') {
+            try {
+                const { stdout } = await execPromise(`bash -l -c 'pm2 ${args}'`);
+                return stdout;
+            } catch {
+                throw error; // Rethrow original error
+            }
+        }
+        throw error;
+    }
+}
+
 // Check if PM2 is available with fallback paths
 async function checkPm2Available() {
-    console.log("[PM2] Starting detection...");
-    console.log("[PM2] Platform:", process.platform);
-    console.log("[PM2] HOME:", process.env.HOME);
+    console.log("[PM2] Starting detection on", process.platform);
 
-    // Try direct command first
+    // 1. Try direct command first (works if pm2 is in PATH)
     try {
         const { stdout } = await execPromise("pm2 --version");
         if (stdout.trim()) {
             console.log("[PM2] ✅ Found via direct command:", stdout.trim());
             pm2Available = true;
+            pm2Command = "pm2";
             return { available: true, version: stdout.trim() };
         }
     } catch (error) {
-        console.log("[PM2] ❌ Direct command failed:", error.message);
+        console.log("[PM2] Direct command not in PATH");
     }
 
-    // Try with bash -l -c (login shell with NVM loaded)
-    try {
-        const { stdout } = await execPromise("bash -l -c 'pm2 --version'");
-        if (stdout.trim()) {
-            console.log("[PM2] ✅ Found via bash login shell:", stdout.trim());
-            pm2Available = true;
-            return { available: true, version: stdout.trim(), method: 'bash-login' };
-        }
-    } catch (error) {
-        console.log("[PM2] ❌ Bash login shell failed:", error.message);
-    }
-
-    // Try sourcing NVM and then running pm2
-    try {
-        const nvmScript = process.env.NVM_DIR
-            ? `${process.env.NVM_DIR}/nvm.sh`
-            : `${process.env.HOME}/.nvm/nvm.sh`;
-        const { stdout } = await execPromise(`bash -c 'source ${nvmScript} 2>/dev/null && pm2 --version'`);
-        if (stdout.trim()) {
-            console.log("[PM2] ✅ Found via NVM source:", stdout.trim());
-            pm2Available = true;
-            return { available: true, version: stdout.trim(), method: 'nvm-source' };
-        }
-    } catch (error) {
-        console.log("[PM2] ❌ NVM source failed:", error.message);
-    }
-
-    // Try npx pm2
-    try {
-        const { stdout } = await execPromise("npx --yes pm2 --version", { timeout: 30000 });
-        if (stdout.trim()) {
-            console.log("[PM2] ✅ Found via npx:", stdout.trim());
-            pm2Available = true;
-            return { available: true, version: stdout.trim(), method: 'npx' };
-        }
-    } catch (error) {
-        console.log("[PM2] ❌ npx failed:", error.message);
-    }
-
-    // Linux/Mac: Try which command
+    // 2. Try bash login shell (loads ~/.bashrc which has NVM)
     if (process.platform !== 'win32') {
         try {
-            const { stdout } = await execPromise("which pm2 2>/dev/null || command -v pm2 2>/dev/null");
-            const pm2Path = stdout.trim();
-            console.log("[PM2] which pm2 result:", pm2Path || "(empty)");
-            if (pm2Path && fs.existsSync(pm2Path)) {
-                const { stdout: version } = await execPromise(`"${pm2Path}" --version`);
-                console.log("[PM2] ✅ Found via which:", version.trim());
+            const { stdout } = await execPromise("bash -l -c 'pm2 --version'");
+            if (stdout.trim()) {
+                console.log("[PM2] ✅ Found via bash login shell:", stdout.trim());
                 pm2Available = true;
-                return { available: true, version: version.trim(), path: pm2Path };
+                pm2Command = "bash -l -c 'pm2'";
+                return { available: true, version: stdout.trim(), method: 'bash-login' };
             }
         } catch (error) {
-            console.log("[PM2] ❌ which command failed:", error.message);
+            console.log("[PM2] Bash login shell failed");
         }
+    }
 
-        // Try NVM directories
-        const nvmDirs = [
-            path.join(process.env.HOME || '', '.nvm', 'versions', 'node'),
-            '/root/.nvm/versions/node',
-            '/home'  // Will scan subdirs
-        ];
+    // 3. Try specific NVM paths
+    if (process.platform !== 'win32') {
+        const home = process.env.HOME || '/root';
+        const nvmNodeDir = path.join(home, '.nvm', 'versions', 'node');
 
-        for (const nvmDir of nvmDirs) {
-            console.log("[PM2] Checking NVM dir:", nvmDir);
-            if (fs.existsSync(nvmDir)) {
-                try {
-                    let versions;
-                    if (nvmDir === '/home') {
-                        // Scan /home/*/. nvm/versions/node
-                        const users = fs.readdirSync('/home');
-                        for (const user of users) {
-                            const userNvmDir = `/home/${user}/.nvm/versions/node`;
-                            if (fs.existsSync(userNvmDir)) {
-                                console.log("[PM2] Found user NVM dir:", userNvmDir);
-                                versions = fs.readdirSync(userNvmDir).sort().reverse();
-                                for (const ver of versions) {
-                                    const pm2Path = path.join(userNvmDir, ver, 'bin', 'pm2');
-                                    console.log("[PM2] Checking:", pm2Path, "exists:", fs.existsSync(pm2Path));
-                                    if (fs.existsSync(pm2Path)) {
-                                        const { stdout } = await execPromise(`"${pm2Path}" --version`);
-                                        console.log("[PM2] ✅ Found in user NVM:", stdout.trim());
-                                        pm2Available = true;
-                                        return { available: true, version: stdout.trim(), path: pm2Path };
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        versions = fs.readdirSync(nvmDir).sort().reverse();
-                        console.log("[PM2] NVM versions found:", versions.join(", "));
-                        for (const ver of versions) {
-                            const pm2Path = path.join(nvmDir, ver, 'bin', 'pm2');
-                            console.log("[PM2] Checking:", pm2Path, "exists:", fs.existsSync(pm2Path));
-                            if (fs.existsSync(pm2Path)) {
-                                const { stdout } = await execPromise(`"${pm2Path}" --version`);
-                                console.log("[PM2] ✅ Found in NVM:", stdout.trim());
-                                pm2Available = true;
-                                return { available: true, version: stdout.trim(), path: pm2Path };
-                            }
+        console.log("[PM2] Checking NVM directory:", nvmNodeDir);
+
+        if (fs.existsSync(nvmNodeDir)) {
+            try {
+                const versions = fs.readdirSync(nvmNodeDir).sort().reverse();
+                console.log("[PM2] Found node versions:", versions.join(", "));
+
+                for (const ver of versions) {
+                    const pm2Path = path.join(nvmNodeDir, ver, 'bin', 'pm2');
+                    if (fs.existsSync(pm2Path)) {
+                        console.log("[PM2] Found PM2 at:", pm2Path);
+                        try {
+                            const { stdout } = await execPromise(`"${pm2Path}" --version`);
+                            console.log("[PM2] ✅ PM2 version:", stdout.trim());
+                            pm2Available = true;
+                            pm2Command = `"${pm2Path}"`;
+                            return { available: true, version: stdout.trim(), path: pm2Path };
+                        } catch (error) {
+                            console.log("[PM2] Could not execute:", error.message);
                         }
                     }
-                } catch (error) {
-                    console.log("[PM2] ❌ NVM dir scan error:", error.message);
                 }
-            } else {
-                console.log("[PM2] NVM dir not found:", nvmDir);
+            } catch (error) {
+                console.log("[PM2] Error scanning NVM dir:", error.message);
             }
+        }
+
+        // Also check /root/.nvm specifically
+        const rootNvmDir = '/root/.nvm/versions/node';
+        if (rootNvmDir !== nvmNodeDir && fs.existsSync(rootNvmDir)) {
+            try {
+                const versions = fs.readdirSync(rootNvmDir).sort().reverse();
+                for (const ver of versions) {
+                    const pm2Path = path.join(rootNvmDir, ver, 'bin', 'pm2');
+                    if (fs.existsSync(pm2Path)) {
+                        const { stdout } = await execPromise(`"${pm2Path}" --version`);
+                        console.log("[PM2] ✅ Found in /root NVM:", stdout.trim());
+                        pm2Available = true;
+                        pm2Command = `"${pm2Path}"`;
+                        return { available: true, version: stdout.trim(), path: pm2Path };
+                    }
+                }
+            } catch { }
         }
 
         // Static fallback paths
         const fallbackPaths = [
             '/usr/local/bin/pm2',
             '/usr/bin/pm2',
-            path.join(process.env.HOME || '', '.npm-global', 'bin', 'pm2'),
-            path.join(process.env.HOME || '', 'node_modules', '.bin', 'pm2')
+            path.join(home, '.npm-global', 'bin', 'pm2')
         ];
 
         for (const pm2Path of fallbackPaths) {
-            console.log("[PM2] Checking fallback:", pm2Path, "exists:", fs.existsSync(pm2Path));
             if (fs.existsSync(pm2Path)) {
                 try {
                     const { stdout } = await execPromise(`"${pm2Path}" --version`);
-                    console.log("[PM2] ✅ Found in fallback:", stdout.trim());
+                    console.log("[PM2] ✅ Found at:", pm2Path);
                     pm2Available = true;
+                    pm2Command = `"${pm2Path}"`;
                     return { available: true, version: stdout.trim(), path: pm2Path };
-                } catch (error) {
-                    console.log("[PM2] ❌ Fallback exec error:", error.message);
-                }
+                } catch { }
             }
         }
     }
 
     // Windows specific
     if (process.platform === 'win32') {
-        // ... Windows code stays the same
+        const windowsPaths = [
+            path.join(process.env.APPDATA || '', 'npm', 'pm2.cmd'),
+            path.join(process.env.USERPROFILE || '', 'AppData', 'Roaming', 'npm', 'pm2.cmd')
+        ];
+
+        for (const pm2Path of windowsPaths) {
+            if (fs.existsSync(pm2Path)) {
+                try {
+                    const { stdout } = await execPromise(`"${pm2Path}" --version`);
+                    pm2Available = true;
+                    pm2Command = `"${pm2Path}"`;
+                    return { available: true, version: stdout.trim(), path: pm2Path };
+                } catch { }
+            }
+        }
     }
 
     console.log("[PM2] ❌ Not found after all checks");
@@ -215,10 +202,12 @@ function formatUptime(timestamp) {
 
 // List all PM2 processes
 async function listProcesses() {
-    await checkPm2Available();
+    if (!pm2Available) {
+        await checkPm2Available();
+    }
 
     try {
-        const { stdout } = await execPromise("pm2 jlist");
+        const stdout = await execPm2("jlist");
         return parsePm2List(stdout);
     } catch (error) {
         throw new Error(`Failed to list PM2 processes: ${error.message}`);
@@ -227,7 +216,9 @@ async function listProcesses() {
 
 // Get specific process info
 async function getProcessInfo(nameOrId) {
-    await checkPm2Available();
+    if (!pm2Available) {
+        await checkPm2Available();
+    }
 
     try {
         const processes = await listProcesses();
@@ -247,10 +238,12 @@ async function getProcessInfo(nameOrId) {
 
 // Start process
 async function startProcess(name) {
-    await checkPm2Available();
+    if (!pm2Available) {
+        await checkPm2Available();
+    }
 
     try {
-        await execPromise(`pm2 start ${name}`);
+        await execPm2(`start ${name}`);
         return { success: true, message: `Process '${name}' started` };
     } catch (error) {
         throw new Error(`Failed to start process: ${error.message}`);
@@ -259,10 +252,12 @@ async function startProcess(name) {
 
 // Stop process
 async function stopProcess(nameOrId) {
-    await checkPm2Available();
+    if (!pm2Available) {
+        await checkPm2Available();
+    }
 
     try {
-        await execPromise(`pm2 stop ${nameOrId}`);
+        await execPm2(`stop ${nameOrId}`);
         return { success: true, message: `Process '${nameOrId}' stopped` };
     } catch (error) {
         throw new Error(`Failed to stop process: ${error.message}`);
@@ -271,10 +266,12 @@ async function stopProcess(nameOrId) {
 
 // Restart process
 async function restartProcess(nameOrId) {
-    await checkPm2Available();
+    if (!pm2Available) {
+        await checkPm2Available();
+    }
 
     try {
-        await execPromise(`pm2 restart ${nameOrId}`);
+        await execPm2(`restart ${nameOrId}`);
         return { success: true, message: `Process '${nameOrId}' restarted` };
     } catch (error) {
         throw new Error(`Failed to restart process: ${error.message}`);
@@ -283,10 +280,12 @@ async function restartProcess(nameOrId) {
 
 // Delete process
 async function deleteProcess(nameOrId) {
-    await checkPm2Available();
+    if (!pm2Available) {
+        await checkPm2Available();
+    }
 
     try {
-        await execPromise(`pm2 delete ${nameOrId}`);
+        await execPm2(`delete ${nameOrId}`);
         return { success: true, message: `Process '${nameOrId}' deleted` };
     } catch (error) {
         throw new Error(`Failed to delete process: ${error.message}`);
@@ -295,10 +294,12 @@ async function deleteProcess(nameOrId) {
 
 // Get process logs
 async function getProcessLogs(nameOrId, lines = 100) {
-    await checkPm2Available();
+    if (!pm2Available) {
+        await checkPm2Available();
+    }
 
     try {
-        const { stdout } = await execPromise(`pm2 logs ${nameOrId} --lines ${lines} --nostream`);
+        const stdout = await execPm2(`logs ${nameOrId} --lines ${lines} --nostream`);
         return stdout;
     } catch (error) {
         throw new Error(`Failed to get logs: ${error.message}`);
@@ -307,10 +308,12 @@ async function getProcessLogs(nameOrId, lines = 100) {
 
 // Reload all processes
 async function reloadAll() {
-    await checkPm2Available();
+    if (!pm2Available) {
+        await checkPm2Available();
+    }
 
     try {
-        await execPromise("pm2 reload all");
+        await execPm2("reload all");
         return { success: true, message: "All processes reloaded" };
     } catch (error) {
         throw new Error(`Failed to reload all: ${error.message}`);
@@ -319,10 +322,12 @@ async function reloadAll() {
 
 // Get PM2 info
 async function getPm2Info() {
-    await checkPm2Available();
+    if (!pm2Available) {
+        await checkPm2Available();
+    }
 
     try {
-        const { stdout } = await execPromise("pm2 info");
+        const stdout = await execPm2("info");
         return stdout;
     } catch (error) {
         throw new Error(`Failed to get PM2 info: ${error.message}`);
