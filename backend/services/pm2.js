@@ -357,6 +357,26 @@ async function getPm2Info() {
     }
 }
 
+// Start a new app
+async function startNewApp(name, script) {
+    if (!pm2Available) {
+        await checkPm2Available();
+    }
+
+    try {
+        // Build command
+        let cmd = `start "${script}"`;
+        if (name) {
+            cmd += ` --name "${name}"`;
+        }
+
+        await execPm2(cmd);
+        return { success: true, message: `App started: ${name || script}` };
+    } catch (error) {
+        throw new Error(`Failed to start app: ${error.message}`);
+    }
+}
+
 module.exports = {
     checkPm2Available,
     listProcesses,
@@ -367,5 +387,6 @@ module.exports = {
     deleteProcess,
     getProcessLogs,
     reloadAll,
-    getPm2Info
+    getPm2Info,
+    startNewApp
 };

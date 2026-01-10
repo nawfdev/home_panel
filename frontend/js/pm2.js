@@ -177,6 +177,37 @@ async function pm2Delete(processName) {
   });
 }
 
+// Start new PM2 app
+async function pm2StartNew() {
+  const name = document.getElementById('pm2-new-name').value.trim();
+  const script = document.getElementById('pm2-new-script').value.trim();
+
+  if (!script) {
+    alert('Please enter a script path or command');
+    return;
+  }
+
+  try {
+    const result = await api('/pm2/start', {
+      method: 'POST',
+      body: JSON.stringify({ name, script })
+    });
+
+    if (result.success) {
+      // Clear form
+      document.getElementById('pm2-new-name').value = '';
+      document.getElementById('pm2-new-script').value = '';
+      // Reload page
+      await loadPm2Page();
+      alert('App started successfully!');
+    } else {
+      alert(`Error: ${result.error || 'Failed to start app'}`);
+    }
+  } catch (err) {
+    alert(`Failed to start app: ${err.message}`);
+  }
+}
+
 // Show PM2 logs
 async function showPm2Logs(processName) {
   const modal = document.getElementById("pm2-logs-modal");
