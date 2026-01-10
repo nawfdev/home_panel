@@ -114,13 +114,24 @@ async function getCloudflareInfo() {
         const { getTunnelStatus } = require("./cloudflared");
         const tunnelStatus = await getTunnelStatus();
 
-        if (!tunnelStatus.tunnel) {
+        // Return info even if tunnel is running but not in database
+        if (tunnelStatus.processRunning) {
+            return {
+                domain: tunnelStatus.tunnel?.domain || "Systemd/External",
+                tunnelId: tunnelStatus.tunnel?.tunnel_id || tunnelStatus.pid?.toString() || "N/A",
+                status: "running",
+                pid: tunnelStatus.pid
+            };
+        }
+
+        // If not running and no config, return null
+        if (!tunnelStatus.tunnel && !tunnelStatus.processRunning) {
             return null;
         }
 
         return {
-            domain: tunnelStatus.tunnel.domain,
-            tunnelId: tunnelStatus.tunnel.tunnel_id,
+            domain: tunnelStatus.tunnel?.domain || "Not configured",
+            tunnelId: tunnelStatus.tunnel?.tunnel_id || "N/A",
             status: tunnelStatus.processRunning ? "running" : "stopped",
             pid: tunnelStatus.pid
         };
