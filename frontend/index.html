@@ -459,6 +459,33 @@
           </div>
         </div>
 
+        <!-- Start New App -->
+        <div class="bg-gray-800 rounded-lg p-6 mt-6">
+          <h3 class="font-bold mb-4"><i class="fas fa-plus-circle mr-2 text-green-400"></i>Start New App</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">App Name</label>
+              <input type="text" id="pm2-new-name" placeholder="my-app"
+                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:border-blue-500 focus:outline-none">
+            </div>
+            <div>
+              <label class="block text-sm text-gray-400 mb-1">Script Path</label>
+              <input type="text" id="pm2-new-script" placeholder="/path/to/app.js or npm start"
+                class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 focus:border-blue-500 focus:outline-none">
+            </div>
+            <div class="flex items-end">
+              <button onclick="pm2StartNew()"
+                class="w-full bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition">
+                <i class="fas fa-play mr-2"></i>Start App
+              </button>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 mt-2">
+            <i class="fas fa-info-circle mr-1"></i>
+            Enter script path (e.g., /home/user/app/index.js) or use npm commands like "npm start --prefix /path/to/app"
+          </p>
+        </div>
+
         <!-- Process Logs Modal -->
         <div id="pm2-logs-modal" class="fixed inset-0 bg-black bg-opacity-75 hidden items-center justify-center z-50">
           <div class="bg-gray-800 rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col">
