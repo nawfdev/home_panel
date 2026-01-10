@@ -47,7 +47,7 @@ async function loadPm2Page() {
         const statusColor = isOnline ? "green" : "red";
 
         return `
-    < div class="bg-gray-700 rounded-lg p-4" >
+        <div class="bg-gray-700 rounded-lg p-4">
             <div class="flex items-center justify-between mb-3">
               <div class="flex items-center">
                 <i class="fas fa-circle text-${statusColor}-500 mr-3"></i>
@@ -68,7 +68,7 @@ async function loadPm2Page() {
               </div>
               <div>
                 <span class="text-gray-400">Memory:</span>
-                <p class="font-bold">${proc.memory}</p>
+                <p class="font-bold">${proc.memory} MB</p>
               </div>
               <div>
                 <span class="text-gray-400">Uptime:</span>
@@ -100,12 +100,12 @@ async function loadPm2Page() {
                 <i class="fas fa-trash mr-1"></i>Delete
               </button>
             </div>
-          </div >
+          </div>
   `;
       }).join('');
 
       document.getElementById("pm2-status").innerHTML = `
-  < div class="bg-green-900 border border-green-700 rounded-lg p-4" >
+    <div class="bg-green-900 border border-green-700 rounded-lg p-4">
     <div class="flex items-center">
       <i class="fas fa-check-circle text-green-400 text-xl mr-3"></i>
       <div>
@@ -113,7 +113,7 @@ async function loadPm2Page() {
         <p class="text-sm text-green-200">${data.processes.length} process(es) found</p>
       </div>
     </div>
-        </div >
+    </div>
   `;
     } else {
       document.getElementById("pm2-processes").innerHTML = `
@@ -121,7 +121,7 @@ async function loadPm2Page() {
     `;
 
       document.getElementById("pm2-status").innerHTML = `
-    < div class="bg-blue-900 border border-blue-700 rounded-lg p-4" >
+    <div class="bg-blue-900 border border-blue-700 rounded-lg p-4">
       <div class="flex items-center">
         <i class="fas fa-info-circle text-blue-400 text-xl mr-3"></i>
         <div>
@@ -129,14 +129,14 @@ async function loadPm2Page() {
           <p class="text-sm text-blue-200">No processes running</p>
         </div>
       </div>
-        </div >
+    </div>
   `;
     }
 
   } catch (err) {
     console.error("PM2 page error:", err);
     document.getElementById("pm2-status").innerHTML = `
-  < div class="bg-red-900 border border-red-700 rounded-lg p-4" >
+    <div class="bg-red-900 border border-red-700 rounded-lg p-4">
     <div class="flex items-center">
       <i class="fas fa-exclamation-circle text-red-400 text-xl mr-3"></i>
       <div>
@@ -144,7 +144,7 @@ async function loadPm2Page() {
         <p class="text-sm text-red-200">${err.message}</p>
       </div>
     </div>
-      </div >
+    </div>
   `;
   }
 }
