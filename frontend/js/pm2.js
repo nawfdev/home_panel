@@ -152,9 +152,11 @@ async function loadPm2Page() {
 // PM2 action handler
 async function pm2Action(processName, action) {
   try {
-    const result = await api(`/ pm2 / processes / ${processName}/${action}`, { method: 'POST' });
+    const result = await api(`/pm2/processes/${processName}/${action}`, { method: 'POST' });
     if (result.success) {
       await loadPm2Page();
+    } else {
+      alert(`Error: ${result.error || 'Unknown error'}`);
     }
   } catch (err) {
     alert(`Failed to ${action} process: ${err.message}`);
