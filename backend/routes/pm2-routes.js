@@ -81,10 +81,10 @@ router.get("/processes/:name/logs", isAuthenticated, async (req, res) => {
 // Check PM2 availability
 router.get("/status", isAuthenticated, async (req, res) => {
     try {
-        const available = await pm2Service.isPm2Available();
-        res.json({ success: true, available });
+        const result = await pm2Service.checkPm2Available();
+        res.json(result);
     } catch (error) {
-        res.json({ success: true, available: false });
+        res.json({ available: false, error: error.message });
     }
 });
 
