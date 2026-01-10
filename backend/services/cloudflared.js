@@ -75,23 +75,60 @@ async function getTunnelStatus() {
   // Check if actually ready via metrics
   let isReady = false;
   let connCount = 0;
+  let processRunning = tunnelProcess !== null && !tunnelProcess.killed;
+  let pid = tunnelProcess ? tunnelProcess.pid : null;
 
-  if (tunnelProcess && !tunnelProcess.killed) {
+  // Also check if running via systemd on Linux
+  if (!processRunning && process.platform === 'linux') {
+    try {
+      const systemdStatus = await getSystemdStatus();
+      if (systemdStatus.isActive) {
+        processRunning = true;
+        isReady = true;
+        pid = systemdStatus.pid || null;
+      }
+    } catch (e) {
+      // Systemd not available or error
+    }
+  }
+
+  // Also check via pgrep for any cloudflared process
+  if (!processRunning) {
+    try {
+      const { promisify } = require('util');
+      const execPromise = promisify(exec);
+      const cmd = process.platform === 'win32'
+        ? 'tasklist /FI "IMAGENAME eq cloudflared.exe" /NH'
+        : 'pgrep -f "cloudflared tunnel"';
+
+      const { stdout } = await execPromise(cmd, { timeout: 2000 });
+      if (stdout.trim() && !stdout.includes('No tasks')) {
+        processRunning = true;
+        // Try to extract PID
+        const match = stdout.match(/\d+/);
+        if (match) {
+          pid = parseInt(match[0]);
+        }
+      }
+    } catch (e) {
+      // No process found or error, that's ok
+    }
+  }
+
+  // Check metrics if we think it's running
+  if (processRunning) {
     try {
       // Short timeout for local check
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 500);
 
       const res = await fetch(`${METRICS_URL}/ready`, { signal: controller.signal });
+      clearTimeout(timeoutId);
       if (res.ok) {
         isReady = true;
       }
-
-      // Try to get connection count from /metrics (text format)
-      // cloudflared_tunnel_total_sessions gauge
-      // This is optional/advanced, just readiness is good for now
     } catch (e) {
-      // Not ready yet
+      // Metrics not available, but process might still be running
     }
   }
 
@@ -99,7 +136,7 @@ async function getTunnelStatus() {
   let nextRetryIn = 0;
   if (autoRestart && !tunnelProcess && restartCount > 0) {
     const delays = [5000, 10000, 30000, 60000, 300000];
-    const delay = delays[Math.min(restartCount - 1, delays.length - 1)]; // restartCount is already incremented after crash
+    const delay = delays[Math.min(restartCount - 1, delays.length - 1)];
     const nextTime = lastRestartTime + delay;
     nextRetryIn = Math.max(0, Math.ceil((nextTime - Date.now()) / 1000));
   }
@@ -113,20 +150,19 @@ async function getTunnelStatus() {
   return {
     configured: !!tunnel,
     tunnel: tunnel || null,
-    processRunning: tunnelProcess !== null && !tunnelProcess.killed,
+    processRunning,
     isReady,
-    pid: tunnelProcess ? tunnelProcess.pid : null,
+    pid,
     autoRestart,
     restartCount,
-    nextRetryIn, // Seconds until next retry
-    // Downtime info
+    nextRetryIn,
     downtime: {
       isDown: downtimeStartTime !== null,
       currentDowntimeMs,
       currentDowntimeSec: Math.floor(currentDowntimeMs / 1000),
       totalDowntimeMs,
       totalDowntimeSec: Math.floor(totalDowntimeMs / 1000),
-      history: downtimeHistory.slice(-5) // Last 5 events
+      history: downtimeHistory.slice(-5)
     }
   };
 }
