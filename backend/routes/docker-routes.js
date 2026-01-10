@@ -82,10 +82,10 @@ router.get("/containers/:id/stats", isAuthenticated, async (req, res) => {
 // Check Docker availability
 router.get("/status", isAuthenticated, async (req, res) => {
     try {
-        const available = await dockerService.isDockerAvailable();
-        res.json({ success: true, available });
+        const result = await dockerService.checkDockerAvailable();
+        res.json(result);
     } catch (error) {
-        res.json({ success: true, available: false });
+        res.json({ available: false, error: error.message });
     }
 });
 
