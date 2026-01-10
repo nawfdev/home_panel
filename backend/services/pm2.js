@@ -64,11 +64,34 @@ async function checkPm2Available() {
                 return { available: true, version: stdout.trim(), method: 'bash-login' };
             }
         } catch (error) {
-            console.log("[PM2] Bash login shell failed");
+            console.log("[PM2] Bash login shell failed:", error.message);
+        }
+
+        // 2.5 Try hardcoded known paths first (user confirmed this works)
+        const knownPaths = [
+            '/root/.nvm/versions/node/v20.19.6/bin/pm2',
+            '/root/.nvm/versions/node/v22.0.0/bin/pm2',
+            '/root/.nvm/versions/node/v21.0.0/bin/pm2',
+            '/root/.nvm/versions/node/v18.0.0/bin/pm2'
+        ];
+
+        for (const pm2Path of knownPaths) {
+            console.log("[PM2] Checking known path:", pm2Path);
+            if (fs.existsSync(pm2Path)) {
+                try {
+                    const { stdout } = await execPromise(`${pm2Path} --version`);
+                    console.log("[PM2] ✅ Found at known path:", stdout.trim());
+                    pm2Available = true;
+                    pm2Command = pm2Path;
+                    return { available: true, version: stdout.trim(), path: pm2Path };
+                } catch (error) {
+                    console.log("[PM2] Known path failed:", error.message);
+                }
+            }
         }
     }
 
-    // 3. Try specific NVM paths
+    // 3. Try specific NVM paths (dynamic scan)
     if (process.platform !== 'win32') {
         const home = process.env.HOME || '/root';
         const nvmNodeDir = path.join(home, '.nvm', 'versions', 'node');
