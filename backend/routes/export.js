@@ -9,22 +9,26 @@ const { promisify } = require("util");
 
 const execPromise = promisify(exec);
 
-// Patterns to exclude from export
+// Patterns to exclude from export (glob format for archiver)
 const EXCLUDE_PATTERNS = [
-    'node_modules',
-    '.git',
-    '.env',
-    'dist',
-    'build',
-    '.next',
-    '__pycache__',
-    '*.log',
-    '.cache',
-    'coverage',
-    '.nyc_output',
-    'vendor',  // PHP composer
-    'venv',    // Python virtual env
-    '.venv'
+    '**/node_modules/**',
+    '**/node_modules',
+    '**/.git/**',
+    '**/.git',
+    '**/.env',
+    '**/dist/**',
+    '**/build/**',
+    '**/.next/**',
+    '**/__pycache__/**',
+    '**/*.log',
+    '**/.cache/**',
+    '**/coverage/**',
+    '**/.nyc_output/**',
+    '**/vendor/**',
+    '**/venv/**',
+    '**/.venv/**',
+    '**/.idea/**',
+    '**/.vscode/**'
 ];
 
 // Get PM2 process working directory
