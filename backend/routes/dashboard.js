@@ -43,10 +43,15 @@ router.get("/", isAuthenticated, async (req, res) => {
     }
 
     // Determine tunnel status - prefer Cloudflare API if available
-    let tunnelInfo = localTunnelStatus;
+    let tunnelInfo = {
+      ...localTunnelStatus,
+      autoRestart: localTunnelStatus.autoRestart !== undefined ? localTunnelStatus.autoRestart : true
+    };
+
     if (cfTunnels && cfTunnels.length > 0) {
       const healthyCount = cfTunnels.filter(t => t.status === 'healthy').length;
       tunnelInfo = {
+        ...tunnelInfo,
         configured: true,
         processRunning: healthyCount > 0,
         apiConnected: true,
