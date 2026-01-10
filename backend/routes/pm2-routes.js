@@ -17,6 +17,20 @@ router.get("/processes", isAuthenticated, async (req, res) => {
     }
 });
 
+// Start a new app
+router.post("/start", isAuthenticated, async (req, res) => {
+    try {
+        const { name, script } = req.body;
+        if (!script) {
+            return res.status(400).json({ success: false, error: "Script path is required" });
+        }
+        const result = await pm2Service.startNewApp(name, script);
+        res.json({ success: true, message: "App started", result });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 // Get process details
 router.get("/processes/:name", isAuthenticated, async (req, res) => {
     try {
