@@ -192,16 +192,47 @@ async function checkPm2Available() {
 function parsePm2List(output) {
     try {
         const data = JSON.parse(output);
-        return data.map(proc => ({
-            name: proc.name,
-            pid: proc.pid,
-            status: proc.pm2_env.status,
-            cpu: proc.monit.cpu || 0,
-            memory: Math.round(proc.monit.memory / 1024 / 1024) || 0, // MB
-            uptime: formatUptime(proc.pm2_env.pm_uptime),
-            restarts: proc.pm2_env.restart_time || 0,
-            mode: proc.pm2_env.exec_mode
-        }));
+        return data.map(proc => {
+            // Try to extract port from various sources
+            let port = null;
+
+            // Check pm2_env.env.PORT
+            if (proc.pm2_env && proc.pm2_env.env && proc.pm2_env.env.PORT) {
+                port = proc.pm2_env.env.PORT;
+            }
+            // Check pm2_env.PORT
+            else if (proc.pm2_env && proc.pm2_env.PORT) {
+                port = proc.pm2_env.PORT;
+            }
+            // Check args for --port or -p
+            else if (proc.pm2_env && proc.pm2_env.args) {
+                const args = Array.isArray(proc.pm2_env.args) ? proc.pm2_env.args.join(' ') : proc.pm2_env.args;
+                const portMatch = args.match(/(?:--port|-p)\s*[=\s]?\s*(\d+)/i);
+                if (portMatch) {
+                    port = portMatch[1];
+                }
+            }
+            // Try to extract from pm_exec_path or script if contains port
+            else if (proc.pm2_env && proc.pm2_env.pm_exec_path) {
+                const scriptMatch = proc.pm2_env.pm_exec_path.match(/:(\d{4,5})$/);
+                if (scriptMatch) {
+                    port = scriptMatch[1];
+                }
+            }
+
+            return {
+                name: proc.name,
+                pid: proc.pid,
+                status: proc.pm2_env.status,
+                cpu: proc.monit.cpu || 0,
+                memory: Math.round(proc.monit.memory / 1024 / 1024) || 0, // MB
+                uptime: formatUptime(proc.pm2_env.pm_uptime),
+                restarts: proc.pm2_env.restart_time || 0,
+                mode: proc.pm2_env.exec_mode,
+                port: port,
+                cwd: proc.pm2_env.pm_cwd || null
+            };
+        });
     } catch (error) {
         throw new Error(`Failed to parse PM2 output: ${error.message}`);
     }
