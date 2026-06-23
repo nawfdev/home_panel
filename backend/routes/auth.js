@@ -6,8 +6,14 @@ const router = express.Router();
 
 function isAuthenticated(req, res, next) {
   if (req.session && req.session.user) {
+    console.log('[Auth] Authenticated:', {
+      userId: req.session.user.id,
+      username: req.session.user.username,
+      sessionId: req.sessionID
+    });
     return next();
   }
+  console.log('[Auth] Unauthorized - no session or user');
   res.status(401).json({ error: "Unauthorized" });
 }
 
