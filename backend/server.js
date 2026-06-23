@@ -112,6 +112,9 @@ startAlertMonitoring();
 const { startMetricsCollection } = require("./services/metrics");
 startMetricsCollection();
 
+// Auto-connect tunnel on startup
+const { autoConnectTunnel } = require("./services/cloudflared");
+
 const PORT = config.server.port || 9689;
 const HOST = config.server.host || "0.0.0.0";
 
@@ -119,6 +122,11 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`Home Panel - Server Started`);
   console.log(`URL: http://${HOST}:${PORT}`);
   console.log(`Default Login: admin / admin123`);
+
+  // Auto-connect tunnel after server starts
+  autoConnectTunnel().catch(err => {
+    console.log("[AutoConnect] Auto-connect failed (will be handled by auto-restart if enabled):", err.message);
+  });
 });
 
 // Initialize Web Terminal with SHARED session parser

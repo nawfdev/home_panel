@@ -15,6 +15,11 @@ let totalDowntimeMs = 0; // Total accumulated downtime in this session
 let downtimeHistory = []; // Array of { start, end, duration } for recent downtimes
 const MAX_DOWNTIME_HISTORY = 10; // Keep last 10 downtime events
 
+// Tunnel readiness tracking
+let currentReadyState = false; // Current readiness state
+let readyStateHistory = []; // Track recent readiness states for stability
+const MAX_READY_HISTORY = 5; // Track last 5 checks
+
 // Get Telegram notification function (optional, only if configured)
 let sendNotification = null;
 try {
@@ -68,13 +73,109 @@ async function checkCloudflaredInstalled() {
 const METRICS_PORT = 36500;
 const METRICS_URL = `http://127.0.0.1:${METRICS_PORT}`;
 
+// Get detailed tunnel metrics from Prometheus endpoint
+async function getTunnelMetrics() {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    const res = await fetch(`${METRICS_URL}/metrics`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      throw new Error('Metrics endpoint not available');
+    }
+
+    const metricsText = await res.text();
+
+    // Parse Prometheus metrics
+    const metrics = {
+      connections: 0,
+      activeConnections: 0,
+      requests: 0,
+      errors: 0,
+      bytesIn: 0,
+      bytesOut: 0,
+      connectionsPerRegion: {},
+      uptime: 0,
+      buildVersion: 'Unknown'
+    };
+
+    const lines = metricsText.split('\n');
+
+    lines.forEach(line => {
+      line = line.trim();
+
+      if (line.startsWith('#') || !line) return;
+
+      const parts = line.split(' ');
+      if (parts.length < 2) return;
+
+      const metricName = parts[0];
+      const value = parseFloat(parts[1]);
+
+      // Parse cloudflared metrics (updated to match actual metric names)
+      if (metricName === 'cloudflared_tunnel_ha_connections') {
+        metrics.activeConnections = Math.round(value);
+      } else if (metricName === 'cloudflared_tunnel_total_requests') {
+        metrics.requests = Math.round(value);
+      } else if (metricName === 'cloudflared_tunnel_request_errors') {
+        metrics.errors = Math.round(value);
+      } else if (metricName === 'cloudflared_tunnel_concurrent_requests_per_tunnel') {
+        metrics.connections = Math.round(value);
+      } else if (metricName.includes('build_info')) {
+        // Parse version from build_info
+        const match = metricName.match(/version="([^"]+)"/);
+        if (match) {
+          metrics.buildVersion = match[1];
+        }
+      } else if (metricName.startsWith('cloudflared_tunnel_server_locations')) {
+        // Parse region-specific connections
+        const locationMatch = metricName.match(/edge_location="([^"]+)"/);
+        if (locationMatch) {
+          const region = locationMatch[1];
+          if (!metrics.connectionsPerRegion[region]) {
+            metrics.connectionsPerRegion[region] = 0;
+          }
+          // Each server location represents one connection
+          metrics.connectionsPerRegion[region]++;
+        }
+      }
+    });
+
+    // Calculate uptime from systemd process
+    if (process.platform === 'linux') {
+      try {
+        const { exec } = require('child_process');
+        const { promisify } = require('util');
+        const execAsync = promisify(exec);
+
+        const { stdout } = await execAsync('systemctl show cloudflared --property=ActiveEnterTimestamp');
+        const timestampStr = stdout.trim().split('=')[1];
+
+        if (timestampStr && timestampStr !== '') {
+          const startTime = new Date(timestampStr);
+          metrics.uptime = Math.floor((Date.now() - startTime.getTime()) / 1000);
+        }
+      } catch (e) {
+        // Fallback to uptime calculation
+      }
+    }
+
+    return { success: true, metrics };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 async function getTunnelStatus() {
   const db = getDb();
   const tunnel = db.prepare("SELECT * FROM tunnels ORDER BY id DESC LIMIT 1").get();
 
-  // Check if actually ready via metrics
-  let isReady = false;
-  let connCount = 0;
+  // Use the stable readiness state from health check if available
+  let isReady = currentReadyState;
   let processRunning = tunnelProcess !== null && !tunnelProcess.killed;
   let pid = tunnelProcess ? tunnelProcess.pid : null;
 
@@ -84,7 +185,10 @@ async function getTunnelStatus() {
       const systemdStatus = await getSystemdStatus();
       if (systemdStatus.isActive) {
         processRunning = true;
-        isReady = true;
+        // Use systemd's isReady state
+        if (systemdStatus.downtime && !systemdStatus.downtime.isDown) {
+          isReady = true;
+        }
         pid = systemdStatus.pid || null;
       }
     } catch (e) {
@@ -115,20 +219,24 @@ async function getTunnelStatus() {
     }
   }
 
-  // Check metrics if we think it's running
-  if (processRunning) {
+  // Only do a fresh metrics check if we don't have a stable state yet
+  if (processRunning && readyStateHistory.length < 3) {
     try {
-      // Short timeout for local check
+      // Increased timeout to 3s for better accuracy
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 500);
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
 
       const res = await fetch(`${METRICS_URL}/ready`, { signal: controller.signal });
       clearTimeout(timeoutId);
       if (res.ok) {
         isReady = true;
+        currentReadyState = true;
       }
     } catch (e) {
       // Metrics not available, but process might still be running
+      if (readyStateHistory.length === 0) {
+        currentReadyState = false;
+      }
     }
   }
 
@@ -294,6 +402,10 @@ async function startTunnel(manualStart = false) {
       console.log(`🔴 Tunnel process exited with code ${code}`);
       tunnelProcess = null;
 
+      // Clear ready state history
+      readyStateHistory = [];
+      currentReadyState = false;
+
       // Start downtime tracking
       if (!downtimeStartTime) {
         downtimeStartTime = Date.now();
@@ -335,12 +447,45 @@ async function startTunnel(manualStart = false) {
           const result = await startTunnel(false);
 
           if (result.success) {
-            console.log(`✅ Tunnel restarted successfully`);
-            if (sendNotification) {
-              await sendNotification(
-                `✅ *Tunnel Restarted*\n\nTunnel is back online after ${restartCount} attempt(s)`,
-                "success"
-              );
+            console.log(`✅ Tunnel process started, waiting for readiness check...`);
+
+            // Wait up to 30 seconds for tunnel to become ready
+            let ready = false;
+            for (let i = 0; i < 30; i++) {
+              await new Promise(resolve => setTimeout(resolve, 1000));
+
+              try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                const res = await fetch(`${METRICS_URL}/ready`, { signal: controller.signal });
+                clearTimeout(timeoutId);
+
+                if (res.ok) {
+                  ready = true;
+                  currentReadyState = true;
+                  console.log(`✅ Tunnel is ready and operational`);
+                  break;
+                }
+              } catch (e) {
+                // Not ready yet, continue waiting
+              }
+            }
+
+            if (ready) {
+              if (sendNotification) {
+                await sendNotification(
+                  `✅ *Tunnel Restarted*\n\nTunnel is back online after ${restartCount} attempt(s)`,
+                  "success"
+                );
+              }
+            } else {
+              console.log(`⚠️ Tunnel started but not ready after 30 seconds`);
+              if (sendNotification) {
+                await sendNotification(
+                  `⚠️ *Tunnel Not Ready*\n\nTunnel started but failed to connect after 30 seconds`,
+                  "warning"
+                );
+              }
             }
           } else {
             console.log(`❌ Restart failed: ${result.message}`);
@@ -401,6 +546,15 @@ async function stopTunnel() {
   tunnelProcess.kill("SIGTERM");
   tunnelProcess = null;
 
+  // Clear ready state
+  readyStateHistory = [];
+  currentReadyState = false;
+
+  // Start downtime tracking for manual stop
+  if (!downtimeStartTime) {
+    downtimeStartTime = Date.now();
+  }
+
   const db = getDb();
   db.prepare("UPDATE tunnels SET status = ? WHERE id = (SELECT MAX(id) FROM tunnels)").run("stopped");
 
@@ -417,23 +571,91 @@ async function stopTunnel() {
   return { success: true, message: "Tunnel stopped" };
 }
 
-// Health check to ensure tunnel is alive
+// Health check to ensure tunnel is alive and ready
 function startHealthCheck() {
   if (healthCheckInterval) {
     clearInterval(healthCheckInterval);
   }
 
+  // Check every 5 seconds for more accurate monitoring
   healthCheckInterval = setInterval(async () => {
+    // First, check if process is still running
+    let isProcessRunning = false;
     if (tunnelProcess && tunnelProcess.pid) {
       try {
-        // Check if process is still alive
         process.kill(tunnelProcess.pid, 0);
+        isProcessRunning = true;
       } catch (err) {
         console.error("⚠️ Tunnel process not responding, marked as dead");
         tunnelProcess = null;
       }
     }
-  }, 30000); // Check every 30 seconds
+
+    // If process is running, check if tunnel is actually ready
+    let isActuallyReady = false;
+    if (isProcessRunning) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000); // Increased to 3s
+
+        const res = await fetch(`${METRICS_URL}/ready`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          isActuallyReady = true;
+        }
+      } catch (e) {
+        // Metrics not available, tunnel is not ready
+      }
+    }
+
+    // Update readiness state history
+    readyStateHistory.push(isActuallyReady);
+    if (readyStateHistory.length > MAX_READY_HISTORY) {
+      readyStateHistory.shift();
+    }
+
+    // Determine stable state (must be consistent for at least 3 checks)
+    const stableReady = readyStateHistory.length >= 3 &&
+      readyStateHistory.slice(-3).every(state => state === isActuallyReady);
+
+    // Handle state changes only when stable
+    if (stableReady && isActuallyReady !== currentReadyState) {
+      const previousState = currentReadyState;
+      currentReadyState = isActuallyReady;
+
+      if (!isActuallyReady && previousState) {
+        // Tunnel went down
+        if (!downtimeStartTime) {
+          downtimeStartTime = Date.now();
+          console.log(`⏱️ Downtime started at ${new Date(downtimeStartTime).toISOString()} (tunnel not ready)`);
+        }
+      } else if (isActuallyReady && !previousState) {
+        // Tunnel came back up
+        if (downtimeStartTime) {
+          const downtimeEnd = Date.now();
+          const duration = downtimeEnd - downtimeStartTime;
+          totalDowntimeMs += duration;
+
+          downtimeHistory.push({
+            start: downtimeStartTime,
+            end: downtimeEnd,
+            durationMs: duration,
+            durationSec: Math.floor(duration / 1000)
+          });
+
+          if (downtimeHistory.length > MAX_DOWNTIME_HISTORY) {
+            downtimeHistory = downtimeHistory.slice(-MAX_DOWNTIME_HISTORY);
+          }
+
+          console.log(`⏱️ Downtime ended. Duration: ${Math.floor(duration / 1000)}s. Total: ${Math.floor(totalDowntimeMs / 1000)}s`);
+          downtimeStartTime = null;
+        }
+      }
+    }
+  }, 5000); // Check every 5 seconds (more frequent for accuracy)
 }
 
 function stopHealthCheck() {
@@ -447,6 +669,80 @@ function setAutoRestart(enabled) {
   autoRestart = enabled;
   console.log(`Auto-restart ${enabled ? 'enabled' : 'disabled'}`);
   return { success: true, autoRestart: enabled };
+}
+
+// Auto-connect to tunnel on server startup
+async function autoConnectTunnel() {
+  const db = getDb();
+  const tunnel = db.prepare("SELECT * FROM tunnels ORDER BY id DESC LIMIT 1").get();
+
+  if (!tunnel) {
+    console.log("[AutoConnect] No tunnel configured, skipping auto-connect");
+    return;
+  }
+
+  // Check if systemd service is available and running (Linux)
+  if (process.platform === 'linux') {
+    try {
+      const { stdout } = await execPromise('systemctl is-active cloudflared');
+      const isActive = stdout.trim() === 'active';
+
+      if (isActive) {
+        console.log("[AutoConnect] Systemd service is already running");
+        return;
+      }
+
+      // Try to start systemd service
+      console.log("[AutoConnect] Starting systemd service...");
+      await execPromise('sudo systemctl start cloudflared');
+      console.log("[AutoConnect] Systemd service started");
+      return;
+    } catch (e) {
+      console.log("[AutoConnect] Systemd service not available or failed:", e.message);
+    }
+  }
+
+  // Fallback to process-based tunnel
+  if (tunnelProcess && !tunnelProcess.killed) {
+    console.log("[AutoConnect] Tunnel process is already running");
+    return;
+  }
+
+  console.log("[AutoConnect] Starting tunnel process...");
+  const result = await startTunnel(false);
+
+  if (result.success) {
+    console.log("[AutoConnect] Tunnel process started");
+
+    // Wait for tunnel to be ready
+    console.log("[AutoConnect] Waiting for tunnel to be ready...");
+    let ready = false;
+    for (let i = 0; i < 30; i++) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`${METRICS_URL}/ready`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          ready = true;
+          currentReadyState = true;
+          console.log("[AutoConnect] Tunnel is ready!");
+          break;
+        }
+      } catch (e) {
+        // Not ready yet
+      }
+    }
+
+    if (!ready) {
+      console.log("[AutoConnect] Warning: Tunnel did not become ready after 30 seconds");
+    }
+  } else {
+    console.log("[AutoConnect] Failed to start tunnel:", result.message);
+  }
 }
 
 async function listTunnels() {
@@ -464,6 +760,63 @@ async function listTunnels() {
 // ===== SYSTEMD INTEGRATION =====
 const { promisify } = require('util');
 const execPromise = promisify(exec);
+
+// Systemd continuous monitoring
+let systemdMonitorInterval = null;
+let systemdLastActive = true; // Track previous state for change detection
+
+// Start systemd monitoring for accurate downtime tracking
+function startSystemdMonitor() {
+  if (process.platform !== 'linux' || systemdMonitorInterval) {
+    return;
+  }
+
+  // Check every 5 seconds for accuracy
+  systemdMonitorInterval = setInterval(async () => {
+    try {
+      const { stdout } = await execPromise('systemctl is-active cloudflared');
+      const isActive = stdout.trim() === 'active';
+
+      // Track downtime changes
+      if (!isActive && systemdLastActive) {
+        // Service just went down
+        if (!downtimeStartTime) {
+          downtimeStartTime = Date.now();
+          console.log(`⏱️ Systemd downtime started at ${new Date(downtimeStartTime).toISOString()}`);
+        }
+      } else if (isActive && !systemdLastActive) {
+        // Service just came back up
+        if (downtimeStartTime) {
+          const downtimeEnd = Date.now();
+          const duration = downtimeEnd - downtimeStartTime;
+          totalDowntimeMs += duration;
+          downtimeHistory.push({
+            start: downtimeStartTime,
+            end: downtimeEnd,
+            durationMs: duration,
+            durationSec: Math.floor(duration / 1000)
+          });
+          if (downtimeHistory.length > MAX_DOWNTIME_HISTORY) {
+            downtimeHistory = downtimeHistory.slice(-MAX_DOWNTIME_HISTORY);
+          }
+          console.log(`⏱️ Systemd downtime ended. Duration: ${Math.floor(duration / 1000)}s`);
+          downtimeStartTime = null;
+        }
+      }
+
+      systemdLastActive = isActive;
+    } catch (e) {
+      // Service doesn't exist, ignore
+    }
+  }, 5000);
+}
+
+function stopSystemdMonitor() {
+  if (systemdMonitorInterval) {
+    clearInterval(systemdMonitorInterval);
+    systemdMonitorInterval = null;
+  }
+}
 
 // Check if cloudflared is running as systemd service
 async function getSystemdStatus() {
@@ -491,24 +844,9 @@ async function getSystemdStatus() {
       else if (serviceContent.includes('--protocol quic')) protocol = 'quic';
     } catch { }
 
-    // Track downtime for systemd service
-    if (!isActive && !downtimeStartTime) {
-      downtimeStartTime = Date.now();
-    } else if (isActive && downtimeStartTime) {
-      // Service came back up
-      const downtimeEnd = Date.now();
-      const duration = downtimeEnd - downtimeStartTime;
-      totalDowntimeMs += duration;
-      downtimeHistory.push({
-        start: downtimeStartTime,
-        end: downtimeEnd,
-        durationMs: duration,
-        durationSec: Math.floor(duration / 1000)
-      });
-      if (downtimeHistory.length > MAX_DOWNTIME_HISTORY) {
-        downtimeHistory = downtimeHistory.slice(-MAX_DOWNTIME_HISTORY);
-      }
-      downtimeStartTime = null;
+    // Start monitoring if not already running
+    if (!systemdMonitorInterval) {
+      startSystemdMonitor();
     }
 
     // Calculate current downtime
@@ -527,7 +865,7 @@ async function getSystemdStatus() {
       protocol,
       // Downtime info
       downtime: {
-        isDown: !isActive,
+        isDown: downtimeStartTime !== null,
         currentDowntimeMs,
         currentDowntimeSec: Math.floor(currentDowntimeMs / 1000),
         totalDowntimeMs,
@@ -634,11 +972,13 @@ module.exports = {
   stopTunnel,
   listTunnels,
   setAutoRestart,
-  stopHealthCheck,
+  autoConnectTunnel,
+  getTunnelMetrics,
   // Systemd functions
   getSystemdStatus,
   restartSystemdService,
   stopSystemdService,
   startSystemdService,
-  setSystemdProtocol
+  setSystemdProtocol,
+  stopSystemdMonitor
 };

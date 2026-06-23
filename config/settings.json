@@ -37,5 +37,10 @@
         "critical": 85
       }
     }
+  },
+  "servicePaths": {
+    "pm2": "/root/.nvm/versions/node/v20.19.6/bin/pm2",
+    "docker": "",
+    "cloudflared": ""
   }
 }

@@ -2,10 +2,12 @@
   "name": "home-panel",
   "version": "1.0.0",
   "description": "Home Server Management Panel",
-  "main": "backend/server.js",
+  "main": "go-backend/cmd/homepanel/main.go",
   "scripts": {
-    "start": "node backend/server.js",
-    "dev": "node --watch backend/server.js"
+    "start": "cd go-backend && go run ./cmd/homepanel",
+    "dev": "cd go-backend && go run ./cmd/homepanel",
+    "start:node": "node backend/server.js",
+    "dev:node": "node --watch backend/server.js"
   },
   "dependencies": {
     "archiver": "^7.0.1",
