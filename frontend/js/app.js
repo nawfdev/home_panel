@@ -224,22 +224,44 @@ async function loadDashboard() {
       tunnelIcon.className = `fas fa-wifi text-3xl ${healthy > 0 ? "text-green-500" : "text-red-500"}`;
       tunnelDetail.textContent = healthy > 0 ? "All tunnels healthy" : "Tunnels need attention";
     } else {
-      // Fallback to local cloudflared process status
-      const isRunning = data.tunnel.processRunning;
-      tunnelEl.textContent = isRunning ? "Online" : "Offline";
-      tunnelEl.className = `text-2xl font-bold ${isRunning ? "text-green-500" : "text-red-500"}`;
-      tunnelIcon.className = `fas fa-wifi text-3xl ${isRunning ? "text-green-500" : "text-red-500"}`;
+      // Debounce: Only update dashboard tunnel status when isReady state is stable
+      const statusKey = `${data.tunnel.processRunning}-${data.tunnel.isReady}`;
+      if (!window._tunnelDashboardHistory) window._tunnelDashboardHistory = [];
+      window._tunnelDashboardHistory.push(statusKey);
+      if (window._tunnelDashboardHistory.length > MAX_TUNNEL_HISTORY) {
+        window._tunnelDashboardHistory.shift();
+      }
 
-      // Show downtime or uptime info
-      if (isRunning && data.tunnel.uptime) {
-        tunnelDetail.textContent = `Up: ${data.tunnel.uptime}`;
-        tunnelDetail.className = "text-xs mt-1 text-green-400";
-      } else if (!isRunning) {
-        tunnelDetail.textContent = "Tunnel not running";
-        tunnelDetail.className = "text-xs mt-1 text-red-400";
+      const isStable = window._tunnelDashboardHistory.length === MAX_TUNNEL_HISTORY &&
+        window._tunnelDashboardHistory.every(s => s === statusKey);
+
+      if (!isStable && window._tunnelDashboardHistory.length === MAX_TUNNEL_HISTORY) {
+        console.log("[Dashboard] Tunnel status unstable, skipping update");
+        // Update other stats but skip tunnel
       } else {
-        tunnelDetail.textContent = "Click to view details";
-        tunnelDetail.className = "text-xs mt-1 text-gray-400";
+        // Fallback to local cloudflared process status
+        const isRunning = data.tunnel.processRunning;
+        const isReady = data.tunnel.isReady;
+
+        tunnelEl.textContent = isRunning && isReady ? "Online" : (isRunning ? "Starting..." : "Offline");
+        tunnelEl.className = `text-2xl font-bold ${isRunning && isReady ? "text-green-500" : (isRunning ? "text-yellow-500" : "text-red-500")}`;
+        tunnelIcon.className = `fas fa-wifi text-3xl ${isRunning && isReady ? "text-green-500" : (isRunning ? "text-yellow-500" : "text-red-500")}`;
+
+        // Show downtime info
+        if (data.tunnel.downtime && data.tunnel.downtime.isDown) {
+          const downtimeSec = data.tunnel.downtime.currentDowntimeSec;
+          tunnelDetail.textContent = `Down: ${formatDuration(downtimeSec)}`;
+          tunnelDetail.className = "text-xs mt-1 text-red-400";
+        } else if (isRunning && isReady) {
+          tunnelDetail.textContent = "Tunnel is online";
+          tunnelDetail.className = "text-xs mt-1 text-green-400";
+        } else if (isRunning) {
+          tunnelDetail.textContent = "Tunnel is starting...";
+          tunnelDetail.className = "text-xs mt-1 text-yellow-400";
+        } else {
+          tunnelDetail.textContent = "Tunnel not running";
+          tunnelDetail.className = "text-xs mt-1 text-red-400";
+        }
       }
     }
 
@@ -358,6 +380,401 @@ async function loadDashboard() {
   }
 }
 
+// Tunnel status history for debouncing (prevent flickering)
+let tunnelStatusHistory = [];
+const MAX_TUNNEL_HISTORY = 3;
+let metricsInterval = null;
+
+// Switch tunnel tabs
+function switchTunnelTab(tabName) {
+  // Update tab buttons
+  document.querySelectorAll('.tunnel-tab-btn').forEach(btn => {
+    if (btn.dataset.tab === tabName) {
+      btn.classList.remove('bg-gray-700', 'text-gray-400', 'hover:bg-gray-600');
+      btn.classList.add('bg-blue-600', 'text-white');
+    } else {
+      btn.classList.add('bg-gray-700', 'text-gray-400', 'hover:bg-gray-600');
+      btn.classList.remove('bg-blue-600', 'text-white');
+    }
+  });
+
+  // Show/hide tab content
+  document.querySelectorAll('.tunnel-tab-content').forEach(content => {
+    content.classList.add('hidden');
+  });
+  document.getElementById(`tunnel-tab-${tabName}`).classList.remove('hidden');
+
+  // Load content based on tab
+  if (tabName === 'metrics') {
+    refreshTunnelMetrics();
+    if (metricsInterval) clearInterval(metricsInterval);
+    metricsInterval = setInterval(refreshTunnelMetrics, 5000);
+  } else {
+    if (metricsInterval) clearInterval(metricsInterval);
+  }
+
+  if (tabName === 'logs') {
+    loadTunnelLogs();
+  }
+
+  if (tabName === 'settings') {
+    loadAutoRestartStatus();
+    loadTunnelConfigInfo();
+  }
+}
+
+async function refreshTunnelMetrics() {
+  try {
+    const data = await api("/tunnel/metrics");
+
+    if (data.success && data.metrics) {
+      const m = data.metrics;
+
+      // Update status metrics
+      document.getElementById('tunnel-connections').textContent = m.activeConnections || 0;
+      document.getElementById('tunnel-requests').textContent = formatNumber(m.requests || 0);
+      document.getElementById('tunnel-errors').textContent = formatNumber(m.errors || 0);
+
+      // Update metrics tab
+      document.getElementById('metrics-total-connections').textContent = formatNumber(m.connections || 0);
+      document.getElementById('metrics-total-requests').textContent = formatNumber(m.requests || 0);
+      document.getElementById('metrics-total-errors').textContent = formatNumber(m.errors || 0);
+
+      // Calculate error rate
+      const errorRate = m.requests > 0 ? ((m.errors / m.requests) * 100).toFixed(2) : 0;
+      document.getElementById('metrics-error-rate').textContent = `${errorRate}%`;
+      document.getElementById('metrics-error-rate').className = `text-lg font-bold ${errorRate > 5 ? 'text-red-400' : errorRate > 1 ? 'text-yellow-400' : 'text-green-400'}`;
+
+      // Bandwidth
+      document.getElementById('tunnel-bytes-in').textContent = formatBytes(m.bytesIn || 0);
+      document.getElementById('tunnel-bytes-out').textContent = formatBytes(m.bytesOut || 0);
+
+      // Uptime
+      document.getElementById('metrics-uptime').textContent = formatDuration(m.uptime || 0);
+
+      // Last update
+      document.getElementById('metrics-last-update').textContent = new Date().toLocaleTimeString();
+
+      // Update regions
+      const regionsEl = document.getElementById('tunnel-regions');
+      if (Object.keys(m.connectionsPerRegion || {}).length > 0) {
+        regionsEl.innerHTML = Object.entries(m.connectionsPerRegion).map(([region, count]) => `
+          <div class="bg-gray-700 rounded p-3">
+            <p class="font-bold text-sm">${region}</p>
+            <p class="text-lg text-green-400">${count}</p>
+            <p class="text-xs text-gray-400">connections</p>
+          </div>
+        `).join('');
+      } else {
+        regionsEl.innerHTML = '<p class="text-gray-400 text-sm col-span-4">No active connections yet</p>';
+      }
+    } else {
+      document.getElementById('tunnel-connections').textContent = 'N/A';
+      document.getElementById('tunnel-requests').textContent = 'N/A';
+      document.getElementById('tunnel-errors').textContent = 'N/A';
+    }
+  } catch (err) {
+    console.error("Metrics error:", err);
+  }
+}
+
+async function loadTunnelLogs() {
+  const limit = document.getElementById('log-limit')?.value || 50;
+  const logsEl = document.getElementById('tunnel-logs');
+
+  try {
+    const data = await api(`/tunnel/logs?limit=${limit}`);
+
+    if (data.success && data.logs) {
+      if (data.logs.length === 0) {
+        logsEl.innerHTML = '<p class="text-gray-400">No logs available</p>';
+        return;
+      }
+
+      logsEl.innerHTML = data.logs.map(log => {
+        let colorClass = 'text-gray-400';
+        if (log.priority === '3' || log.priority === 'err') colorClass = 'text-red-400';
+        else if (log.priority === '4' || log.priority === 'warning') colorClass = 'text-yellow-400';
+        else if (log.priority === '6' || log.priority === 'info') colorClass = 'text-blue-400';
+
+        const time = new Date(log.timestamp).toLocaleTimeString();
+
+        return `<div class="${colorClass} mb-1">
+          <span class="text-gray-500">[${time}]</span>
+          ${log.message || log.MESSAGE || ''}
+        </div>`;
+      }).join('');
+    } else {
+      logsEl.innerHTML = '<p class="text-red-400">Failed to load logs</p>';
+    }
+  } catch (err) {
+    console.error("Logs error:", err);
+    logsEl.innerHTML = `<p class="text-red-400">Error: ${err.message}</p>`;
+  }
+}
+
+async function loadTunnelConfigInfo() {
+  const infoEl = document.getElementById('tunnel-config-info');
+
+  try {
+    const data = await api("/tunnel/status");
+
+    let html = '';
+
+    // Systemd tunnel info
+    const systemdStatus = await api("/tunnel/systemd/status").catch(() => ({ available: false }));
+
+    if (systemdStatus.available) {
+      html += `
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <div>
+            <span class="text-gray-400">Type:</span>
+            <span class="text-green-400 font-bold">Systemd Service</span>
+          </div>
+          <div>
+            <span class="text-gray-400">Status:</span>
+            <span class="${systemdStatus.active ? 'text-green-400' : 'text-red-400'}">${systemdStatus.active ? 'Running' : 'Stopped'}</span>
+          </div>
+          <div>
+            <span class="text-gray-400">PID:</span>
+            <span>${systemdStatus.pid || 'N/A'}</span>
+          </div>
+          <div>
+            <span class="text-gray-400">Protocol:</span>
+            <span class="text-blue-400 font-bold">${systemdStatus.protocol || 'auto'}</span>
+          </div>
+        </div>
+        ${systemdStatus.startTime ? `
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-gray-400 text-sm">Started: <span class="text-white">${systemdStatus.startTime}</span></p>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    // Local process tunnel info
+    if (data.tunnel && !systemdStatus.available) {
+      html += `
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <div>
+            <span class="text-gray-400">Type:</span>
+            <span class="text-blue-400 font-bold">Local Process</span>
+          </div>
+          <div>
+            <span class="text-gray-400">Status:</span>
+            <span class="${data.isReady ? 'text-green-400' : (data.processRunning ? 'text-yellow-400' : 'text-red-400')}">
+              ${data.isReady ? 'Connected' : (data.processRunning ? 'Starting' : 'Stopped')}
+            </span>
+          </div>
+          ${data.tunnel.name ? `
+            <div>
+              <span class="text-gray-400">Name:</span>
+              <span>${data.tunnel.name}</span>
+            </div>
+          ` : ''}
+          ${data.tunnel.tunnel_id ? `
+            <div>
+              <span class="text-gray-400">Tunnel ID:</span>
+              <code class="text-xs bg-gray-800 px-1 rounded">${data.tunnel.tunnel_id}</code>
+            </div>
+          ` : ''}
+          ${data.tunnel.domain ? `
+            <div>
+              <span class="text-gray-400">Domain:</span>
+              <code class="text-xs bg-gray-800 px-1 rounded">${data.tunnel.domain}</code>
+            </div>
+          ` : ''}
+          ${data.tunnel.local_port ? `
+            <div>
+              <span class="text-gray-400">Local Port:</span>
+              <span>${data.tunnel.local_port}</span>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // Auto-restart info
+    html += `
+      <div class="bg-gray-700 rounded p-3">
+        <p class="text-gray-400 text-sm">Auto-Restart: <span class="${data.autoRestart ? 'text-green-400' : 'text-red-400'}">${data.autoRestart ? 'Enabled' : 'Disabled'}</span></p>
+        ${data.restartCount > 0 ? `<p class="text-xs text-gray-500 mt-1">Restart attempts this session: ${data.restartCount}</p>` : ''}
+      </div>
+    `;
+
+    // Cloudflared binary info
+    if (data.cloudflared && data.cloudflared.installed) {
+      html += `
+        <div class="bg-gray-700 rounded p-3 mt-2">
+          <p class="text-gray-400 text-sm">Cloudflared Version: <span class="text-white">${data.cloudflared.version}</span></p>
+        </div>
+      `;
+    }
+
+    // Metrics endpoint info
+    html += `
+      <div class="bg-gray-700 rounded p-3 mt-2">
+        <p class="text-gray-400 text-sm">Metrics Endpoint: <code class="text-xs bg-gray-800 px-1 rounded">http://127.0.0.1:36500</code></p>
+      </div>
+    `;
+
+    infoEl.innerHTML = html || '<p class="text-gray-400">No tunnel configuration found</p>';
+  } catch (err) {
+    console.error("Config info error:", err);
+    infoEl.innerHTML = `<p class="text-red-400">Error: ${err.message}</p>`;
+  }
+}
+
+async function loadAutoRestartStatus() {
+  const btn = document.getElementById('toggle-autorestart-btn');
+
+  try {
+    const data = await api("/tunnel/status");
+    const isEnabled = data.autoRestart !== false;
+
+    btn.textContent = isEnabled ? 'Enabled' : 'Disabled';
+    btn.className = `px-4 py-2 rounded transition ${isEnabled ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`;
+  } catch (err) {
+    btn.textContent = 'Error';
+  }
+}
+
+async function loadTunnelConfigInfo() {
+  const infoEl = document.getElementById('tunnel-config-info');
+
+  try {
+    const data = await api("/tunnel/status");
+
+    let html = '';
+
+    // Systemd tunnel info
+    const systemdStatus = await api("/tunnel/systemd/status").catch(() => ({ available: false }));
+
+    if (systemdStatus.available) {
+      html += `
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <div>
+            <span class="text-gray-400">Type:</span>
+            <span class="text-green-400 font-bold">Systemd Service</span>
+          </div>
+          <div>
+            <span class="text-gray-400">Status:</span>
+            <span class="${systemdStatus.active ? 'text-green-400' : 'text-red-400'}">${systemdStatus.active ? 'Running' : 'Stopped'}</span>
+          </div>
+          <div>
+            <span class="text-gray-400">PID:</span>
+            <span>${systemdStatus.pid || 'N/A'}</span>
+          </div>
+          <div>
+            <span class="text-gray-400">Protocol:</span>
+            <span class="text-blue-400 font-bold">${systemdStatus.protocol || 'auto'}</span>
+          </div>
+        </div>
+        ${systemdStatus.startTime ? `
+          <div class="bg-gray-700 rounded p-3">
+            <p class="text-gray-400 text-sm">Started: <span class="text-white">${systemdStatus.startTime}</span></p>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    // Local process tunnel info
+    if (data.tunnel && !systemdStatus.available) {
+      html += `
+        <div class="grid grid-cols-2 gap-2 mb-4">
+          <div>
+            <span class="text-gray-400">Type:</span>
+            <span class="text-blue-400 font-bold">Local Process</span>
+          </div>
+          <div>
+            <span class="text-gray-400">Status:</span>
+            <span class="${data.isReady ? 'text-green-400' : (data.processRunning ? 'text-yellow-400' : 'text-red-400')}">
+              ${data.isReady ? 'Connected' : (data.processRunning ? 'Starting' : 'Stopped')}
+            </span>
+          </div>
+          ${data.tunnel.name ? `
+            <div>
+              <span class="text-gray-400">Name:</span>
+              <span>${data.tunnel.name}</span>
+            </div>
+          ` : ''}
+          ${data.tunnel.tunnel_id ? `
+            <div>
+              <span class="text-gray-400">Tunnel ID:</span>
+              <code class="text-xs bg-gray-800 px-1 rounded">${data.tunnel.tunnel_id}</code>
+            </div>
+          ` : ''}
+          ${data.tunnel.domain ? `
+            <div>
+              <span class="text-gray-400">Domain:</span>
+              <code class="text-xs bg-gray-800 px-1 rounded">${data.tunnel.domain}</code>
+            </div>
+          ` : ''}
+          ${data.tunnel.local_port ? `
+            <div>
+              <span class="text-gray-400">Local Port:</span>
+              <span>${data.tunnel.local_port}</span>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // Auto-restart info
+    html += `
+      <div class="bg-gray-700 rounded p-3">
+        <p class="text-gray-400 text-sm">Auto-Restart: <span class="${data.autoRestart ? 'text-green-400' : 'text-red-400'}">${data.autoRestart ? 'Enabled' : 'Disabled'}</span></p>
+        ${data.restartCount > 0 ? `<p class="text-xs text-gray-500 mt-1">Restart attempts this session: ${data.restartCount}</p>` : ''}
+      </div>
+    `;
+
+    // Cloudflared binary info
+    if (data.cloudflared && data.cloudflared.installed) {
+      html += `
+        <div class="bg-gray-700 rounded p-3 mt-2">
+          <p class="text-gray-400 text-sm">Cloudflared Version: <span class="text-white">${data.cloudflared.version}</span></p>
+        </div>
+      `;
+    }
+
+    // Metrics endpoint info
+    html += `
+      <div class="bg-gray-700 rounded p-3 mt-2">
+        <p class="text-gray-400 text-sm">Metrics Endpoint: <code class="text-xs bg-gray-800 px-1 rounded">http://127.0.0.1:36500</code></p>
+      </div>
+    `;
+
+    infoEl.innerHTML = html || '<p class="text-gray-400">No tunnel configuration found</p>';
+  } catch (err) {
+    console.error("Config info error:", err);
+    infoEl.innerHTML = `<p class="text-red-400">Error: ${err.message}</p>`;
+  }
+}
+
+async function toggleAutoRestart() {
+  try {
+    const data = await api("/tunnel/status");
+    const currentStatus = data.autoRestart !== false;
+    const newStatus = !currentStatus;
+
+    await api("/tunnel/set-autorestart", {
+      method: "POST",
+      body: JSON.stringify({ enabled: newStatus })
+    });
+
+    await loadAutoRestartStatus();
+    alert(`Auto-restart ${newStatus ? 'enabled' : 'disabled'}`);
+  } catch (err) {
+    alert('Error: ' + err.message);
+  }
+}
+
+function formatNumber(num) {
+  if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+  if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+  return num.toString();
+}
+
 async function loadTunnelPage() {
   try {
     // First check if systemd service is available (Linux)
@@ -370,38 +787,73 @@ async function loadTunnelPage() {
       const statusColor = systemdStatus.active ? 'green' : 'red';
       const statusText = systemdStatus.active ? 'Active (Running)' : 'Stopped';
 
+      // Debounce: Only update UI if status is stable for 3 consecutive checks
+      tunnelStatusHistory.push(systemdStatus.active);
+      if (tunnelStatusHistory.length > MAX_TUNNEL_HISTORY) {
+        tunnelStatusHistory.shift();
+      }
+
+      const isStable = tunnelStatusHistory.length === MAX_TUNNEL_HISTORY &&
+        tunnelStatusHistory.every(status => status === systemdStatus.active);
+
+      if (!isStable && tunnelStatusHistory.length === MAX_TUNNEL_HISTORY) {
+        console.log("[Tunnel] Status unstable, skipping UI update");
+        return;
+      }
+
       // Build downtime info HTML
       let downtimeHtml = '';
       if (systemdStatus.downtime) {
         const dt = systemdStatus.downtime;
+        const downtimeCard = document.getElementById('tunnel-downtime-card');
+        const downtimeInfo = document.getElementById('tunnel-downtime-info');
+
+        // Show downtime card if there's info
+        if (downtimeCard) downtimeCard.style.display = 'block';
+
         downtimeHtml = `
-          <div class="bg-gray-700 rounded-lg p-4 mt-4">
-            <h5 class="font-bold mb-2 text-sm"><i class="fas fa-clock mr-2"></i>Downtime Tracking</h5>
-            <div class="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span class="text-gray-400">Current Downtime:</span>
-                <span class="${dt.isDown ? 'text-red-400 font-bold' : 'text-green-400'}">${dt.isDown ? formatDuration(dt.currentDowntimeSec) : 'Online'}</span>
-              </div>
-              <div>
-                <span class="text-gray-400">Total (Session):</span>
-                <span class="text-yellow-400">${formatDuration(dt.totalDowntimeSec)}</span>
-              </div>
+          <div class="grid grid-cols-2 gap-4 mb-4">
+            <div>
+              <span class="text-gray-400">Current Status:</span>
+              <span class="${dt.isDown ? 'text-red-400 font-bold' : 'text-green-400 font-bold'}">${dt.isDown ? 'DOWN' : 'ONLINE'}</span>
             </div>
-            ${dt.history && dt.history.length > 0 ? `
-              <div class="mt-3 pt-3 border-t border-gray-600">
-                <span class="text-xs text-gray-400">Recent Downtimes:</span>
-                <div class="mt-1 space-y-1">
-                  ${dt.history.slice(-3).reverse().map(h => `
-                    <div class="text-xs text-gray-300">
-                      <i class="fas fa-exclamation-triangle text-red-400 mr-1"></i>
-                      ${new Date(h.start).toLocaleTimeString()} - ${formatDuration(h.durationSec)}
-                    </div>
-                  `).join('')}
-                </div>
-              </div>
-            ` : ''}
+            <div>
+              <span class="text-gray-400">Current Downtime:</span>
+              <span class="${dt.isDown ? 'text-red-400' : 'text-green-400'}">${dt.isDown ? formatDuration(dt.currentDowntimeSec) : 'None'}</span>
+            </div>
+            <div>
+              <span class="text-gray-400">Total (Session):</span>
+              <span class="text-yellow-400">${formatDuration(dt.totalDowntimeSec)}</span>
+            </div>
+            <div>
+              <span class="text-gray-400">Events Count:</span>
+              <span class="text-blue-400">${dt.history ? dt.history.length : 0}</span>
+            </div>
           </div>
         `;
+
+        if (dt.history && dt.history.length > 0) {
+          downtimeHtml += `
+            <div class="border-t border-gray-600 pt-3 mt-3">
+              <h6 class="font-bold text-sm mb-2">Recent Downtime Events:</h6>
+              <div class="space-y-2 max-h-[200px] overflow-y-auto">
+                ${dt.history.slice(-10).reverse().map(h => `
+                  <div class="bg-gray-800 rounded p-2 text-sm">
+                    <div class="flex justify-between items-center mb-1">
+                      <span class="text-gray-400">${new Date(h.start).toLocaleString()}</span>
+                      <span class="text-red-400 font-bold">${formatDuration(h.durationSec)}</span>
+                    </div>
+                    <p class="text-xs text-gray-500">Duration: ${Math.floor(h.durationMs / 1000)} seconds</p>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        }
+
+        if (downtimeInfo) {
+          downtimeInfo.innerHTML = downtimeHtml;
+        }
       }
 
       document.getElementById("tunnel-info").innerHTML = `
@@ -417,7 +869,7 @@ async function loadTunnelPage() {
           <p><span class="text-gray-400">Protocol:</span> <strong class="text-blue-400">${systemdStatus.protocol || 'auto'}</strong></p>
           ${systemdStatus.startTime ? `<p><span class="text-gray-400">Started:</span> ${systemdStatus.startTime}</p>` : ''}
         </div>
-        
+
         <!-- Controls -->
         <div class="flex flex-wrap gap-2 mb-4">
           ${systemdStatus.active ? `
@@ -433,7 +885,7 @@ async function loadTunnelPage() {
             </button>
           `}
         </div>
-        
+
         <!-- Protocol Selector -->
         <div class="bg-gray-700 rounded-lg p-4">
           <h5 class="font-bold mb-2 text-sm">Change Protocol</h5>
@@ -444,9 +896,19 @@ async function loadTunnelPage() {
             <button onclick="setTunnelProtocol('auto')" class="px-3 py-1 rounded text-sm ${systemdStatus.protocol === 'auto' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}">Auto</button>
           </div>
         </div>
-        
+
         ${downtimeHtml}
       `;
+
+      // Update status badge
+      const statusBadge = document.getElementById('tunnel-status-badge');
+      if (statusBadge) {
+        statusBadge.textContent = systemdStatus.active ? 'Online' : 'Offline';
+        statusBadge.className = `text-xl font-bold ${systemdStatus.active ? 'text-green-400' : 'text-red-400'}`;
+      }
+
+      // Load metrics once
+      refreshTunnelMetrics();
       return;
     }
 
@@ -458,6 +920,21 @@ async function loadTunnelPage() {
 
     let tunnelHtml = "";
     if (data.tunnel) {
+      // Debounce: Track status for stability
+      const statusKey = `${data.processRunning}-${data.isReady}-${data.autoRestart}-${data.nextRetryIn}`;
+      tunnelStatusHistory.push(statusKey);
+      if (tunnelStatusHistory.length > MAX_TUNNEL_HISTORY) {
+        tunnelStatusHistory.shift();
+      }
+
+      const isStable = tunnelStatusHistory.length === MAX_TUNNEL_HISTORY &&
+        tunnelStatusHistory.every(s => s === statusKey);
+
+      if (!isStable && tunnelStatusHistory.length === MAX_TUNNEL_HISTORY) {
+        console.log("[Tunnel] Status unstable, skipping UI update");
+        return;
+      }
+
       // Determine status display
       let statusHtml = '';
       if (data.processRunning) {
@@ -512,7 +989,7 @@ async function loadTunnelPage() {
         <p><span class="text-gray-400">Domain:</span> ${data.tunnel.domain || "Not configured"}</p>
         <p><span class="text-gray-400">Local Port:</span> ${data.tunnel.local_port || "N/A"}</p>
         <div class="mt-2">
-           <span class="text-gray-400">Status:</span> 
+           <span class="text-gray-400">Status:</span>
            ${statusHtml}
         </div>
         ${downtimeHtml}
