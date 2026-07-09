@@ -2,12 +2,12 @@
 node_modules/
 
 # Ignore logs
-logs/
+/logs/
 *.log
 npm-debug.log*
 
 # Ignore database files
-data/
+/data/
 backend/database/
 *.db
 *.db-journal
