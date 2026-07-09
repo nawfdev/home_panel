@@ -2,17 +2,13 @@
 
 <div align="center">
 
-![Home Panel Logo](https://via.placeholder.com/200x200/1e293b/60a5fa?text=Home+Panel)
-
-**Enterprise-Grade Homelab Management Dashboard**
+**Homelab Management Dashboard**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8.svg)](https://go.dev/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-*Beautiful • Secure • Feature-Rich • Cross-Platform*
-
-[🚀 Quick Start](#-quick-start) • [📚 Documentation](docs/) • [🐛 Issues](https://github.com/yourusername/home-panel/issues) • [⭐ Star](https://github.com/yourusername/home-panel)
+[📚 Documentation](docs/) • [🐛 Issues](https://github.com/nawfdev/home_panel/issues)
 
 </div>
 
@@ -20,128 +16,60 @@
 
 ## ✨ What is Home Panel?
 
-Home Panel is a **powerful, all-in-one web dashboard** for managing your homelab infrastructure. Built with **security-first** principles and designed for both **Windows and Linux** servers.
-
-**Perfect for:**
-- 🏠 Home server enthusiasts
-- 💼 Small business IT
-- 🧪 Development environments
-- 🎓 Learning DevOps
+Home Panel is an all-in-one web dashboard for managing homelab infrastructure — Docker, PM2, systemd services, Cloudflare Tunnels, files, terminal, and system stats — from a single React frontend backed by a Go server. Runs on Windows or Linux.
 
 ---
 
 ## 🎯 Key Features
 
-<table>
-<tr>
-<td width="50%">
+- **Monitoring** — real-time CPU/memory/disk/network stats, temperature, battery, historical graphs, configurable alert thresholds
+- **Docker & PM2** — start/stop/restart, live logs, project export as ZIP
+- **Services** — manage systemd units (Linux) or Windows services
+- **Cloudflare** — tunnel status, ingress route editor, zone list, synced with the Cloudflare API
+- **Telegram** — status/error notifications and test messages
+- **Files** — browser-based file manager (view, edit, upload, download, delete)
+- **Terminal** — WebSocket shell with ANSI color output
+- **Projects** — manage arbitrary Node/script projects (start/stop/restart, ports, domains)
+- **Settings** — password change, integration tokens, service path overrides, self-update check
 
-### 📊 **Monitoring**
-- Real-time system stats
-- CPU, Memory, Disk, Network
-- Temperature sensors
-- Power/Battery status
-- Historical graphs
-- Customizable alerts
-
-</td>
-<td width="50%">
-
-### 🐳 **Container & Process**
-- Docker management
-- PM2 process control
-- Service manager (systemd/Windows)
-- Container logs
-- Resource limits
-- Auto-restart policies
-
-</td>
-</tr>
-<tr>
-<td>
-
-### 📁 **File Management**
-- Web-based file browser
-- Upload & download
-- Text editor
-- Delete & rename
-- Safe path restrictions
-- 10MB upload limit
-
-</td>
-<td>
-
-### 💻 **Terminal**
-- Browser-based shell
-- Command execution
-- Auto-reconnect
-- Command history
-- Output streaming
-- Dangerous command blocking
-
-</td>
-</tr>
-</table>
-
-### **Advanced Features**
-- 📈 **Historical Graphs** - CPU & Memory usage over time with Chart.js
-- 🔔 **Smart Alerts** - Configurable thresholds with Telegram notifications
-- 📝 **Centralized Logs** - View logs from Panel, Docker, PM2 in one place
-- 🌐 **Network Monitor** - Real-time bandwidth, IP addresses, connections
-- 🔋 **Power Monitoring** - Battery status & charging state
-- ☁️ **Cloudflare Integration** - **[NEW]** Sync Tunnels & DNS directly from Cloudflare API
-- 🔄 **Auto-Sync** - Real-time status of Cloudflare Tunnels (Online/Down)
-
-### **Security & Reliability** ⭐
-- ✅ Rate limiting (API & login)
-- ✅ Input validation & sanitization
-- ✅ Path traversal protection
-- ✅ Command injection prevention
-- ✅ Session security (bcrypt)
-- ✅ Audit logging
-- ✅ Helmet security headers
-
-**Security Score: 9/10** ⭐
+### Security & Reliability
+- Rate limiting (API & login)
+- Path traversal / command injection protections
+- bcrypt-hashed sessions and passwords
+- Graceful shutdown (stops spawned tunnel/project processes cleanly on restart)
 
 ---
 
 ## 🚀 Quick Start
 
-### Installation
-
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/home-panel.git
-cd home-panel
+git clone https://github.com/nawfdev/home_panel.git
+cd home_panel
 
-# Start the Go backend
+# Backend config (copy examples, then fill in your own values)
+cp config/config.example.json config/config.json
+cp config/settings.example.json config/settings.json
+
+# Build the frontend once (backend serves fe/dist by default)
+cd fe && npm install && npm run build && cd ..
+
+# Run the backend
 npm start
-
-# Or run directly
-cd go-backend
-go run ./cmd/homepanel
+# or: cd be && go run ./cmd/homepanel
 ```
 
 **Access:** http://localhost:9689
 
-**Default Login:**
-- Username: `admin`
-- Password: `SecurePass2026!`
-
-⚠️ **Change password immediately!**
+First login uses whatever `defaultAdmin` you set in `config/config.json` — **set a real password there before first boot**, then change it again from the Settings page once logged in.
 
 ---
 
 ## 📸 Screenshots
 
-### Dashboard
-![Dashboard](https://via.placeholder.com/800x450/1e293b/60a5fa?text=Dashboard+Screenshot)
-
-### Docker Management
-![Docker](https://via.placeholder.com/800x450/1e293b/60a5fa?text=Docker+Screenshot)
-
-### Web Terminal
-![Terminal](https://via.placeholder.com/800x450/1e293b/60a5fa?text=Terminal+Screenshot)
+![Dashboard](docs/screenshots/dashboard.png)
+![Docker](docs/screenshots/docker.png)
+![Cloudflare](docs/screenshots/cloudflare.png)
+![Settings](docs/screenshots/settings.png)
 
 ---
 
@@ -158,30 +86,25 @@ go run ./cmd/homepanel
 
 ## ⚙️ Configuration
 
-### Basic Setup
+Two files under `config/` hold live secrets and are **git-ignored** — copy the `.example.json` versions and fill them in yourself, never commit the real ones:
 
-Edit `config/config.json`:
+- `config/config.json` — server port/host, session secret, default admin credentials, alert thresholds
+- `config/settings.json` — Cloudflare API token, Telegram bot token, service path overrides
 
-```json
-{
-  "server": { "port": 9689, "host": "0.0.0.0" },
-  "session": { "secret": "your-random-secret" },
-  "alerts": {
-    "cpu": { "warning": 80, "critical": 90 },
-    "memory": { "warning": 75, "critical": 90 }
-  }
-}
+`HOMEPANEL_ROOT` and `HOMEPANEL_FRONTEND_DIR` env vars can override the repo root and frontend directory if you're not running from a standard checkout layout.
+
+---
+
+## 📁 Project Structure
+
 ```
-
-### Environment Variables
-
-Copy `.env.example` to `.env`:
-
-```bash
-cp .env.example .env
+home_panel/
+├── be/           # Go backend (cmd/homepanel, internal/*)
+├── fe/           # React + Vite + Tailwind frontend
+├── config/       # Runtime config (git-ignored) + .example.json templates
+├── data/         # JSON data store (git-ignored)
+└── docs/         # Setup guides
 ```
-
-Edit `.env` for production secrets.
 
 ---
 
@@ -190,10 +113,10 @@ Edit `.env` for production secrets.
 | Component | Technology |
 |-----------|------------|
 | **Backend** | Go + chi |
-| **Frontend** | Vanilla JS + Tailwind CSS |
+| **Frontend** | React + Vite + TypeScript + Tailwind CSS |
+| **Icons** | Heroicons |
 | **Database** | JSON file-based |
 | **Charts** | Chart.js |
-| **Icons** | Font Awesome |
 | **Container** | Docker CLI |
 | **Process** | PM2 CLI |
 | **System** | gopsutil |
@@ -205,22 +128,22 @@ Edit `.env` for production secrets.
 
 ### For Production:
 
-1. **HTTPS** - Use reverse proxy (Nginx/Caddy)
-2. **Firewall** - Restrict to trusted IPs
-3. **Passwords** - Change defaults immediately
-4. **env** - Use `.env` for secrets
-5. **Updates** - Keep dependencies current
+1. **HTTPS** — use a reverse proxy (Nginx/Caddy) or a Cloudflare Tunnel
+2. **Firewall** — restrict the panel port to trusted IPs
+3. **Passwords** — set a strong `defaultAdmin` password before first boot, rotate it again after
+4. **Secrets** — only `config/*.json` (not `*.example.json`) hold real tokens; never commit them
+5. **Updates** — use the Settings → Updates tab or `git pull` + rebuild
 
-**Example Nginx Config:**
+**Example Nginx config:**
 
 ```nginx
 server {
     listen 443 ssl;
     server_name panel.yourdomain.com;
-    
+
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
-    
+
     location / {
         proxy_pass http://localhost:9689;
         proxy_http_version 1.1;
@@ -230,86 +153,45 @@ server {
 }
 ```
 
-### **Cloudflare API Integration** (New!)
+### Cloudflare API Integration
 
-1. Go to Panel **Settings** page.
-2. Enter your **Cloudflare API Token** (Permissions: `Zone:Read`, `Tunnel:Read`).
-3. Click **Save & Verify**.
-4. Your Tunnels list will now auto-sync with Cloudflare!
+1. Go to the panel's **Settings → Integrations** tab.
+2. Enter your Cloudflare API Token (permissions: `Zone:Read`, `Tunnel:Read`).
+3. Click **Save & verify connection**.
+4. The Cloudflare page will now show live tunnels and zones.
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+**Port 9689 already in use?** Change it in `config/config.json`.
 
-**Q: Port 9689 already in use?**  
-A: Change port in `config/config.json`
+**Terminal won't connect?** Check the WebSocket isn't blocked by a proxy, and that you're logged in.
 
-**Q: Terminal won't connect?**  
-A: Check WebSocket isn't blocked, verify authentication
+**Permission denied on Linux (Docker)?** Add your user to the docker group: `sudo usermod -aG docker $USER`.
 
-**Q: Permission denied on Linux?**  
-A: Add user to docker group: `sudo usermod -aG docker $USER`
-
-**Q: Upload fails?**  
-A: Check disk space & file size (<10MB)
+**Upload fails?** Check disk space and file size (10MB limit).
 
 ---
 
 ## 🤝 Contributing
 
-We love contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-**Ways to contribute:**
-- 🐛 Report bugs
-- 💡 Suggest features
-- 📝 Improve docs
-- 🔧 Submit PRs
-
----
-
-## 📊 Project Stats
-
-- **Total Features:** 20+
-- **Security Score:** 9/10
-- **Cross-Platform:** Windows & Linux
-- **Dependencies:** Minimal & secure
-- **Bundle Size:** ~10MB (with deps)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ---
 
 ## 📜 License
 
-[MIT License](LICENSE) - Free & Open Source
-
----
-
-## 🌟 Support
-
-- **⭐ Star** this repo if you find it useful
-- **🐛 Report** bugs via Issues
-- **💬 Discuss** in GitHub Discussions
-- **🔔 Watch** for updates
+[MIT License](LICENSE)
 
 ---
 
 ## 🙏 Acknowledgments
 
-Built with ❤️ using:
+Built with:
 - [chi](https://github.com/go-chi/chi)
 - [gopsutil](https://github.com/shirou/gopsutil)
+- [React](https://react.dev/) + [Vite](https://vitejs.dev/)
 - [Tailwind CSS](https://tailwindcss.com/)
+- [Heroicons](https://heroicons.com/)
 - [Chart.js](https://www.chartjs.org/)
-
----
-
-<div align="center">
-
-**Made for the Homelab Community** 🏠
-
-[Report Bug](https://github.com/yourusername/home-panel/issues) • [Request Feature](https://github.com/yourusername/home-panel/issues) • [Documentation](docs/)
-
-**⭐ Don't forget to star the repo!**
-
-</div>
