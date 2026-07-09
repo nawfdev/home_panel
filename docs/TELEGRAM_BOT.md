@@ -218,7 +218,7 @@ Bot akan **gracefully handle** service yang tidak tersedia tanpa crash.
 
 Bot melakukan pengecekan status tunnel setiap **30 detik**.
 
-Untuk mengubah interval, edit `go-backend/internal/telegram/telegram.go` lalu rebuild
+Untuk mengubah interval, edit `be/internal/telegram/telegram.go` lalu rebuild
 (`go build ./...`).
 
 ## 🔄 Auto-Restart Bot
@@ -236,7 +236,7 @@ Bot akan otomatis restart jika crash.
 
 ### Menambah Command Baru atau Notifikasi Custom
 
-Edit `go-backend/internal/telegram/telegram.go` lalu rebuild (`go build ./...`).
+Edit `be/internal/telegram/telegram.go` lalu rebuild (`go build ./...`).
 
 ## 🆘 Support
 

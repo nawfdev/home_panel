@@ -69,7 +69,7 @@ Auto-restart **sudah aktif secara default**. Tidak perlu konfigurasi tambahan!
 
 ### Menonaktifkan Auto-Restart (Tidak disarankan)
 Jika Anda ingin menonaktifkan fitur ini, gunakan endpoint `POST /api/tunnel/set-autorestart`
-atau edit default-nya di `go-backend/internal/tunnel/tunnel.go` lalu rebuild.
+atau edit default-nya di `be/internal/tunnel/tunnel.go` lalu rebuild.
 
 ## 📊 Monitoring
 
