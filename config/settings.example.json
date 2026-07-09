@@ -1,0 +1,34 @@
+{
+  "cloudflare": {
+    "apiToken": "",
+    "accountId": ""
+  },
+  "telegram": {
+    "botToken": "",
+    "chatId": "YOUR_CHAT_ID_HERE",
+    "enableNotifications": true,
+    "commands": {
+      "status": true,
+      "docker": true,
+      "pm2": true,
+      "ip": true,
+      "restart": true,
+      "logs": true
+    }
+  },
+  "alerts": {
+    "enabled": true,
+    "cooldown": 300000,
+    "thresholds": {
+      "cpu": { "warning": 70, "critical": 85 },
+      "memory": { "warning": 75, "critical": 90 },
+      "disk": { "warning": 80, "critical": 90 },
+      "temperature": { "warning": 70, "critical": 85 }
+    }
+  },
+  "servicePaths": {
+    "pm2": "",
+    "docker": "",
+    "cloudflared": ""
+  }
+}
