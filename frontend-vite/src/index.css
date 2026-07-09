@@ -1,0 +1,367 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-gray-50: #fafafa;
+  --color-gray-100: #f4f4f5;
+  --color-gray-200: #e4e4e7;
+  --color-gray-300: #a1a1aa;
+  --color-gray-400: #71717a;
+  --color-gray-500: #52525b;
+  --color-gray-600: #3f3f46;
+  --color-gray-700: #27272a;
+  --color-gray-800: #18181b;
+  --color-gray-900: #0e0e10;
+  --color-gray-950: #09090b;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: #0a0a0b;
+  letter-spacing: -0.01em;
+}
+
+h1, h2, h3, h4 {
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.4);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+@layer components {
+  .brand-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #e4e4e7;
+    background: #18181b;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    flex-shrink: 0;
+  }
+
+  .brand-mark svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .brand-mark-sm {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+  }
+
+  .brand-mark-sm svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .panel {
+    background-color: #131316;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+  }
+
+  /* Minimal metric strip - large tabular number, quiet label, hairline dividers.
+     Deliberately no icon-in-colored-box: that pattern is the single most
+     recognizable "AI dashboard" cliche and is what we're moving away from. */
+  .metric-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    background-color: #131316;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 10px;
+  }
+
+  .metric-item {
+    padding: 18px 20px;
+    border-right: 1px solid rgba(255, 255, 255, 0.07);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  .metric-item:last-child {
+    border-right: none;
+  }
+
+  .metric-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #71717a;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .metric-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #fafafa;
+    font-variant-numeric: tabular-nums;
+    margin-top: 6px;
+    letter-spacing: -0.02em;
+  }
+
+  .metric-sub {
+    font-size: 0.75rem;
+    color: #71717a;
+    margin-top: 4px;
+  }
+
+  .metric-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  /* Row-style list item for secondary status data - replaces boxed icon cards */
+  .info-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 11px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .info-row:last-child {
+    border-bottom: none;
+  }
+
+  .info-row-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #a1a1aa;
+    font-size: 0.85rem;
+  }
+
+  .info-row-value {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #f4f4f5;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+
+  .status-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    color: #a1a1aa;
+    text-decoration: none;
+    border-radius: 8px;
+    margin-bottom: 1px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    position: relative;
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .nav-link svg {
+    width: 17px;
+    height: 17px;
+    flex-shrink: 0;
+  }
+
+  .nav-link:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #f4f4f5;
+  }
+
+  .nav-link.active {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fafafa;
+  }
+
+  .nav-link.active::before {
+    content: "";
+    position: absolute;
+    left: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 60%;
+    border-radius: 3px;
+    background: #f4f4f5;
+  }
+
+  .input-field {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid #27272a;
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #fafafa;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .input-field:hover {
+    border-color: #3f3f46;
+  }
+
+  .input-field:focus {
+    outline: none;
+    border-color: #71717a;
+    background: rgba(255, 255, 255, 0.045);
+  }
+
+  .btn-primary {
+    background: #fafafa;
+    color: #0e0e10;
+    font-weight: 600;
+    padding: 10px 16px;
+    border-radius: 8px;
+    transition: filter 0.15s, transform 0.1s;
+  }
+
+  .btn-primary:hover {
+    filter: brightness(0.92);
+  }
+
+  .btn-primary:active {
+    transform: scale(0.98);
+  }
+
+  .login-card {
+    background: #101012;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 14px;
+    padding: 2.25rem 2rem;
+  }
+
+  .section-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #a1a1aa;
+    margin-bottom: 0.75rem;
+  }
+
+  .section-heading svg {
+    width: 15px;
+    height: 15px;
+    color: #71717a;
+  }
+
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+    margin-bottom: 1.25rem;
+  }
+
+  .tab-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 4px;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+    color: #71717a;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: color 0.15s, border-color 0.15s;
+  }
+
+  .tab-btn svg {
+    width: 15px;
+    height: 15px;
+  }
+
+  .tab-btn:hover {
+    color: #d4d4d8;
+  }
+
+  .tab-btn.active {
+    color: #fafafa;
+    border-bottom-color: #fafafa;
+  }
+
+  .btn-secondary {
+    background: rgba(255, 255, 255, 0.06);
+    color: #f4f4f5;
+    font-weight: 500;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  .btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .btn-secondary:active {
+    transform: scale(0.98);
+  }
+
+  .btn-danger {
+    background: rgba(239, 68, 68, 0.12);
+    color: #f87171;
+    font-weight: 500;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  .btn-danger:hover {
+    background: rgba(239, 68, 68, 0.2);
+  }
+
+  .btn-danger:active {
+    transform: scale(0.98);
+  }
+}

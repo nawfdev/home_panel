@@ -5,40 +5,70 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Home Panel - Server Management</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind = { config: {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+          },
+          colors: {
+            gray: {
+              50: '#f6f4f1', 100: '#eae5dd', 200: '#d3cbbe', 300: '#a99e8d',
+              400: '#93887a', 500: '#7a6f61', 600: '#544b40',
+              700: '#382f27', 800: '#221c17', 900: '#15100d', 950: '#0b0807',
+            },
+            orange: {
+              50: '#fbf3ea', 100: '#f3e0c8', 200: '#e7c093', 300: '#dba15f',
+              400: '#d1883f', 500: '#c67a30', 600: '#a8611f', 700: '#824c19',
+            },
+          },
+        },
+      },
+    }};
+  </script>
   <script src="/css/tailwind.min.js"></script>
   <link rel="stylesheet" href="/css/fontawesome.min.css">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 
-<body class="bg-gray-900 text-white min-h-screen">
+<body class="bg-gray-900 text-white min-h-screen font-sans antialiased">
+  <div class="grain-overlay"></div>
   <!-- Login Page -->
-  <div id="login-page" class="min-h-screen flex items-center justify-center">
-    <div class="bg-gray-800 p-8 rounded-lg shadow-xl w-full max-w-md">
+  <div id="login-page" class="min-h-screen flex items-center justify-center relative overflow-hidden p-4">
+    <div class="ambient-orb ambient-orb-1"></div>
+    <div class="ambient-orb ambient-orb-2"></div>
+    <div class="login-card w-full max-w-md relative z-10">
       <div class="text-center mb-8">
-        <i class="fas fa-home text-5xl text-blue-400 mb-4"></i>
-        <h1 class="text-2xl font-bold">Home Panel</h1>
-        <p class="text-gray-400">Login to manage your server</p>
+        <div class="brand-mark mx-auto mb-5">
+          <i class="fas fa-server"></i>
+        </div>
+        <h1 class="text-2xl font-bold tracking-tight">Home Panel</h1>
+        <p class="text-gray-400 text-sm mt-1">Sign in to manage your server</p>
       </div>
       <form id="login-form">
         <div class="mb-4">
-          <label class="block text-gray-400 mb-2">Username</label>
-          <input type="text" id="username"
-            class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2 focus:outline-none focus:border-orange-500"
+          <label class="block text-gray-400 text-sm font-medium mb-2">Username</label>
+          <input type="text" id="username" autocomplete="username"
+            class="input-field w-full"
             required>
         </div>
-        <div class="mb-6">
-          <label class="block text-gray-400 mb-2">Password</label>
-          <input type="password" id="password"
-            class="w-full bg-gray-700 border border-gray-600 rounded px-4 py-2 focus:outline-none focus:border-orange-500"
+        <div class="mb-5">
+          <label class="block text-gray-400 text-sm font-medium mb-2">Password</label>
+          <input type="password" id="password" autocomplete="current-password"
+            class="input-field w-full"
             required>
         </div>
-        <div class="mb-4 flex items-center gap-2">
-          <input type="checkbox" id="remember-me" class="h-4 w-4">
+        <div class="mb-5 flex items-center gap-2">
+          <input type="checkbox" id="remember-me" class="h-4 w-4 accent-orange-500">
           <label for="remember-me" class="text-gray-400 text-sm">Remember me</label>
         </div>
-        <button type="submit"
-          class="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-2 px-4 rounded transition">Login</button>
-        <p id="login-error" class="text-red-500 text-center mt-4 hidden"></p>
+        <button type="submit" class="btn-primary w-full">Login</button>
+        <p id="login-error" class="text-red-400 text-sm text-center mt-4 hidden"></p>
       </form>
     </div>
   </div>
@@ -47,47 +77,51 @@
   <div id="main-panel" class="hidden">
     <!-- Mobile Header -->
     <header id="mobile-header"
-      class="fixed top-0 left-0 right-0 bg-gray-800 h-14 px-4 flex items-center justify-between z-30 md:hidden border-b border-gray-700">
+      class="fixed top-0 left-0 right-0 bg-gray-800/95 backdrop-blur-md h-14 px-3 flex items-center justify-between z-30 md:hidden border-b border-gray-700/80">
       <!-- Hamburger Menu -->
       <button type="button" id="hamburger-btn"
-        class="w-12 h-12 flex items-center justify-center text-gray-300 hover:text-white hover:bg-gray-700 rounded-lg active:bg-gray-600"
+        class="w-11 h-11 flex items-center justify-center text-gray-300 hover:text-white hover:bg-gray-700 rounded-xl active:scale-95 transition"
         onclick="toggleSidebar(true)">
-        <i class="fas fa-bars text-xl"></i>
+        <i class="fas fa-bars text-lg"></i>
       </button>
       <!-- Logo -->
-      <div class="flex items-center">
-        <i class="fas fa-home text-xl text-blue-400 mr-2"></i>
-        <span class="font-bold text-sm">Home Panel</span>
+      <div class="flex items-center gap-2">
+        <div class="brand-mark brand-mark-sm">
+          <i class="fas fa-server"></i>
+        </div>
+        <span class="font-bold text-sm tracking-tight">Home Panel</span>
       </div>
       <!-- Spacer -->
-      <div class="w-12"></div>
+      <div class="w-11"></div>
     </header>
 
     <!-- Sidebar Overlay -->
-    <div id="sidebar-overlay" class="fixed inset-0 bg-black/60 z-40 hidden md:hidden" onclick="toggleSidebar(false)">
+    <div id="sidebar-overlay" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden md:hidden" onclick="toggleSidebar(false)">
     </div>
 
     <!-- Sidebar -->
     <aside id="sidebar"
-      class="fixed left-0 top-0 h-full w-64 bg-gray-800 shadow-xl z-50 transform -translate-x-full md:translate-x-0 transition-transform duration-300">
-      <div class="p-4 border-b border-gray-700">
+      class="fixed left-0 top-0 h-full w-64 bg-gray-800 shadow-2xl z-50 transform -translate-x-full md:translate-x-0 transition-transform duration-300 flex flex-col border-r border-gray-700/60">
+      <div class="p-4 border-b border-gray-700/60">
         <div class="flex items-center justify-between">
-          <div class="flex items-center">
-            <i class="fas fa-home text-3xl text-blue-400 mr-3"></i>
+          <div class="flex items-center gap-3">
+            <div class="brand-mark">
+              <i class="fas fa-server"></i>
+            </div>
             <div>
-              <h1 class="font-bold">Home Panel</h1>
+              <h1 class="font-bold tracking-tight">Home Panel</h1>
               <p class="text-xs text-gray-400">Server Management</p>
             </div>
           </div>
           <!-- Close Button - Large touch target -->
           <button type="button" id="close-sidebar-btn"
-            class="w-12 h-12 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg active:bg-gray-600 md:hidden"
+            class="w-11 h-11 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700 rounded-xl active:scale-95 transition md:hidden"
             onclick="toggleSidebar(false)">
-            <i class="fas fa-times text-xl"></i>
+            <i class="fas fa-times text-lg"></i>
           </button>
         </div>
       </div>
-      <nav class="p-4 overflow-y-auto" style="max-height: calc(100vh - 140px);">
+      <nav class="p-3 overflow-y-auto flex-1">
         <a href="#" class="nav-link active" data-page="dashboard">
           <i class="fas fa-home w-6"></i> Dashboard
         </a>
@@ -131,31 +165,34 @@
           <i class="fas fa-cog w-6"></i> Settings
         </a>
       </nav>
-      <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-700">
-        <button id="logout-btn" class="w-full bg-red-600 hover:bg-red-700 text-white py-2 rounded transition">
+      <div class="p-3 border-t border-gray-700/60">
+        <button id="logout-btn" class="w-full bg-gray-700/60 hover:bg-red-600 text-gray-300 hover:text-white py-2.5 rounded-xl transition active:scale-[0.98] text-sm font-medium">
           <i class="fas fa-sign-out-alt mr-2"></i> Logout
         </button>
       </div>
     </aside>
 
     <!-- Content -->
-    <main class="md:ml-64 p-4 md:p-6 pt-20 md:pt-6">
+    <main class="md:ml-64 p-4 md:p-6 pt-20 md:pt-6 max-w-[1440px]">
       <!-- Dashboard Page -->
       <div id="page-dashboard" class="page">
-        <h2 class="text-2xl font-bold mb-6">Dashboard</h2>
+        <div class="page-header">
+          <h2>Dashboard</h2>
+          <p class="page-subtitle">Live overview of this host's health and services</p>
+        </div>
 
         <!-- Performance Graphs Section -->
         <div class="mb-6">
-          <h3 class="text-xl font-bold mb-4"><i class="fas fa-chart-line mr-2"></i>Performance Trends (24h)</h3>
+          <h3 class="section-heading"><i class="fas fa-chart-line"></i>Performance trends (24h)</h3>
           <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div class="bg-gray-800 rounded-lg p-4">
-              <h4 class="font-bold mb-3">CPU Usage</h4>
+            <div class="panel p-4">
+              <h4 class="font-semibold mb-3 text-sm text-gray-300">CPU Usage</h4>
               <div style="height: 200px;">
                 <canvas id="cpu-chart"></canvas>
               </div>
             </div>
-            <div class="bg-gray-800 rounded-lg p-4">
-              <h4 class="font-bold mb-3">Memory Usage</h4>
+            <div class="panel p-4">
+              <h4 class="font-semibold mb-3 text-sm text-gray-300">Memory Usage</h4>
               <div style="height: 200px;">
                 <canvas id="memory-chart"></canvas>
               </div>
@@ -163,95 +200,94 @@
           </div>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div class="stat-card bg-gray-800 rounded-lg p-4">
+          <div class="stat-card">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-gray-400 text-sm">CPU Usage</p>
-                <p class="text-2xl font-bold" id="cpu-usage">0%</p>
+                <p class="stat-label">CPU Usage</p>
+                <p class="stat-value font-mono" id="cpu-usage">0%</p>
               </div>
-              <i class="fas fa-microchip text-3xl text-blue-500"></i>
+              <div class="stat-icon stat-icon-blue"><i class="fas fa-microchip"></i></div>
             </div>
-            <div class="mt-2 bg-gray-700 rounded-full h-2">
-              <div class="bg-blue-500 h-2 rounded-full transition-all" id="cpu-bar" style="width: 0%"></div>
+            <div class="mt-3 bg-gray-700/60 rounded-full h-1.5">
+              <div class="bg-blue-500 h-1.5 rounded-full transition-all" id="cpu-bar" style="width: 0%"></div>
             </div>
           </div>
-          <div class="stat-card bg-gray-800 rounded-lg p-4">
+          <div class="stat-card">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-gray-400 text-sm">Memory Usage</p>
-                <p class="text-2xl font-bold" id="mem-usage">0%</p>
+                <p class="stat-label">Memory Usage</p>
+                <p class="stat-value font-mono" id="mem-usage">0%</p>
               </div>
-              <i class="fas fa-memory text-3xl text-green-500"></i>
+              <div class="stat-icon stat-icon-green"><i class="fas fa-memory"></i></div>
             </div>
-            <div class="mt-2 bg-gray-700 rounded-full h-2">
-              <div class="bg-green-500 h-2 rounded-full transition-all" id="mem-bar" style="width: 0%"></div>
+            <div class="mt-3 bg-gray-700/60 rounded-full h-1.5">
+              <div class="bg-green-500 h-1.5 rounded-full transition-all" id="mem-bar" style="width: 0%"></div>
             </div>
           </div>
-          <div class="stat-card bg-gray-800 rounded-lg p-4 cursor-pointer hover:bg-gray-750"
-            onclick="navigateTo('tunnel')">
+          <div class="stat-card cursor-pointer" onclick="navigateTo('tunnel')">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-gray-400 text-sm">Tunnel Status</p>
-                <p class="text-2xl font-bold" id="tunnel-status">Offline</p>
-                <p class="text-xs mt-1" id="tunnel-detail">Click to view details</p>
+                <p class="stat-label">Tunnel Status</p>
+                <p class="stat-value" id="tunnel-status">Offline</p>
+                <p class="text-xs mt-1 text-gray-500" id="tunnel-detail">Click to view details</p>
               </div>
               <div class="text-right">
-                <i class="fas fa-wifi text-3xl" id="tunnel-icon"></i>
-                <p class="text-xs mt-1" id="tunnel-auto-restart"></p>
+                <div class="stat-icon stat-icon-neutral"><i class="fas fa-wifi" id="tunnel-icon"></i></div>
+                <p class="text-xs mt-1 text-gray-500" id="tunnel-auto-restart"></p>
               </div>
             </div>
           </div>
-          <div class="stat-card bg-gray-800 rounded-lg p-4">
+          <div class="stat-card">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-gray-400 text-sm">Projects</p>
-                <p class="text-2xl font-bold"><span id="running-projects">0</span>/<span id="total-projects">0</span>
+                <p class="stat-label">Projects</p>
+                <p class="stat-value font-mono"><span id="running-projects">0</span><span class="text-gray-500">/</span><span id="total-projects">0</span>
                 </p>
               </div>
-              <i class="fas fa-cubes text-3xl text-purple-500"></i>
+              <div class="stat-icon stat-icon-purple"><i class="fas fa-cubes"></i></div>
             </div>
           </div>
 
-          <div class="stat-card bg-gray-800 rounded-lg p-4">
+          <div class="stat-card">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-gray-400 text-sm">CPU Temp</p>
-                <p class="text-2xl font-bold" id="cpu-temp">N/A</p>
+                <p class="stat-label">CPU Temp</p>
+                <p class="stat-value font-mono" id="cpu-temp">N/A</p>
               </div>
-              <i class="fas fa-thermometer-half text-3xl text-red-500"></i>
+              <div class="stat-icon stat-icon-red"><i class="fas fa-thermometer-half"></i></div>
             </div>
-            <div class="mt-2 text-xs text-gray-400" id="temp-status">Checking...</div>
+            <div class="mt-3 text-xs text-gray-500" id="temp-status">Checking...</div>
           </div>
 
-          <div class="stat-card bg-gray-800 rounded-lg p-4">
+          <div class="stat-card">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-gray-400 text-sm">Power</p>
-                <p class="text-2xl font-bold" id="power-status">AC</p>
+                <p class="stat-label">Power</p>
+                <p class="stat-value" id="power-status">AC</p>
               </div>
-              <i class="fas fa-plug text-3xl text-yellow-500" id="power-icon"></i>
+              <div class="stat-icon stat-icon-yellow"><i class="fas fa-plug" id="power-icon"></i></div>
             </div>
-            <div class="mt-2 text-xs text-gray-400" id="battery-info">AC Connected</div>
+            <div class="mt-3 text-xs text-gray-500" id="battery-info">AC Connected</div>
           </div>
 
-          <div class="stat-card bg-gray-800 rounded-lg p-4">
+          <div class="stat-card">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-gray-400 text-sm">System Uptime</p>
-                <p class="text-2xl font-bold" id="system-uptime">0d 0h 0m</p>
+                <p class="stat-label">System Uptime</p>
+                <p class="stat-value font-mono" id="system-uptime">0d 0h 0m</p>
               </div>
-              <i class="fas fa-clock text-3xl text-cyan-500"></i>
+              <div class="stat-icon stat-icon-cyan"><i class="fas fa-clock"></i></div>
             </div>
-            <div class="mt-2 text-xs text-gray-400" id="uptime-since">Since boot</div>
+            <div class="mt-3 text-xs text-gray-500" id="uptime-since">Since boot</div>
           </div>
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div class="bg-gray-800 rounded-lg p-4">
-            <h3 class="font-bold mb-4"><i class="fas fa-info-circle mr-2"></i>System Info</h3>
+          <div class="panel p-4">
+            <h3 class="font-semibold mb-4 text-sm text-gray-300"><i class="fas fa-info-circle mr-2 text-orange-500/80"></i>System Info</h3>
             <div id="system-info" class="space-y-2 text-sm">Loading...</div>
           </div>
-          <div class="bg-gray-800 rounded-lg p-4">
-            <h3 class="font-bold mb-4"><i class="fas fa-hdd mr-2"></i>Disk Usage</h3>
+          <div class="panel p-4">
+            <h3 class="font-semibold mb-4 text-sm text-gray-300"><i class="fas fa-hdd mr-2 text-orange-500/80"></i>Disk Usage</h3>
             <div id="disk-info" class="space-y-3">Loading...</div>
           </div>
         </div>
