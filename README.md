@@ -68,7 +68,6 @@ First login uses whatever `defaultAdmin` you set in `config/config.json` — **s
 
 ![Dashboard](docs/screenshots/dashboard.png)
 ![Docker](docs/screenshots/docker.png)
-![Cloudflare](docs/screenshots/cloudflare.png)
 ![Settings](docs/screenshots/settings.png)
 
 ---
