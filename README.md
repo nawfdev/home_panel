@@ -194,9 +194,9 @@ Edit `.env` for production secrets.
 | **Database** | JSON file-based |
 | **Charts** | Chart.js |
 | **Icons** | Font Awesome |
-| **Container** | dockerode |
-| **Process** | PM2 API |
-| **System** | systeminformation |
+| **Container** | Docker CLI |
+| **Process** | PM2 CLI |
+| **System** | gopsutil |
 | **Alerts** | Telegram Bot API |
 
 ---
