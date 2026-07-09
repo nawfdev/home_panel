@@ -1,6 +1,6 @@
 module github.com/kaysa/home-panel
 
-go 1.25
+go 1.24.0
 
 require (
 	github.com/go-chi/chi/v5 v5.1.0
