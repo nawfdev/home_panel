@@ -68,10 +68,8 @@ Jika bot Telegram sudah dikonfigurasi, Anda akan menerima notifikasi:
 Auto-restart **sudah aktif secara default**. Tidak perlu konfigurasi tambahan!
 
 ### Menonaktifkan Auto-Restart (Tidak disarankan)
-Jika Anda ingin menonaktifkan fitur ini, edit `backend/services/cloudflared.js`:
-```javascript
-let autoRestart = false; // Ubah dari true ke false
-```
+Jika Anda ingin menonaktifkan fitur ini, gunakan endpoint `POST /api/tunnel/set-autorestart`
+atau edit default-nya di `go-backend/internal/tunnel/tunnel.go` lalu rebuild.
 
 ## 📊 Monitoring
 

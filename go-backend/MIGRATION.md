@@ -2,8 +2,11 @@
 
 Goal: replace the Node/Express backend (`backend/`) with a Go server, keeping the
 **frontend** (`frontend/`), **config** (`config/config.json`), and **data store**
-(`data/db.json`) byte-compatible. Node code remains as reference and fallback via
-`npm run start:node`.
+(`data/db.json`) byte-compatible.
+
+Migration complete: the Node backend (`backend/`) and its dependencies have been
+removed. The Go server at `go-backend/` is the only backend, on both this repo and
+the deployed VPS (`homepanel-go.service`).
 
 ## Key facts discovered
 - The "database" is **not SQLite** despite `better-sqlite3` in package.json. It is a
