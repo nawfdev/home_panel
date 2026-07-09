@@ -218,11 +218,8 @@ Bot akan **gracefully handle** service yang tidak tersedia tanpa crash.
 
 Bot melakukan pengecekan status tunnel setiap **30 detik**.
 
-Untuk mengubah interval, edit `backend/services/telegram.js`:
-
-```javascript
-}, 30000); // 30 detik = 30000ms
-```
+Untuk mengubah interval, edit `go-backend/internal/telegram/telegram.go` lalu rebuild
+(`go build ./...`).
 
 ## 🔄 Auto-Restart Bot
 
@@ -237,29 +234,9 @@ Bot akan otomatis restart jika crash.
 
 ## 📝 Development
 
-### Menambah Command Baru
+### Menambah Command Baru atau Notifikasi Custom
 
-Edit `backend/services/telegram.js`:
-
-```javascript
-// Di function setupCommandHandlers()
-bot.onText(/\/mycommand/, async (msg) => {
-  const chatId = msg.chat.id;
-  await sendMessage(chatId, "Response untuk command saya!");
-});
-```
-
-### Menambah Notifikasi Custom
-
-```javascript
-const { sendNotification } = require("./services/telegram");
-
-// Kirim notifikasi
-await sendNotification(
-  "Custom notification message!",
-  "warning" // info, success, warning, error
-);
-```
+Edit `go-backend/internal/telegram/telegram.go` lalu rebuild (`go build ./...`).
 
 ## 🆘 Support
 

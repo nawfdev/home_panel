@@ -260,47 +260,222 @@
       <!-- Tunnel Page -->
       <div id="page-tunnel" class="page hidden">
         <h2 class="text-2xl font-bold mb-6">Cloudflare Tunnel</h2>
-        <div class="bg-gray-800 rounded-lg p-6 mb-6">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h3 class="font-bold">Tunnel Status</h3>
-              <p class="text-gray-400 text-sm">Cloudflared: <span id="cloudflared-version">Checking...</span></p>
+
+        <!-- Tab Navigation -->
+        <div class="flex gap-2 mb-6 border-b border-gray-700 pb-2">
+          <button onclick="switchTunnelTab('status')" class="tunnel-tab-btn px-4 py-2 rounded-t text-sm font-bold bg-blue-600 text-white" data-tab="status">
+            <i class="fas fa-signal mr-2"></i>Status
+          </button>
+          <button onclick="switchTunnelTab('metrics')" class="tunnel-tab-btn px-4 py-2 rounded-t text-sm font-bold bg-gray-700 text-gray-400 hover:bg-gray-600" data-tab="metrics">
+            <i class="fas fa-chart-line mr-2"></i>Metrics
+          </button>
+          <button onclick="switchTunnelTab('logs')" class="tunnel-tab-btn px-4 py-2 rounded-t text-sm font-bold bg-gray-700 text-gray-400 hover:bg-gray-600" data-tab="logs">
+            <i class="fas fa-terminal mr-2"></i>Logs
+          </button>
+          <button onclick="switchTunnelTab('settings')" class="tunnel-tab-btn px-4 py-2 rounded-t text-sm font-bold bg-gray-700 text-gray-400 hover:bg-gray-600" data-tab="settings">
+            <i class="fas fa-cog mr-2"></i>Settings
+          </button>
+        </div>
+
+        <!-- Status Tab -->
+        <div id="tunnel-tab-status" class="tunnel-tab-content">
+          <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="font-bold">Tunnel Status</h3>
+                <p class="text-gray-400 text-sm">Cloudflared: <span id="cloudflared-version">Checking...</span></p>
+              </div>
+              <div class="flex gap-2">
+                <button id="start-tunnel-btn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition">
+                  <i class="fas fa-play mr-2"></i>Start
+                </button>
+                <button id="stop-tunnel-btn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded transition">
+                  <i class="fas fa-stop mr-2"></i>Stop
+                </button>
+              </div>
             </div>
-            <div class="flex gap-2">
-              <button id="start-tunnel-btn" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded transition">
-                <i class="fas fa-play mr-2"></i>Start
-              </button>
-              <button id="stop-tunnel-btn" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded transition">
-                <i class="fas fa-stop mr-2"></i>Stop
-              </button>
+            <div id="tunnel-info" class="bg-gray-700 rounded p-4">
+              <p class="text-gray-400">Loading tunnel info...</p>
             </div>
           </div>
-          <div id="tunnel-info" class="bg-gray-700 rounded p-4">
-            <p class="text-gray-400">Loading tunnel info...</p>
+
+          <!-- Quick Stats -->
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-gray-800 rounded-lg p-4">
+              <p class="text-gray-400 text-sm">Status</p>
+              <p class="text-xl font-bold text-green-400" id="tunnel-status-badge">Unknown</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+              <p class="text-gray-400 text-sm">Active Connections</p>
+              <p class="text-xl font-bold" id="tunnel-connections">0</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+              <p class="text-gray-400 text-sm">Requests (Session)</p>
+              <p class="text-xl font-bold" id="tunnel-requests">0</p>
+            </div>
+            <div class="bg-gray-800 rounded-lg p-4">
+              <p class="text-gray-400 text-sm">Errors</p>
+              <p class="text-xl font-bold text-red-400" id="tunnel-errors">0</p>
+            </div>
+          </div>
+
+          <!-- Connection Regions -->
+          <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h4 class="font-bold mb-4"><i class="fas fa-globe mr-2"></i>Connections by Region</h4>
+            <div id="tunnel-regions" class="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <p class="text-gray-400 text-sm">Loading regions...</p>
+            </div>
+          </div>
+
+          <!-- Downtime Info -->
+          <div class="bg-gray-800 rounded-lg p-6" id="tunnel-downtime-card" style="display: none;">
+            <h4 class="font-bold mb-4"><i class="fas fa-clock mr-2"></i>Downtime Information</h4>
+            <div id="tunnel-downtime-info" class="space-y-3">
+              <!-- Filled dynamically -->
+            </div>
           </div>
         </div>
-        <div class="bg-gray-800 rounded-lg p-6">
-          <h3 class="font-bold mb-4">Create/Configure Tunnel</h3>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div>
-              <label class="block text-gray-400 mb-2 text-sm">Tunnel Name</label>
-              <input type="text" id="tunnel-name" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
-                placeholder="my-tunnel">
+
+        <!-- Metrics Tab -->
+        <div id="tunnel-tab-metrics" class="tunnel-tab-content hidden">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div class="bg-gray-800 rounded-lg p-6">
+              <h4 class="font-bold mb-4"><i class="fas fa-download mr-2"></i>Ingress (Incoming)</h4>
+              <p class="text-3xl font-bold text-green-400" id="tunnel-bytes-in">0 B</p>
+              <p class="text-xs text-gray-400 mt-2">Data received from clients</p>
             </div>
-            <div>
-              <label class="block text-gray-400 mb-2 text-sm">Domain</label>
-              <input type="text" id="tunnel-domain" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
-                placeholder="panel.example.com">
-            </div>
-            <div>
-              <label class="block text-gray-400 mb-2 text-sm">Local Port</label>
-              <input type="number" id="tunnel-port" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
-                placeholder="3000" value="3000">
+            <div class="bg-gray-800 rounded-lg p-6">
+              <h4 class="font-bold mb-4"><i class="fas fa-upload mr-2"></i>Egress (Outgoing)</h4>
+              <p class="text-3xl font-bold text-blue-400" id="tunnel-bytes-out">0 B</p>
+              <p class="text-xs text-gray-400 mt-2">Data sent to clients</p>
             </div>
           </div>
-          <button id="create-tunnel-btn" class="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded transition">
-            <i class="fas fa-plus mr-2"></i>Create Tunnel
-          </button>
+
+          <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h4 class="font-bold mb-4"><i class="fas fa-server mr-2"></i>Tunnel Health</h4>
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div class="bg-gray-700 rounded p-3">
+                <p class="text-gray-400 text-sm">Total Connections</p>
+                <p class="text-lg font-bold" id="metrics-total-connections">0</p>
+              </div>
+              <div class="bg-gray-700 rounded p-3">
+                <p class="text-gray-400 text-sm">Total Requests</p>
+                <p class="text-lg font-bold" id="metrics-total-requests">0</p>
+              </div>
+              <div class="bg-gray-700 rounded p-3">
+                <p class="text-gray-400 text-sm">Total Errors</p>
+                <p class="text-lg font-bold text-red-400" id="metrics-total-errors">0</p>
+              </div>
+              <div class="bg-gray-700 rounded p-3">
+                <p class="text-gray-400 text-sm">Error Rate</p>
+                <p class="text-lg font-bold" id="metrics-error-rate">0%</p>
+              </div>
+              <div class="bg-gray-700 rounded p-3">
+                <p class="text-gray-400 text-sm">Uptime (seconds)</p>
+                <p class="text-lg font-bold text-green-400" id="metrics-uptime">0</p>
+              </div>
+              <div class="bg-gray-700 rounded p-3">
+                <p class="text-gray-400 text-sm">Metrics Updated</p>
+                <p class="text-lg font-bold text-gray-400" id="metrics-last-update">Never</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-gray-800 rounded-lg p-6">
+            <div class="flex justify-between items-center mb-4">
+              <h4 class="font-bold"><i class="fas fa-sync-alt mr-2"></i>Auto Refresh</h4>
+              <button onclick="refreshTunnelMetrics()" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm">
+                <i class="fas fa-sync mr-1"></i>Refresh Now
+              </button>
+            </div>
+            <p class="text-sm text-gray-400">Metrics are automatically refreshed every 5 seconds</p>
+          </div>
+        </div>
+
+        <!-- Logs Tab -->
+        <div id="tunnel-tab-logs" class="tunnel-tab-content hidden">
+          <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <div class="flex justify-between items-center mb-4">
+              <h4 class="font-bold"><i class="fas fa-terminal mr-2"></i>Recent Logs</h4>
+              <div class="flex gap-2">
+                <select id="log-limit" class="bg-gray-700 border border-gray-600 rounded px-3 py-1 text-sm">
+                  <option value="25">Last 25</option>
+                  <option value="50" selected>Last 50</option>
+                  <option value="100">Last 100</option>
+                  <option value="200">Last 200</option>
+                </select>
+                <button onclick="loadTunnelLogs()" class="bg-blue-600 hover:bg-blue-700 px-3 py-1 rounded text-sm">
+                  <i class="fas fa-sync mr-1"></i>Refresh
+                </button>
+              </div>
+            </div>
+            <div id="tunnel-logs" class="bg-gray-900 rounded p-4 max-h-[500px] overflow-y-auto font-mono text-xs">
+              <p class="text-gray-400">Loading logs...</p>
+            </div>
+          </div>
+
+          <div class="bg-gray-800 rounded-lg p-6">
+            <h4 class="font-bold mb-4"><i class="fas fa-info-circle mr-2"></i>Log Legend</h4>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div><span class="text-blue-400">●</span> Info</div>
+              <div><span class="text-yellow-400">●</span> Warning</div>
+              <div><span class="text-red-400">●</span> Error</div>
+              <div><span class="text-gray-400">●</span> Debug</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="tunnel-tab-settings" class="tunnel-tab-content hidden">
+          <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h4 class="font-bold mb-4"><i class="fas fa-sliders-h mr-2"></i>Auto-Restart Settings</h4>
+            <div class="flex items-center justify-between p-4 bg-gray-700 rounded">
+              <div>
+                <p class="font-bold">Enable Auto-Restart</p>
+                <p class="text-sm text-gray-400">Automatically restart tunnel if it crashes</p>
+              </div>
+              <button id="toggle-autorestart-btn" onclick="toggleAutoRestart()" class="px-4 py-2 rounded transition">
+                Loading...
+              </button>
+            </div>
+            <div class="mt-4 p-4 bg-gray-700 rounded">
+              <p class="text-sm text-gray-300">
+                <i class="fas fa-info-circle text-blue-400 mr-2"></i>
+                When enabled, tunnel will auto-restart with exponential backoff: 5s, 10s, 30s, 60s, 300s
+              </p>
+            </div>
+          </div>
+
+          <div class="bg-gray-800 rounded-lg p-6 mb-6">
+            <h4 class="font-bold mb-4"><i class="fas fa-network-wired mr-2"></i>Create/Configure Tunnel</h4>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label class="block text-gray-400 mb-2 text-sm">Tunnel Name</label>
+                <input type="text" id="tunnel-name" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
+                  placeholder="my-tunnel">
+              </div>
+              <div>
+                <label class="block text-gray-400 mb-2 text-sm">Domain</label>
+                <input type="text" id="tunnel-domain" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
+                  placeholder="panel.example.com">
+              </div>
+              <div>
+                <label class="block text-gray-400 mb-2 text-sm">Local Port</label>
+                <input type="number" id="tunnel-port" class="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2"
+                  placeholder="3000" value="3000">
+              </div>
+            </div>
+            <button id="create-tunnel-btn" class="bg-orange-500 hover:bg-orange-600 px-4 py-2 rounded transition">
+              <i class="fas fa-plus mr-2"></i>Create Tunnel
+            </button>
+          </div>
+
+          <div class="bg-gray-800 rounded-lg p-6">
+            <h4 class="font-bold mb-4"><i class="fas fa-info-circle mr-2"></i>Tunnel Information</h4>
+            <div id="tunnel-config-info" class="space-y-2 text-sm">
+              <p class="text-gray-400">Loading config info...</p>
+            </div>
+          </div>
         </div>
       </div>
 

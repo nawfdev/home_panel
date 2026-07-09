@@ -114,12 +114,12 @@ Home Panel is a **powerful, all-in-one web dashboard** for managing your homelab
 git clone https://github.com/yourusername/home-panel.git
 cd home-panel
 
-# Install dependencies
-cd backend
-npm install
-
-# Start the server
+# Start the Go backend
 npm start
+
+# Or run directly
+cd go-backend
+go run ./cmd/homepanel
 ```
 
 **Access:** http://localhost:9689
@@ -189,7 +189,7 @@ Edit `.env` for production secrets.
 
 | Component | Technology |
 |-----------|------------|
-| **Backend** | Node.js + Express |
+| **Backend** | Go + chi |
 | **Frontend** | Vanilla JS + Tailwind CSS |
 | **Database** | JSON file-based |
 | **Charts** | Chart.js |
