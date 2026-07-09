@@ -55,11 +55,15 @@ func ResolvePaths() Paths {
 	if err == nil {
 		root = abs
 	}
+	frontend := filepath.Join(root, "frontend")
+	if dir := os.Getenv("HOMEPANEL_FRONTEND_DIR"); dir != "" {
+		frontend = dir
+	}
 	return Paths{
 		Root:       root,
 		ConfigFile: filepath.Join(root, "config", "config.json"),
 		DataFile:   filepath.Join(root, "data", "db.json"),
-		Frontend:   filepath.Join(root, "frontend"),
+		Frontend:   frontend,
 	}
 }
 
