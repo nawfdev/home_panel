@@ -12,6 +12,10 @@ backend/database/
 *.db
 *.db-journal
 
+# Ignore runtime config (contains live secrets: API tokens, session secret, admin hash)
+config/config.json
+config/settings.json
+
 # Ignore environment variables
 .env
 .env.local

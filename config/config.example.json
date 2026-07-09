@@ -4,7 +4,7 @@
     "host": "0.0.0.0"
   },
   "session": {
-    "secret": "a7f9d8e6c5b4a3210fedcba9876543210abcdef1234567890fedcba987654321",
+    "secret": "GENERATE_A_RANDOM_SECRET_HERE",
     "maxAge": 86400000
   },
   "cloudflare": {
@@ -14,7 +14,7 @@
   },
   "defaultAdmin": {
     "username": "admin",
-    "password": "$2a$10$enO3LkEnNOu7XwZf0b93b.JXTINgFZ6Ick.rbosGN.Z3aroe.3oZu"
+    "password": "CHANGE_ME_ON_FIRST_LOGIN"
   },
   "telegram": {
     "botToken": "YOUR_BOT_TOKEN_HERE",
@@ -33,22 +33,10 @@
     "enabled": true,
     "cooldown": 300000,
     "thresholds": {
-      "cpu": {
-        "warning": 70,
-        "critical": 85
-      },
-      "memory": {
-        "warning": 75,
-        "critical": 90
-      },
-      "disk": {
-        "warning": 80,
-        "critical": 90
-      },
-      "temperature": {
-        "warning": 70,
-        "critical": 85
-      }
+      "cpu": { "warning": 70, "critical": 85 },
+      "memory": { "warning": 75, "critical": 90 },
+      "disk": { "warning": 80, "critical": 90 },
+      "temperature": { "warning": 70, "critical": 85 }
     }
   }
 }
