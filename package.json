@@ -2,9 +2,9 @@
   "name": "home-panel",
   "version": "1.0.0",
   "description": "Home Server Management Panel",
-  "main": "go-backend/cmd/homepanel/main.go",
+  "main": "be/cmd/homepanel/main.go",
   "scripts": {
-    "start": "cd go-backend && go run ./cmd/homepanel",
-    "dev": "cd go-backend && go run ./cmd/homepanel"
+    "start": "cd be && go run ./cmd/homepanel",
+    "dev": "cd be && go run ./cmd/homepanel"
   }
 }
