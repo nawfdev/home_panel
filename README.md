@@ -7,7 +7,7 @@
 **Enterprise-Grade Homelab Management Dashboard**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
+[![Go](https://img.shields.io/badge/Go-1.24+-00ADD8.svg)](https://go.dev/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 *Beautiful • Secure • Feature-Rich • Cross-Platform*
@@ -297,10 +297,10 @@ We love contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## 🙏 Acknowledgments
 
 Built with ❤️ using:
-- [Express.js](https://expressjs.com/)
+- [chi](https://github.com/go-chi/chi)
+- [gopsutil](https://github.com/shirou/gopsutil)
 - [Tailwind CSS](https://tailwindcss.com/)
 - [Chart.js](https://www.chartjs.org/)
-- [systeminformation](https://github.com/sebhildebrandt/systeminformation)
 
 ---
 
