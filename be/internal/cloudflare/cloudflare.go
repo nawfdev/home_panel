@@ -122,6 +122,25 @@ func (s *Service) do(ctx context.Context, method, path string, body any, out any
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
+// VerifyToken makes a live call to Cloudflare to confirm the stored API
+// token is still valid (e.g. hasn't been revoked from the dashboard).
+func (s *Service) VerifyToken(ctx context.Context) (bool, error) {
+	token, _ := s.setting()
+	if token == "" {
+		return false, fmt.Errorf("Cloudflare API Token not configured")
+	}
+	var out apiResponse[struct {
+		Status string `json:"status"`
+	}]
+	if err := s.do(ctx, http.MethodGet, "/user/tokens/verify", nil, &out); err != nil {
+		return false, err
+	}
+	if !out.Success {
+		return false, fmt.Errorf("%s", firstError(out.Errors, "Cloudflare API Token is invalid or has been revoked"))
+	}
+	return true, nil
+}
+
 func (s *Service) ListTunnels(ctx context.Context) ([]Tunnel, error) {
 	s.mu.Lock()
 	if s.tunnels != nil && time.Now().Before(s.tunnelsExpiry) {
