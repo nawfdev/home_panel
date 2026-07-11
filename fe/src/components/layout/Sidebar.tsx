@@ -17,6 +17,7 @@ import {
   CommandLineIcon,
   RectangleStackIcon,
   CpuChipIcon,
+  SparklesIcon,
   Cog6ToothIcon,
   ArrowLeftOnRectangleIcon,
   ServerIcon,
@@ -47,6 +48,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/terminal", label: "Terminal", icon: CommandLineIcon, live: true },
   { to: "/projects", label: "Projects", icon: RectangleStackIcon, live: true },
   { to: "/system", label: "System", icon: CpuChipIcon, live: true },
+  { to: "/ai-gateway", label: "AI Gateway", icon: SparklesIcon, live: true },
   { to: "/settings", label: "Settings", icon: Cog6ToothIcon, live: true },
 ];
 
@@ -83,7 +85,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 <ServerIcon />
               </div>
               <div>
-                <h1 className="font-bold tracking-tight text-sm">Home Panel</h1>
+                <h1 className="font-bold tracking-tight text-sm">Nestcore</h1>
                 <p className="text-xs text-gray-500">Server Management</p>
               </div>
             </div>
