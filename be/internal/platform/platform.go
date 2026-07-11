@@ -50,3 +50,7 @@ func ListServices(ctx context.Context) ([]ServiceInfo, error) { return listServi
 
 // IsWindows reports whether the host service manager is the Windows SCM.
 func IsWindows() bool { return isWindows() }
+
+// Reboot restarts the entire host machine (not just a managed unit/service).
+// Implemented in platform_linux.go and platform_windows.go.
+func Reboot(ctx context.Context) error { return reboot(ctx) }
