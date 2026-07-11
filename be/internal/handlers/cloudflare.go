@@ -12,6 +12,7 @@ import (
 )
 
 type cloudflareService interface {
+	VerifyToken(ctx context.Context) (bool, error)
 	ListTunnels(ctx context.Context) ([]cfapi.Tunnel, error)
 	ListZones(ctx context.Context) ([]cfapi.Zone, error)
 	GetTunnelConnections(ctx context.Context, tunnelID string) (cfapi.TunnelDetail, error)
@@ -28,12 +29,26 @@ type Cloudflare struct {
 
 func (c *Cloudflare) Status(w http.ResponseWriter, r *http.Request) {
 	cf := c.setting()
-	_, configured := cf["apiToken"].(string)
-	if configured {
-		configured = cf["apiToken"].(string) != ""
-	}
+	apiToken, _ := cf["apiToken"].(string)
+	configured := apiToken != ""
 	accountID, _ := cf["accountId"].(string)
-	httpx.JSON(w, http.StatusOK, map[string]any{"configured": configured, "accountId": accountID})
+
+	connected := false
+	connectError := ""
+	if configured {
+		var err error
+		connected, err = c.Svc.VerifyToken(r.Context())
+		if err != nil {
+			connectError = err.Error()
+		}
+	}
+
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"configured": configured,
+		"connected":  connected,
+		"error":      connectError,
+		"accountId":  accountID,
+	})
 }
 
 func (c *Cloudflare) ListTunnels(w http.ResponseWriter, r *http.Request) {
