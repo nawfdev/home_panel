@@ -89,6 +89,10 @@ func (linuxController) Restart(ctx context.Context, unit string) error {
 	return exec.CommandContext(ctx, "systemctl", "restart", unit).Run()
 }
 
+func reboot(ctx context.Context) error {
+	return exec.CommandContext(ctx, "systemctl", "reboot").Run()
+}
+
 func (linuxController) Logs(ctx context.Context, unit string, limit int) ([]LogEntry, error) {
 	if limit <= 0 {
 		limit = 50

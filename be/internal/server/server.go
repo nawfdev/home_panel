@@ -95,6 +95,7 @@ func New(d Deps) http.Handler {
 			sr.Get("/stats", system.Stats)
 			sr.Get("/processes", system.Processes)
 			sr.Post("/restart-panel", system.RestartPanel)
+			sr.Post("/reboot-host", system.RebootHost)
 		})
 
 		api.Route("/services", func(sr chi.Router) {

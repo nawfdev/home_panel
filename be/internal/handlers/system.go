@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strings"
@@ -80,6 +81,32 @@ func (s System) RestartPanel(w http.ResponseWriter, r *http.Request) {
 		} else {
 			_ = platform.Controller().Restart(ctx, name)
 		}
+	}()
+}
+
+// RebootHost restarts the entire host machine — every service here (panel
+// included) goes down until it comes back up. Requires an explicit
+// {"confirm": true} body so it can't be triggered by an empty/accidental POST.
+func (s System) RebootHost(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Confirm bool `json:"confirm"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if !body.Confirm {
+		httpx.JSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": "confirm must be true"})
+		return
+	}
+
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"message": "Rebooting the host now — everything here, including this panel, will be unreachable until it comes back up.",
+	})
+
+	go func() {
+		time.Sleep(700 * time.Millisecond) // let the response above actually reach the client first
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		_ = platform.Reboot(ctx)
 	}()
 }
 
