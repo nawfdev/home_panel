@@ -55,7 +55,7 @@ func New(d Deps) http.Handler {
 	r.Use(httpx.SecurityHeaders)
 
 	auth := &handlers.Auth{Store: d.Store, Sessions: d.Sessions}
-	system := handlers.System{}
+	system := handlers.System{Store: d.Store, PM2: d.PM2}
 	services := handlers.Services{}
 	metricsH := &handlers.Metrics{Collector: d.Metrics}
 	logsH := &handlers.Logs{Svc: d.Logs}
@@ -94,6 +94,7 @@ func New(d Deps) http.Handler {
 			sr.Use(auth.RequireAuth)
 			sr.Get("/stats", system.Stats)
 			sr.Get("/processes", system.Processes)
+			sr.Post("/restart-panel", system.RestartPanel)
 		})
 
 		api.Route("/services", func(sr chi.Router) {
@@ -169,6 +170,8 @@ func New(d Deps) http.Handler {
 			sr.Get("/paths", settingsH.GetPaths)
 			sr.Post("/paths", settingsH.SavePaths)
 			sr.Get("/paths/detect/{service}", settingsH.DetectPath)
+			sr.Get("/panel-service", settingsH.GetPanelService)
+			sr.Post("/panel-service", settingsH.SavePanelService)
 		})
 
 		api.Route("/telegram", func(tr chi.Router) {
