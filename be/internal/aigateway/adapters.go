@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
+	"time"
 )
 
 // Canonical wire format the proxy endpoint speaks: OpenAI's chat-completions
@@ -68,6 +70,118 @@ func callProvider(ctx context.Context, kind ProviderKind, baseURL, key string, r
 	default:
 		return callOpenAI(ctx, baseURL, key, req)
 	}
+}
+
+// listModels queries the provider's model-list endpoint. A successful call
+// doubles as a health/auth check (the key works and the provider is
+// reachable), so the UI uses it for both the online indicator and the model
+// dropdown. All three shapes normalize to a plain sorted []string of model IDs.
+func listModels(ctx context.Context, kind ProviderKind, baseURL, key string) ([]string, error) {
+	switch kind {
+	case KindAnthropic:
+		return listAnthropicModels(ctx, baseURL, key)
+	case KindGemini:
+		return listGeminiModels(ctx, baseURL, key)
+	default:
+		return listOpenAIModels(ctx, baseURL, key)
+	}
+}
+
+func doModelListGet(ctx context.Context, url string, headers map[string]string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return nil, &providerError{StatusCode: resp.StatusCode, Message: extractErrorMessage(raw, resp.StatusCode)}
+	}
+	return raw, nil
+}
+
+func listOpenAIModels(ctx context.Context, baseURL, key string) ([]string, error) {
+	raw, err := doModelListGet(ctx, strings.TrimRight(baseURL, "/")+"/models", map[string]string{
+		"Authorization": "Bearer " + key,
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("decode models response: %w", err)
+	}
+	models := make([]string, 0, len(out.Data))
+	for _, m := range out.Data {
+		if m.ID != "" {
+			models = append(models, m.ID)
+		}
+	}
+	sort.Strings(models)
+	return models, nil
+}
+
+func listAnthropicModels(ctx context.Context, baseURL, key string) ([]string, error) {
+	raw, err := doModelListGet(ctx, strings.TrimRight(baseURL, "/")+"/v1/models", map[string]string{
+		"x-api-key":         key,
+		"anthropic-version": "2023-06-01",
+	})
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("decode models response: %w", err)
+	}
+	models := make([]string, 0, len(out.Data))
+	for _, m := range out.Data {
+		if m.ID != "" {
+			models = append(models, m.ID)
+		}
+	}
+	sort.Strings(models)
+	return models, nil
+}
+
+func listGeminiModels(ctx context.Context, baseURL, key string) ([]string, error) {
+	raw, err := doModelListGet(ctx, fmt.Sprintf("%s/v1beta/models?key=%s", strings.TrimRight(baseURL, "/"), key), nil)
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Models []struct {
+			Name string `json:"name"` // e.g. "models/gemini-1.5-pro"
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("decode models response: %w", err)
+	}
+	models := make([]string, 0, len(out.Models))
+	for _, m := range out.Models {
+		name := strings.TrimPrefix(m.Name, "models/")
+		if name != "" {
+			models = append(models, name)
+		}
+	}
+	sort.Strings(models)
+	return models, nil
 }
 
 // extractErrorMessage pulls a human-readable message out of a provider's

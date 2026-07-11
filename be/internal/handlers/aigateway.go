@@ -163,6 +163,18 @@ func (h *AiGateway) DeleteKey(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Key deleted"})
 }
 
+// ProviderStatus pings the provider's model-list endpoint: success means it's
+// reachable and the key is valid (online), and returns the available models.
+func (h *AiGateway) ProviderStatus(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	models, err := h.Svc.ProviderModels(r.Context(), id)
+	if err != nil {
+		httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "online": false, "error": err.Error(), "models": []string{}})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "online": true, "models": models})
+}
+
 // ---- Usage / cost dashboard ----
 
 func (h *AiGateway) Usage(w http.ResponseWriter, r *http.Request) {
