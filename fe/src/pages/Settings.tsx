@@ -222,7 +222,7 @@ export function Settings() {
         method: "POST",
       });
       if (data.success) {
-        show(`${data.message ?? "Update applied"} — restart the server to apply changes.`, "success", 8000);
+        show(data.message ?? "Update applied", "success", 10000);
       } else {
         show(data.error ?? "Update failed", "error");
       }

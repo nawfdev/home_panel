@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -14,6 +15,37 @@ import (
 	"github.com/kaysa/home-panel/internal/store"
 	"github.com/kaysa/home-panel/internal/sysstats"
 )
+
+// triggerPanelRestart looks up the panelService setting and restarts the
+// panel process in the background via the configured supervisor. Returns
+// triggered=false (no error) when nothing is configured yet, so callers can
+// fall back to telling the operator to restart manually.
+func triggerPanelRestart(st *store.Store, pm2Svc pm2Service) (triggered bool, err error) {
+	m := settingMap(st, "panelService")
+	manager := str(m, "manager")
+	name := strings.TrimSpace(str(m, "name"))
+	if manager == "" || name == "" {
+		return false, nil
+	}
+	if manager != "systemd" && manager != "pm2" {
+		return false, fmt.Errorf("unknown process manager: %s", manager)
+	}
+	if manager == "pm2" && pm2Svc == nil {
+		return false, fmt.Errorf("PM2 integration not available")
+	}
+
+	go func() {
+		time.Sleep(700 * time.Millisecond) // let the HTTP response reach the client first
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if manager == "pm2" {
+			_, _ = pm2Svc.Restart(ctx, name)
+		} else {
+			_ = platform.Controller().Restart(ctx, name)
+		}
+	}()
+	return true, nil
+}
 
 // System ports backend/routes/system.js.
 type System struct {
@@ -48,40 +80,22 @@ func (System) Processes(w http.ResponseWriter, r *http.Request) {
 // sent before the restart runs, since the process issuing "systemctl restart"
 // on itself may not survive long enough to answer the request otherwise.
 func (s System) RestartPanel(w http.ResponseWriter, r *http.Request) {
-	m := settingMap(s.Store, "panelService")
-	manager := str(m, "manager")
-	name := strings.TrimSpace(str(m, "name"))
-	if manager == "" || name == "" {
+	triggered, err := triggerPanelRestart(s.Store, s.PM2)
+	if err != nil {
+		httpx.JSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": err.Error()})
+		return
+	}
+	if !triggered {
 		httpx.JSON(w, http.StatusBadRequest, map[string]interface{}{
 			"success": false,
 			"error":   "Panel service is not configured yet. Set the process manager and service/process name in Settings first.",
 		})
 		return
 	}
-	if manager != "systemd" && manager != "pm2" {
-		httpx.JSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": "Unknown process manager: " + manager})
-		return
-	}
-	if manager == "pm2" && s.PM2 == nil {
-		httpx.JSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": "PM2 integration not available"})
-		return
-	}
-
 	httpx.JSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,
 		"message": "Restarting panel now — this page will disconnect for a few seconds.",
 	})
-
-	go func() {
-		time.Sleep(700 * time.Millisecond) // let the response above actually reach the client first
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		if manager == "pm2" {
-			_, _ = s.PM2.Restart(ctx, name)
-		} else {
-			_ = platform.Controller().Restart(ctx, name)
-		}
-	}()
 }
 
 // RebootHost restarts the entire host machine — every service here (panel
