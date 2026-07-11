@@ -62,6 +62,32 @@ function kindLabel(kind: ProviderKind) {
   return "Gemini";
 }
 
+// Official, publicly documented base URLs only — no auth tricks, no OAuth
+// session-borrowing. Base URLs match exactly what each adapter kind in
+// be/internal/aigateway/adapters.go appends its own path onto.
+interface ProviderPreset {
+  key: string;
+  label: string;
+  kind: ProviderKind;
+  baseUrl: string;
+  docsHint: string;
+}
+
+const CUSTOM_PRESET_KEY = "custom";
+
+const PROVIDER_PRESETS: ProviderPreset[] = [
+  { key: "openai", label: "OpenAI", kind: "openai", baseUrl: "https://api.openai.com/v1", docsHint: "Get a key: platform.openai.com/api-keys" },
+  { key: "anthropic", label: "Anthropic (Claude)", kind: "anthropic", baseUrl: "https://api.anthropic.com", docsHint: "Get a key: console.anthropic.com/settings/keys" },
+  { key: "gemini", label: "Google Gemini", kind: "gemini", baseUrl: "https://generativelanguage.googleapis.com", docsHint: "Get a key: aistudio.google.com/apikey" },
+  { key: "groq", label: "Groq", kind: "openai", baseUrl: "https://api.groq.com/openai/v1", docsHint: "Get a key: console.groq.com/keys" },
+  { key: "deepseek", label: "DeepSeek", kind: "openai", baseUrl: "https://api.deepseek.com/v1", docsHint: "Get a key: platform.deepseek.com/api_keys" },
+  { key: "openrouter", label: "OpenRouter", kind: "openai", baseUrl: "https://openrouter.ai/api/v1", docsHint: "Get a key: openrouter.ai/keys" },
+  { key: "mistral", label: "Mistral", kind: "openai", baseUrl: "https://api.mistral.ai/v1", docsHint: "Get a key: console.mistral.ai/api-keys" },
+  { key: "together", label: "Together AI", kind: "openai", baseUrl: "https://api.together.xyz/v1", docsHint: "Get a key: api.together.ai/settings/api-keys" },
+  { key: "xai", label: "xAI (Grok)", kind: "openai", baseUrl: "https://api.x.ai/v1", docsHint: "Get a key: console.x.ai" },
+  { key: CUSTOM_PRESET_KEY, label: "Custom / other (OpenAI-compatible)", kind: "openai", baseUrl: "", docsHint: "" },
+];
+
 function formatTime(ms?: number) {
   if (!ms) return "—";
   return new Date(ms).toLocaleString();
@@ -620,6 +646,20 @@ function ProviderFormModal({
   const [priority, setPriority] = useState(provider?.priority ?? 0);
   const [enabled, setEnabled] = useState(provider?.enabled ?? true);
   const [saving, setSaving] = useState(false);
+  const [presetKey, setPresetKey] = useState("");
+
+  function applyPreset(key: string) {
+    setPresetKey(key);
+    const preset = PROVIDER_PRESETS.find((p) => p.key === key);
+    if (!preset || preset.key === CUSTOM_PRESET_KEY) {
+      return;
+    }
+    setName(preset.label);
+    setKind(preset.kind);
+    setBaseUrl(preset.baseUrl);
+  }
+
+  const selectedPreset = PROVIDER_PRESETS.find((p) => p.key === presetKey);
 
   async function save() {
     if (!name || !baseUrl) {
@@ -653,6 +693,20 @@ function ProviderFormModal({
   return (
     <Modal title={provider ? "Edit provider" : "Add provider"} onClose={onClose}>
       <div className="space-y-3">
+        {!provider && (
+          <div>
+            <label className="block text-gray-500 text-xs mb-1.5">Quick fill</label>
+            <select value={presetKey} onChange={(e) => applyPreset(e.target.value)} className="input-field w-full">
+              <option value="">— pick a provider —</option>
+              {PROVIDER_PRESETS.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            {selectedPreset?.docsHint && <p className="text-xs text-gray-500 mt-1">{selectedPreset.docsHint}</p>}
+          </div>
+        )}
         <div>
           <label className="block text-gray-500 text-xs mb-1.5">Name</label>
           <input value={name} onChange={(e) => setName(e.target.value)} className="input-field w-full" placeholder="e.g. OpenAI primary" />
