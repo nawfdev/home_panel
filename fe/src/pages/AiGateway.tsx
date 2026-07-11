@@ -3,7 +3,8 @@ import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
 import { Modal } from "../components/ui/Modal";
-import { SparklesIcon, KeyIcon, ChartBarIcon, CurrencyDollarIcon, ScissorsIcon, PlusIcon, TrashIcon, PencilIcon } from "@heroicons/react/24/outline";
+import { SparklesIcon, KeyIcon, ChartBarIcon, CurrencyDollarIcon, ScissorsIcon, PlusIcon, TrashIcon, PencilIcon, Squares2X2Icon, ArrowPathIcon, CheckCircleIcon, ExclamationCircleIcon } from "@heroicons/react/24/outline";
+import { logoForBaseUrl, PRESET_LOGOS } from "./providerLogos";
 
 type ProviderKind = "openai" | "anthropic" | "gemini";
 
@@ -22,6 +23,12 @@ interface AiProviderView {
   priority: number;
   enabled: boolean;
   keys: AiKeyView[];
+}
+
+interface ProviderStatus {
+  online: boolean;
+  models: string[];
+  error?: string;
 }
 
 interface KeyUsage {
@@ -105,8 +112,13 @@ export function AiGateway() {
 
   const [providers, setProviders] = useState<AiProviderView[] | null>(null);
   const [providerModal, setProviderModal] = useState<AiProviderView | "new" | null>(null);
+  const [presetForModal, setPresetForModal] = useState<ProviderPreset | null>(null);
   const [keysModalProvider, setKeysModalProvider] = useState<AiProviderView | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [catalogOpen, setCatalogOpen] = useState(false);
+  // providerId -> live status (online + models or error), fetched on demand.
+  const [statuses, setStatuses] = useState<Record<string, ProviderStatus>>({});
+  const [checkingStatus, setCheckingStatus] = useState<Record<string, boolean>>({});
 
   const [usage, setUsage] = useState<UsageSnapshot | null>(null);
 
@@ -133,6 +145,23 @@ export function AiGateway() {
     } catch (err) {
       show(err instanceof Error ? err.message : "Failed to load providers", "error");
       setProviders([]);
+    }
+  }
+
+  async function checkStatus(providerId: string) {
+    setCheckingStatus((s) => ({ ...s, [providerId]: true }));
+    try {
+      const data = await api<{ success: boolean; online: boolean; models?: string[]; error?: string }>(
+        `/ai-gateway/providers/${providerId}/status`
+      );
+      setStatuses((s) => ({ ...s, [providerId]: { online: data.online, models: data.models ?? [], error: data.error } }));
+    } catch (err) {
+      setStatuses((s) => ({
+        ...s,
+        [providerId]: { online: false, models: [], error: err instanceof Error ? err.message : "Check failed" },
+      }));
+    } finally {
+      setCheckingStatus((s) => ({ ...s, [providerId]: false }));
     }
   }
 
@@ -315,51 +344,120 @@ export function AiGateway() {
         </Panel>
 
         <Panel title={`Providers${providers ? ` (${providers.length})` : ""}`} icon={SparklesIcon}>
-          <div className="flex justify-end mb-3">
-            <button className="btn-secondary" onClick={() => setProviderModal("new")}>
+          <div className="flex justify-end gap-2 mb-3">
+            <button className="btn-primary" onClick={() => setCatalogOpen(true)}>
+              <Squares2X2Icon className="w-4 h-4 inline mr-1.5" />
+              Browse catalog
+            </button>
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                setPresetForModal(null);
+                setProviderModal("new");
+              }}
+            >
               <PlusIcon className="w-4 h-4 inline mr-1.5" />
-              Add provider
+              Add manually
             </button>
           </div>
           {providers === null ? (
             <p className="text-sm text-gray-500">Loading...</p>
           ) : providers.length === 0 ? (
-            <p className="text-sm text-gray-500">No providers configured yet</p>
+            <p className="text-sm text-gray-500">No providers yet — browse the catalog to add one.</p>
           ) : (
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
               {[...providers]
                 .sort((a, b) => a.priority - b.priority)
-                .map((p) => (
-                  <div key={p.id} className="bg-white/5 rounded-lg p-4 flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-sm text-gray-100 truncate">{p.name}</span>
-                        <span className="status-badge bg-blue-500/15 text-blue-400">{kindLabel(p.kind)}</span>
-                        <span className={`status-badge ${p.enabled ? "bg-green-500/15 text-green-400" : "bg-gray-500/15 text-gray-400"}`}>
-                          {p.enabled ? "enabled" : "disabled"}
-                        </span>
+                .map((p) => {
+                  const Logo = logoForBaseUrl(p.baseUrl);
+                  const st = statuses[p.id];
+                  return (
+                    <div key={p.id} className="bg-white/5 rounded-xl p-4 flex flex-col gap-3">
+                      <div className="flex items-start gap-3">
+                        <div className="w-11 h-11 rounded-lg bg-white/5 flex items-center justify-center shrink-0">
+                          <Logo className="w-7 h-7" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm text-gray-100 truncate">{p.name}</span>
+                            <span className="status-badge bg-blue-500/15 text-blue-400">{kindLabel(p.kind)}</span>
+                            <span
+                              className={`status-badge ${p.enabled ? "bg-green-500/15 text-green-400" : "bg-gray-500/15 text-gray-400"}`}
+                            >
+                              {p.enabled ? "enabled" : "disabled"}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 font-mono truncate mt-1">{p.baseUrl}</p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Priority {p.priority} · {p.keys.length} key{p.keys.length === 1 ? "" : "s"}
+                          </p>
+                        </div>
                       </div>
-                      <p className="text-xs text-gray-500 font-mono truncate">{p.baseUrl}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        Priority {p.priority} · {p.keys.length} key{p.keys.length === 1 ? "" : "s"}
-                      </p>
+
+                      <div className="bg-black/20 rounded-lg px-3 py-2 text-xs">
+                        {checkingStatus[p.id] ? (
+                          <span className="text-gray-400">Checking…</span>
+                        ) : st ? (
+                          st.online ? (
+                            <div>
+                              <span className="text-green-400 inline-flex items-center gap-1">
+                                <CheckCircleIcon className="w-4 h-4" /> Online · {st.models.length} models
+                              </span>
+                              {st.models.length > 0 && (
+                                <div className="mt-1.5 max-h-20 overflow-y-auto flex flex-wrap gap-1">
+                                  {st.models.slice(0, 40).map((m) => (
+                                    <span key={m} className="font-mono text-[10px] bg-white/5 text-gray-400 rounded px-1.5 py-0.5">
+                                      {m}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-red-400 inline-flex items-center gap-1" title={st.error}>
+                              <ExclamationCircleIcon className="w-4 h-4 shrink-0" />
+                              <span className="truncate">Offline{st.error ? ` — ${st.error}` : ""}</span>
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-gray-500">Status unknown</span>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2 flex-wrap">
+                        <button
+                          className="btn-secondary !py-1.5 !px-2.5 text-xs disabled:opacity-60"
+                          onClick={() => checkStatus(p.id)}
+                          disabled={checkingStatus[p.id]}
+                        >
+                          <ArrowPathIcon className="w-3.5 h-3.5 inline mr-1" />
+                          Check
+                        </button>
+                        <button className="btn-secondary !py-1.5 !px-2.5 text-xs" onClick={() => setKeysModalProvider(p)}>
+                          <KeyIcon className="w-3.5 h-3.5 inline mr-1" />
+                          Keys
+                        </button>
+                        <button
+                          className="btn-secondary !py-1.5 !px-2.5 text-xs"
+                          onClick={() => {
+                            setPresetForModal(null);
+                            setProviderModal(p);
+                          }}
+                        >
+                          <PencilIcon className="w-3.5 h-3.5 inline mr-1" />
+                          Edit
+                        </button>
+                        <button
+                          className="btn-danger !py-1.5 !px-2.5 text-xs"
+                          onClick={() => setDeleteTarget({ id: p.id, name: p.name })}
+                        >
+                          <TrashIcon className="w-3.5 h-3.5 inline mr-1" />
+                          Delete
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex gap-2 shrink-0">
-                      <button className="btn-secondary" onClick={() => setKeysModalProvider(p)}>
-                        <KeyIcon className="w-4 h-4 inline mr-1.5" />
-                        Keys
-                      </button>
-                      <button className="btn-secondary" onClick={() => setProviderModal(p)}>
-                        <PencilIcon className="w-4 h-4 inline mr-1.5" />
-                        Edit
-                      </button>
-                      <button className="btn-danger" onClick={() => setDeleteTarget({ id: p.id, name: p.name })}>
-                        <TrashIcon className="w-4 h-4 inline mr-1.5" />
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           )}
         </Panel>
@@ -589,12 +687,47 @@ export function AiGateway() {
         </Modal>
       )}
 
+      {catalogOpen && (
+        <Modal title="Provider catalog" onClose={() => setCatalogOpen(false)} wide>
+          <p className="text-xs text-gray-500 mb-4">
+            Pick a provider to pre-fill its base URL — you'll add your own API key next. All use official documented
+            API endpoints; keys are never obtained via OAuth or borrowed subscriptions.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {PROVIDER_PRESETS.map((preset) => {
+              const Logo = PRESET_LOGOS[preset.key] ?? PRESET_LOGOS.custom;
+              return (
+                <button
+                  key={preset.key}
+                  className="bg-white/5 hover:bg-white/10 rounded-xl p-4 flex flex-col items-center gap-2 text-center transition active:scale-95"
+                  onClick={() => {
+                    setPresetForModal(preset.key === CUSTOM_PRESET_KEY ? null : preset);
+                    setCatalogOpen(false);
+                    setProviderModal("new");
+                  }}
+                >
+                  <div className="w-12 h-12 rounded-lg bg-white/5 flex items-center justify-center">
+                    <Logo className="w-8 h-8" />
+                  </div>
+                  <span className="text-xs text-gray-200 font-medium leading-tight">{preset.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </Modal>
+      )}
+
       {providerModal && (
         <ProviderFormModal
           provider={providerModal === "new" ? undefined : providerModal}
-          onClose={() => setProviderModal(null)}
+          preset={presetForModal}
+          onClose={() => {
+            setProviderModal(null);
+            setPresetForModal(null);
+          }}
           onSaved={() => {
             setProviderModal(null);
+            setPresetForModal(null);
             loadProviders();
           }}
         />
@@ -632,31 +765,33 @@ export function AiGateway() {
 
 function ProviderFormModal({
   provider,
+  preset,
   onClose,
   onSaved,
 }: {
   provider?: AiProviderView;
+  preset?: ProviderPreset | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { show } = useToast();
-  const [name, setName] = useState(provider?.name ?? "");
-  const [kind, setKind] = useState<ProviderKind>(provider?.kind ?? "openai");
-  const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? "");
+  const [name, setName] = useState(provider?.name ?? preset?.label ?? "");
+  const [kind, setKind] = useState<ProviderKind>(provider?.kind ?? preset?.kind ?? "openai");
+  const [baseUrl, setBaseUrl] = useState(provider?.baseUrl ?? preset?.baseUrl ?? "");
   const [priority, setPriority] = useState(provider?.priority ?? 0);
   const [enabled, setEnabled] = useState(provider?.enabled ?? true);
   const [saving, setSaving] = useState(false);
-  const [presetKey, setPresetKey] = useState("");
+  const [presetKey, setPresetKey] = useState(preset?.key ?? "");
 
   function applyPreset(key: string) {
     setPresetKey(key);
-    const preset = PROVIDER_PRESETS.find((p) => p.key === key);
-    if (!preset || preset.key === CUSTOM_PRESET_KEY) {
+    const p = PROVIDER_PRESETS.find((pp) => pp.key === key);
+    if (!p || p.key === CUSTOM_PRESET_KEY) {
       return;
     }
-    setName(preset.label);
-    setKind(preset.kind);
-    setBaseUrl(preset.baseUrl);
+    setName(p.label);
+    setKind(p.kind);
+    setBaseUrl(p.baseUrl);
   }
 
   const selectedPreset = PROVIDER_PRESETS.find((p) => p.key === presetKey);

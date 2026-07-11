@@ -205,6 +205,7 @@ func New(d Deps) http.Handler {
 			gr.Delete("/providers/{id}", aigatewayH.DeleteProvider)
 			gr.Post("/providers/{id}/keys", aigatewayH.AddKey)
 			gr.Delete("/providers/{id}/keys/{keyId}", aigatewayH.DeleteKey)
+			gr.Get("/providers/{id}/status", aigatewayH.ProviderStatus)
 			gr.Get("/usage", aigatewayH.Usage)
 			gr.Get("/pricing", aigatewayH.GetPricing)
 			gr.Put("/pricing", aigatewayH.SavePricing)

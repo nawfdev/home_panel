@@ -6,6 +6,7 @@
 package aigateway
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -223,6 +224,40 @@ func (s *Service) DeleteKey(providerID, keyID string) error {
 		return fmt.Errorf("key not found")
 	}
 	return fmt.Errorf("provider not found")
+}
+
+// ProviderModels queries the provider's live model list using its first
+// available key. A successful call means the provider is reachable and the
+// key is valid, so the UI treats it as both a health check and a model list.
+func (s *Service) ProviderModels(ctx context.Context, providerID string) ([]string, error) {
+	s.mu.RLock()
+	var found *ProviderConfig
+	for i := range s.cfg.Providers {
+		if s.cfg.Providers[i].ID == providerID {
+			p := s.cfg.Providers[i]
+			found = &p
+			break
+		}
+	}
+	s.mu.RUnlock()
+	if found == nil {
+		return nil, fmt.Errorf("provider not found")
+	}
+	if len(found.Keys) == 0 {
+		return nil, fmt.Errorf("provider has no API key configured")
+	}
+	// Start from whichever key last worked, matching the proxy's key choice.
+	start := s.usage.currentKeyIndexFor(providerID)
+	var lastErr error
+	for i := 0; i < len(found.Keys); i++ {
+		idx := (start + i) % len(found.Keys)
+		models, err := listModels(ctx, found.Kind, found.BaseURL, found.Keys[idx].Secret)
+		if err == nil {
+			return models, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
 }
 
 // sortedEnabledProviders returns enabled providers ordered by ascending
