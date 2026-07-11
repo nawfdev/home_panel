@@ -61,6 +61,7 @@ export function Settings() {
 
   const [panelManager, setPanelManager] = useState<"" | "systemd" | "pm2">("");
   const [panelServiceName, setPanelServiceName] = useState("");
+  const [panelBinaryPath, setPanelBinaryPath] = useState("");
   const [savingPanelService, setSavingPanelService] = useState(false);
   const [restartingPanel, setRestartingPanel] = useState(false);
   const [confirmRestart, setConfirmRestart] = useState(false);
@@ -92,11 +93,12 @@ export function Settings() {
         }
       })
       .catch(() => {});
-    api<{ success: boolean; manager?: string; name?: string }>("/settings/panel-service")
+    api<{ success: boolean; manager?: string; name?: string; binaryPath?: string }>("/settings/panel-service")
       .then((res) => {
         if (res.success) {
           if (res.manager === "systemd" || res.manager === "pm2") setPanelManager(res.manager);
           setPanelServiceName(res.name ?? "");
+          setPanelBinaryPath(res.binaryPath ?? "");
         }
       })
       .catch(() => {});
@@ -237,7 +239,7 @@ export function Settings() {
     try {
       const data = await api<{ success: boolean; message?: string; error?: string }>("/settings/panel-service", {
         method: "POST",
-        body: JSON.stringify({ manager: panelManager, name: panelServiceName }),
+        body: JSON.stringify({ manager: panelManager, name: panelServiceName, binaryPath: panelBinaryPath }),
       });
       if (data.success) {
         show(data.message ?? "Saved", "success");
@@ -491,6 +493,24 @@ export function Settings() {
                     placeholder={panelManager === "pm2" ? "cloudflare-panel" : "homepanel-go"}
                     className="input-field w-full text-sm"
                   />
+                </div>
+                <div>
+                  <label className="block text-gray-500 text-xs mb-1.5">
+                    Compiled binary path (only if not using <span className="font-mono">go run</span>)
+                  </label>
+                  <input
+                    value={panelBinaryPath}
+                    onChange={(e) => setPanelBinaryPath(e.target.value)}
+                    placeholder="/usr/local/bin/homepanel-go"
+                    className="input-field w-full text-sm font-mono"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Leave blank if the service runs <span className="font-mono">go run ./cmd/homepanel</span> (e.g.
+                    the documented <span className="font-mono">npm start</span>) — restarting already re-runs the
+                    source fresh. Fill this in only if your service points at a precompiled binary path (like a
+                    systemd unit with a fixed <span className="font-mono">ExecStart</span>): otherwise "Update now"
+                    restarts the same old binary without your Go code changes.
+                  </p>
                 </div>
               </div>
               <div className="flex gap-2 mt-4">

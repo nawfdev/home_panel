@@ -174,6 +174,20 @@ func (u *Updater) ApplyUpdates(ctx context.Context) map[string]interface{} {
 	return result
 }
 
+// BuildBackendBinary compiles the Go backend to outputPath. Deployments that
+// run the panel via `go run` (the documented `npm start`) never need this —
+// restarting the process alone re-runs the source fresh. It's only required
+// when the operator instead supervises a precompiled binary at a fixed path
+// (e.g. a systemd unit with ExecStart=/usr/local/bin/homepanel-go): merely
+// restarting that unit just re-executes the same old binary, so the backend
+// never picks up a git pull's changes without an explicit rebuild first.
+// `go build -o` writes to a temp file and renames it into place, so this is
+// safe to run while the old binary is still the one actively serving traffic.
+func (u *Updater) BuildBackendBinary(ctx context.Context, outputPath string) (string, error) {
+	beDir := filepath.Join(u.root, "be")
+	return runCommand(ctx, beDir, 180*time.Second, "go", "build", "-o", outputPath, "./cmd/homepanel")
+}
+
 // GetGitInfo ports getGitInfo.
 func (u *Updater) GetGitInfo(ctx context.Context) map[string]interface{} {
 	branch, err := u.git(ctx, 5*time.Second, "branch", "--show-current")
