@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
+import { Modal } from "../components/ui/Modal";
 import {
   MagnifyingGlassIcon,
   LockClosedIcon,
@@ -58,6 +59,12 @@ export function Settings() {
   const [applyingUpdate, setApplyingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheck | null>(null);
 
+  const [panelManager, setPanelManager] = useState<"" | "systemd" | "pm2">("");
+  const [panelServiceName, setPanelServiceName] = useState("");
+  const [savingPanelService, setSavingPanelService] = useState(false);
+  const [restartingPanel, setRestartingPanel] = useState(false);
+  const [confirmRestart, setConfirmRestart] = useState(false);
+
   useEffect(() => {
     api<{ success: boolean; hasToken?: boolean; accountId?: string }>("/settings/cloudflare")
       .then((res) => {
@@ -82,6 +89,14 @@ export function Settings() {
           setPathPm2(res.paths.pm2 ?? "");
           setPathDocker(res.paths.docker ?? "");
           setPathCloudflared(res.paths.cloudflared ?? "");
+        }
+      })
+      .catch(() => {});
+    api<{ success: boolean; manager?: string; name?: string }>("/settings/panel-service")
+      .then((res) => {
+        if (res.success) {
+          if (res.manager === "systemd" || res.manager === "pm2") setPanelManager(res.manager);
+          setPanelServiceName(res.name ?? "");
         }
       })
       .catch(() => {});
@@ -214,6 +229,46 @@ export function Settings() {
       show(err instanceof Error ? err.message : "Update failed", "error");
     } finally {
       setApplyingUpdate(false);
+    }
+  }
+
+  async function savePanelService() {
+    setSavingPanelService(true);
+    try {
+      const data = await api<{ success: boolean; message?: string; error?: string }>("/settings/panel-service", {
+        method: "POST",
+        body: JSON.stringify({ manager: panelManager, name: panelServiceName }),
+      });
+      if (data.success) {
+        show(data.message ?? "Saved", "success");
+      } else {
+        show(data.error ?? "Failed to save", "error");
+      }
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to save", "error");
+    } finally {
+      setSavingPanelService(false);
+    }
+  }
+
+  async function restartPanel() {
+    setConfirmRestart(false);
+    setRestartingPanel(true);
+    try {
+      const data = await api<{ success: boolean; message?: string; error?: string }>("/system/restart-panel", {
+        method: "POST",
+      });
+      if (data.success) {
+        show(data.message ?? "Restarting panel...", "success", 8000);
+      } else {
+        show(data.error ?? "Failed to restart panel", "error");
+        setRestartingPanel(false);
+      }
+      // On success the process is about to die — leave the button disabled
+      // rather than resetting state, since there's nothing to poll for here.
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to restart panel", "error");
+      setRestartingPanel(false);
     }
   }
 
@@ -370,39 +425,108 @@ export function Settings() {
         )}
 
         {tab === "updates" && (
-          <Panel title="System update">
-            <div className="flex justify-between items-center mb-3">
-              <p className="text-xs text-gray-500">Check the git remote for a newer panel version</p>
-              <button className="btn-secondary disabled:opacity-60" onClick={checkForUpdates} disabled={checkingUpdate}>
-                <MagnifyingGlassIcon className="w-4 h-4 inline mr-1.5" />
-                {checkingUpdate ? "Checking..." : "Check for updates"}
-              </button>
-            </div>
-            {updateResult?.error && <p className="text-sm text-red-400">Error: {updateResult.error}</p>}
-            {updateResult && !updateResult.error && updateResult.updateAvailable && (
-              <div>
-                <p className="text-sm text-green-400 font-medium mb-1">Update available</p>
-                <p className="text-xs text-gray-400 mb-2">
-                  {updateResult.behindBy} commit(s) behind · {updateResult.localCommit} &rarr; {updateResult.remoteCommit}
-                </p>
-                {updateResult.pendingChanges && updateResult.pendingChanges.length > 0 && (
-                  <ul className="text-xs text-gray-400 mb-3 space-y-0.5">
-                    {updateResult.pendingChanges.slice(0, 5).map((c) => (
-                      <li key={c}>&middot; {c}</li>
-                    ))}
-                  </ul>
-                )}
-                <button className="btn-primary disabled:opacity-60" onClick={applyUpdate} disabled={applyingUpdate}>
-                  {applyingUpdate ? "Applying..." : "Update now"}
+          <div className="space-y-4">
+            <Panel title="System update">
+              <div className="flex justify-between items-center mb-3">
+                <p className="text-xs text-gray-500">Check the git remote for a newer panel version</p>
+                <button className="btn-secondary disabled:opacity-60" onClick={checkForUpdates} disabled={checkingUpdate}>
+                  <MagnifyingGlassIcon className="w-4 h-4 inline mr-1.5" />
+                  {checkingUpdate ? "Checking..." : "Check for updates"}
                 </button>
               </div>
-            )}
-            {updateResult && !updateResult.error && !updateResult.updateAvailable && (
-              <p className="text-sm text-green-400">Up to date · {updateResult.currentVersion}</p>
-            )}
-          </Panel>
+              {updateResult?.error && <p className="text-sm text-red-400">Error: {updateResult.error}</p>}
+              {updateResult && !updateResult.error && updateResult.updateAvailable && (
+                <div>
+                  <p className="text-sm text-green-400 font-medium mb-1">Update available</p>
+                  <p className="text-xs text-gray-400 mb-2">
+                    {updateResult.behindBy} commit(s) behind · {updateResult.localCommit} &rarr; {updateResult.remoteCommit}
+                  </p>
+                  {updateResult.pendingChanges && updateResult.pendingChanges.length > 0 && (
+                    <ul className="text-xs text-gray-400 mb-3 space-y-0.5">
+                      {updateResult.pendingChanges.slice(0, 5).map((c) => (
+                        <li key={c}>&middot; {c}</li>
+                      ))}
+                    </ul>
+                  )}
+                  <button className="btn-primary disabled:opacity-60" onClick={applyUpdate} disabled={applyingUpdate}>
+                    {applyingUpdate ? "Applying..." : "Update now"}
+                  </button>
+                </div>
+              )}
+              {updateResult && !updateResult.error && !updateResult.updateAvailable && (
+                <p className="text-sm text-green-400">Up to date · {updateResult.currentVersion}</p>
+              )}
+            </Panel>
+
+            <Panel title="Panel process">
+              <p className="text-xs text-gray-500 mb-3">
+                Tell the panel how it's supervised so it can restart itself after an update, without needing SSH.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-gray-500 text-xs mb-1.5">Process manager</label>
+                  <select
+                    value={panelManager}
+                    onChange={(e) => setPanelManager(e.target.value as "" | "systemd" | "pm2")}
+                    className="input-field w-full"
+                  >
+                    <option value="">Not configured</option>
+                    <option value="systemd">systemd</option>
+                    <option value="pm2">PM2</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-gray-500 text-xs mb-1.5">
+                    {panelManager === "pm2" ? "PM2 process name" : "systemd unit name"}
+                  </label>
+                  <input
+                    value={panelServiceName}
+                    onChange={(e) => setPanelServiceName(e.target.value)}
+                    placeholder={panelManager === "pm2" ? "cloudflare-panel" : "homepanel-go"}
+                    className="input-field w-full text-sm"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 mt-4">
+                <button
+                  className="btn-secondary flex-1 disabled:opacity-60"
+                  onClick={savePanelService}
+                  disabled={savingPanelService}
+                >
+                  {savingPanelService ? "Saving..." : "Save"}
+                </button>
+                <button
+                  className="btn-secondary flex-1 disabled:opacity-60"
+                  onClick={() => setConfirmRestart(true)}
+                  disabled={restartingPanel || !panelManager || !panelServiceName}
+                >
+                  <ArrowPathIcon className="w-4 h-4 inline mr-1.5" />
+                  {restartingPanel ? "Restarting..." : "Restart panel"}
+                </button>
+              </div>
+            </Panel>
+          </div>
         )}
       </div>
+
+      {confirmRestart && (
+        <Modal title="Restart panel" onClose={() => setConfirmRestart(false)}>
+          <p className="text-sm text-gray-300">
+            This restarts the panel process itself via{" "}
+            <span className="font-semibold text-gray-100">{panelManager}</span> (
+            <span className="font-mono">{panelServiceName}</span>). You'll be disconnected for a few seconds while it
+            comes back up.
+          </p>
+          <div className="flex gap-2 mt-5">
+            <button className="btn-danger flex-1" onClick={restartPanel}>
+              Restart now
+            </button>
+            <button className="btn-secondary flex-1" onClick={() => setConfirmRestart(false)}>
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
