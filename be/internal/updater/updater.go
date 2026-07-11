@@ -4,7 +4,6 @@ package updater
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -93,15 +92,6 @@ func (u *Updater) CheckForUpdates(ctx context.Context) map[string]interface{} {
 		behind, _ = strconv.Atoi(strings.TrimSpace(bc))
 	}
 
-	version := ""
-	if pkgRaw, err := os.ReadFile(filepath.Join(u.root, "package.json")); err == nil {
-		var pkg struct {
-			Version string `json:"version"`
-		}
-		_ = json.Unmarshal(pkgRaw, &pkg)
-		version = pkg.Version
-	}
-
 	pending := []string{}
 	if behind > 0 {
 		if logOut, err := u.git(ctx, 10*time.Second, "log", "HEAD.."+remoteRef, "--oneline", "--format=%s"); err == nil {
@@ -120,7 +110,6 @@ func (u *Updater) CheckForUpdates(ctx context.Context) map[string]interface{} {
 		return s
 	}
 	return map[string]interface{}{
-		"currentVersion":  version,
 		"branch":          branch,
 		"localCommit":     short(localCommit),
 		"remoteCommit":    short(remoteCommit),
