@@ -18,6 +18,7 @@ import { Terminal } from "./pages/Terminal";
 import { Projects } from "./pages/Projects";
 import { System } from "./pages/System";
 import { Settings } from "./pages/Settings";
+import { AiGateway } from "./pages/AiGateway";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -57,6 +58,7 @@ function AppRoutes() {
         <Route path="/terminal" element={<Terminal />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/system" element={<System />} />
+        <Route path="/ai-gateway" element={<AiGateway />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>
