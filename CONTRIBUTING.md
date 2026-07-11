@@ -1,6 +1,6 @@
-# Contributing to Home Panel
+# Contributing to Nestcore
 
-Thank you for your interest in contributing to Home Panel! 🎉
+Thank you for your interest in contributing to Nestcore! 🎉
 
 ## How to Contribute
 

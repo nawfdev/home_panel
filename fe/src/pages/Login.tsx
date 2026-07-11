@@ -29,7 +29,7 @@ export function Login() {
           <div className="brand-mark mx-auto mb-5">
             <ServerIcon />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Home Panel</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Nestcore</h1>
           <p className="text-gray-500 text-sm mt-1">Sign in to manage your server</p>
         </div>
         <form onSubmit={handleSubmit}>
