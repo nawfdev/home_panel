@@ -28,6 +28,7 @@ interface UpdateCheck {
   remoteCommit?: string;
   pendingChanges?: string[];
   currentVersion?: string;
+  branch?: string;
 }
 
 export function Settings() {
@@ -454,7 +455,13 @@ export function Settings() {
                 </div>
               )}
               {updateResult && !updateResult.error && !updateResult.updateAvailable && (
-                <p className="text-sm text-green-400">Up to date · {updateResult.currentVersion}</p>
+                <div>
+                  <p className="text-sm text-green-400">Up to date</p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    v{updateResult.currentVersion} · commit {updateResult.localCommit}
+                    {updateResult.branch ? ` on ${updateResult.branch}` : ""}
+                  </p>
+                </div>
               )}
             </Panel>
 
