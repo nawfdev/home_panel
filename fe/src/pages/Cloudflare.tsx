@@ -15,6 +15,8 @@ import {
 
 interface CfStatus {
   configured: boolean;
+  connected: boolean;
+  error?: string;
   accountId?: string;
 }
 
@@ -162,15 +164,22 @@ export function Cloudflare() {
         <Panel title="API connection" icon={CloudIcon}>
           {status === null ? (
             <p className="text-sm text-gray-500">Loading...</p>
-          ) : status.configured ? (
+          ) : !status.configured ? (
+            <p className="text-sm text-gray-500">
+              Not configured. Add your Cloudflare API Token in Settings to enable this page.
+            </p>
+          ) : status.connected ? (
             <div className="info-row">
               <span className="info-row-label">Status</span>
               <span className="info-row-value text-green-400">Connected</span>
             </div>
           ) : (
-            <p className="text-sm text-gray-500">
-              Not configured. Add your Cloudflare API Token in Settings to enable this page.
-            </p>
+            <div className="info-row">
+              <span className="info-row-label">Status</span>
+              <span className="info-row-value text-red-400">
+                Disconnected{status.error ? ` — ${status.error}` : " — token invalid or revoked"}
+              </span>
+            </div>
           )}
           {status?.configured && (
             <div className="info-row">
