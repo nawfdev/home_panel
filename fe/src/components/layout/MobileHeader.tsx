@@ -14,7 +14,7 @@ export function MobileHeader({ onOpen }: { onOpen: () => void }) {
         <div className="brand-mark brand-mark-sm">
           <ServerIcon />
         </div>
-        <span className="font-bold text-sm tracking-tight">Home Panel</span>
+        <span className="font-bold text-sm tracking-tight">Nestcore</span>
       </div>
       <div className="w-11" />
     </header>

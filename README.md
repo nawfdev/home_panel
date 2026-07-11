@@ -1,4 +1,4 @@
-# 🏠 Home Panel
+# 🏠 Nestcore
 
 <div align="center">
 
@@ -14,9 +14,9 @@
 
 ---
 
-## ✨ What is Home Panel?
+## ✨ What is Nestcore?
 
-Home Panel is an all-in-one web dashboard for managing homelab infrastructure — Docker, PM2, systemd services, Cloudflare Tunnels, files, terminal, and system stats — from a single React frontend backed by a Go server. Runs on Windows or Linux.
+Nestcore is an all-in-one web dashboard for managing homelab infrastructure — Docker, PM2, systemd services, Cloudflare Tunnels, files, terminal, and system stats — from a single React frontend backed by a Go server. Runs on Windows or Linux.
 
 ---
 

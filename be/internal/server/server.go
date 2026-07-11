@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/kaysa/home-panel/internal/aigateway"
 	"github.com/kaysa/home-panel/internal/cloudflare"
 	"github.com/kaysa/home-panel/internal/config"
 	dockersvc "github.com/kaysa/home-panel/internal/docker"
@@ -30,6 +31,7 @@ import (
 
 // Deps holds everything the router needs.
 type Deps struct {
+	AiGateway  *aigateway.Service
 	Cloudflare *cloudflare.Service
 	Config     *config.Config
 	Docker     *dockersvc.Service
@@ -71,6 +73,8 @@ func New(d Deps) http.Handler {
 	settingsH := &handlers.Settings{Store: d.Store, Telegram: d.Telegram}
 	telegramH := &handlers.Telegram{Bot: d.Telegram}
 	exportH := handlers.Export{}
+	aigatewayH := &handlers.AiGateway{Svc: d.AiGateway}
+	gatewayAuth := &handlers.GatewayAuth{Svc: d.AiGateway}
 
 	// Rate limiters mirror express-rate-limit windows from server.js.
 	apiLimiter := httpx.NewRateLimiter(15*time.Minute, 500, false,
@@ -193,6 +197,23 @@ func New(d Deps) http.Handler {
 			cr.Put("/tunnels/{id}/config", cloudflareH.UpdateTunnelConfig)
 		})
 
+		api.Route("/ai-gateway", func(gr chi.Router) {
+			gr.Use(auth.RequireAuth)
+			gr.Get("/providers", aigatewayH.ListProviders)
+			gr.Post("/providers", aigatewayH.CreateProvider)
+			gr.Put("/providers/{id}", aigatewayH.UpdateProvider)
+			gr.Delete("/providers/{id}", aigatewayH.DeleteProvider)
+			gr.Post("/providers/{id}/keys", aigatewayH.AddKey)
+			gr.Delete("/providers/{id}/keys/{keyId}", aigatewayH.DeleteKey)
+			gr.Get("/usage", aigatewayH.Usage)
+			gr.Get("/pricing", aigatewayH.GetPricing)
+			gr.Put("/pricing", aigatewayH.SavePricing)
+			gr.Get("/compression", aigatewayH.GetCompression)
+			gr.Put("/compression", aigatewayH.SaveCompression)
+			gr.Get("/gateway-key", aigatewayH.GetGatewayKey)
+			gr.Post("/gateway-key/rotate", aigatewayH.RotateGatewayKey)
+		})
+
 		api.Route("/export", func(er chi.Router) {
 			er.Use(auth.RequireAuth)
 			er.Get("/pm2/{name}", exportH.PM2)
@@ -242,6 +263,15 @@ func New(d Deps) http.Handler {
 			fr.Get("/download", filesH.Download)
 			fr.Post("/upload", filesH.Upload)
 		})
+	})
+
+	// AI Gateway proxy: called by an external client app (not the browser),
+	// so it deliberately sits outside apiLimiter's per-IP human-traffic budget
+	// and uses its own gateway-key auth instead of the cookie session — same
+	// reasoning as /terminal being mounted directly on r instead of under /api.
+	r.Route("/api/ai-gateway/v1", func(gwr chi.Router) {
+		gwr.Use(gatewayAuth.RequireGatewayKey)
+		gwr.Post("/chat/completions", aigatewayH.ChatCompletions)
 	})
 
 	// Static frontend + SPA fallback (replaces express.static + app.get("*"))

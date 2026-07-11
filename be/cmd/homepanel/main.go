@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kaysa/home-panel/internal/aigateway"
 	"github.com/kaysa/home-panel/internal/alerts"
 	"github.com/kaysa/home-panel/internal/cloudflare"
 	"github.com/kaysa/home-panel/internal/config"
@@ -58,7 +59,12 @@ func main() {
 	tun := tunnel.New()
 	proj := projects.New(st)
 	alerts.New(cfg, tg, tun).Start(context.Background())
+
+	aigw := aigateway.New(st)
+	aigw.StartUsageFlusher(context.Background(), 30*time.Second)
+
 	handler := server.New(server.Deps{
+		AiGateway:  aigw,
 		Cloudflare: cloudflare.New(st),
 		Config:     cfg,
 		Docker:     docker.New(),
@@ -83,7 +89,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		log.Println("Home Panel - Server Started")
+		log.Println("Nestcore - Server Started")
 		log.Printf("URL: http://%s", addr)
 		log.Println("Default Login: admin / admin123")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -95,6 +101,7 @@ func main() {
 	log.Println("Shutting down: stopping tunnel and project processes...")
 	tun.Shutdown()
 	proj.StopAll()
+	aigw.FlushUsage()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
