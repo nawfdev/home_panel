@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { api } from "../../lib/api";
 import {
   HomeIcon,
   ArrowsRightLeftIcon,
@@ -51,6 +53,15 @@ const NAV_ITEMS: NavItem[] = [
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { logout } = useAuth();
   const { show } = useToast();
+  const [gitInfo, setGitInfo] = useState<{ branch?: string; commit?: string } | null>(null);
+
+  useEffect(() => {
+    api<{ branch?: string; commit?: string; error?: string }>("/update/info")
+      .then((res) => {
+        if (!res.error) setGitInfo(res);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <>
@@ -116,6 +127,12 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           >
             <ArrowLeftOnRectangleIcon className="w-4 h-4" /> Logout
           </button>
+          {gitInfo?.commit && (
+            <p className="text-center text-[11px] text-gray-600 mt-2 font-mono">
+              commit {gitInfo.commit}
+              {gitInfo.branch ? ` on ${gitInfo.branch}` : ""}
+            </p>
+          )}
         </div>
       </aside>
     </>
