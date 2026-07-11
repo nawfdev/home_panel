@@ -151,27 +151,87 @@ func (u *Updater) ApplyUpdates(ctx context.Context) map[string]interface{} {
 		"needsRestart": true,
 	}
 
-	// Rebuild the frontend so the pulled changes are actually served, not
-	// just sitting in the checkout. Skipped if there's no fe/ (e.g. a
-	// backend-only deployment layout).
+	// Rebuild the frontend so the pulled changes are actually served. Skipped
+	// if there's no fe/ (e.g. a backend-only deployment layout).
 	frontendDir := filepath.Join(u.root, "fe")
 	if _, err := os.Stat(filepath.Join(frontendDir, "package.json")); err == nil {
-		// Remove any previous build output first: if an earlier build was
-		// ever interrupted or failed partway through, a stale dist/ can
-		// otherwise linger untouched and keep being served as "current".
-		_ = os.RemoveAll(filepath.Join(frontendDir, "dist"))
-		if _, err := runCommand(ctx, frontendDir, 180*time.Second, "npm", "install"); err != nil {
-			result["frontendBuildError"] = "npm install failed: " + err.Error()
-			return result
+		if rebuilt, buildErr := u.rebuildFrontend(ctx, frontendDir); buildErr != "" {
+			result["frontendBuildError"] = buildErr
+		} else if rebuilt {
+			result["frontendRebuilt"] = true
 		}
-		if _, err := runCommand(ctx, frontendDir, 120*time.Second, "npm", "run", "build"); err != nil {
-			result["frontendBuildError"] = "npm run build failed: " + err.Error()
-			return result
-		}
-		result["frontendRebuilt"] = true
 	}
 
 	return result
+}
+
+// minNodeMajor is the lowest Node.js major version the frontend toolchain
+// (Vite) can run on. Older Node crashes the build.
+const minNodeMajor = 20
+
+// rebuildFrontend rebuilds fe/dist safely. It never leaves the panel without a
+// working dist: the existing build is moved aside first and restored if the
+// new build fails, so a broken build can't take the live panel down. Returns
+// (rebuilt, ""), (false, "") when skipped, or (false, errMsg) on failure.
+func (u *Updater) rebuildFrontend(ctx context.Context, frontendDir string) (bool, string) {
+	// Pre-flight: bail out before touching dist if Node is too old to build,
+	// so an incompatible environment can never reach the destructive steps.
+	if verOut, err := runCommand(ctx, frontendDir, 10*time.Second, "node", "--version"); err == nil {
+		if major := parseNodeMajor(verOut); major > 0 && major < minNodeMajor {
+			return false, fmt.Sprintf("Node %s is too old to build the frontend (needs >=%d) — upgrade Node on the server, or rebuild the frontend manually. Left the current frontend untouched.", strings.TrimSpace(verOut), minNodeMajor)
+		}
+	}
+
+	dist := filepath.Join(frontendDir, "dist")
+	bak := filepath.Join(frontendDir, "dist.bak")
+
+	// Move any existing build aside rather than deleting it, so we can put it
+	// back verbatim if the new build fails.
+	_ = os.RemoveAll(bak)
+	hadDist := false
+	if _, err := os.Stat(dist); err == nil {
+		if err := os.Rename(dist, bak); err != nil {
+			return false, "could not move existing dist aside: " + err.Error()
+		}
+		hadDist = true
+	}
+
+	restore := func(reason string) (bool, string) {
+		_ = os.RemoveAll(dist) // drop any partial fresh build
+		if hadDist {
+			_ = os.Rename(bak, dist) // put the previously-working frontend back
+		}
+		return false, reason
+	}
+
+	if _, err := runCommand(ctx, frontendDir, 180*time.Second, "npm", "install"); err != nil {
+		return restore("npm install failed: " + err.Error())
+	}
+	if _, err := runCommand(ctx, frontendDir, 120*time.Second, "npm", "run", "build"); err != nil {
+		return restore("npm run build failed: " + err.Error())
+	}
+	if _, err := os.Stat(dist); err != nil {
+		return restore("build reported success but produced no dist/ output")
+	}
+
+	_ = os.RemoveAll(bak) // new build is good; discard the backup
+	return true, ""
+}
+
+// parseNodeMajor extracts the major version from `node --version` output like
+// "v18.19.1". Returns 0 when it can't be parsed.
+func parseNodeMajor(v string) int {
+	v = strings.TrimSpace(v)
+	v = strings.TrimPrefix(v, "v")
+	dot := strings.IndexByte(v, '.')
+	if dot > 0 {
+		v = v[:dot]
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 // BuildBackendBinary compiles the Go backend to outputPath. Deployments that
