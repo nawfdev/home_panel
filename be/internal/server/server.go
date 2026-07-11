@@ -66,7 +66,7 @@ func New(d Deps) http.Handler {
 	projectsH := &handlers.Projects{Mgr: d.Projects}
 	networkH := &handlers.Network{Tunnel: d.Tunnel}
 	dashboardH := &handlers.Dashboard{Cloudflare: d.Cloudflare, Store: d.Store, Tunnel: d.Tunnel, Projects: d.Projects}
-	updateH := &handlers.Update{Updater: d.Updater}
+	updateH := &handlers.Update{Updater: d.Updater, Store: d.Store, PM2: d.PM2}
 	cloudflareH := &handlers.Cloudflare{Store: d.Store, Svc: d.Cloudflare}
 	settingsH := &handlers.Settings{Store: d.Store, Telegram: d.Telegram}
 	telegramH := &handlers.Telegram{Bot: d.Telegram}

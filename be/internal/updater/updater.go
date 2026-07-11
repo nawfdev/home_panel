@@ -18,22 +18,14 @@ type Updater struct{ root string }
 
 func New(root string) *Updater { return &Updater{root: root} }
 
-// git runs a git command and returns trimmed stdout. On failure, the error
-// includes stderr so the real reason (no such branch, auth failure, not a
-// repo, merge conflict, ...) reaches the caller instead of a bare exit code.
-//
-// -c safe.directory=<root> is passed on every call because home-panel is
-// commonly run as root (needed for systemd/Docker management) while the
-// checkout is owned by the deploying user; git's ownership check would
-// otherwise refuse to touch the repo with a bare "exit status 128" and no
-// other explanation. Scoping it as a per-invocation flag avoids mutating any
-// user's global/system gitconfig as a side effect of running the panel.
-func (u *Updater) git(ctx context.Context, timeout time.Duration, args ...string) (string, error) {
+// runCommand runs name(args...) in dir and returns trimmed stdout. On
+// failure, the error includes stderr so the real reason reaches the caller
+// instead of a bare exit code.
+func runCommand(ctx context.Context, dir string, timeout time.Duration, name string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	fullArgs := append([]string{"-c", "safe.directory=" + u.root}, args...)
-	cmd := exec.CommandContext(ctx, "git", fullArgs...)
-	cmd.Dir = u.root
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -44,6 +36,19 @@ func (u *Updater) git(ctx context.Context, timeout time.Duration, args ...string
 		}
 	}
 	return strings.TrimSpace(stdout.String()), err
+}
+
+// git runs a git command in the checkout root.
+//
+// -c safe.directory=<root> is passed on every call because home-panel is
+// commonly run as root (needed for systemd/Docker management) while the
+// checkout is owned by the deploying user; git's ownership check would
+// otherwise refuse to touch the repo with a bare "exit status 128" and no
+// other explanation. Scoping it as a per-invocation flag avoids mutating any
+// user's global/system gitconfig as a side effect of running the panel.
+func (u *Updater) git(ctx context.Context, timeout time.Duration, args ...string) (string, error) {
+	fullArgs := append([]string{"-c", "safe.directory=" + u.root}, args...)
+	return runCommand(ctx, u.root, timeout, "git", fullArgs...)
 }
 
 // currentBranch resolves the checked-out branch instead of assuming "main",
@@ -149,23 +154,31 @@ func (u *Updater) ApplyUpdates(ctx context.Context) map[string]interface{} {
 	if pullErr != nil {
 		return map[string]interface{}{"success": false, "error": pullErr.Error()}
 	}
-	npmOut := "npm install skipped (may need manual run)"
-	{
-		c, cancel := context.WithTimeout(ctx, 60*time.Second)
-		defer cancel()
-		cmd := exec.CommandContext(c, "npm", "install", "--omit=dev")
-		cmd.Dir = u.root
-		if o, err := cmd.Output(); err == nil {
-			npmOut = strings.TrimSpace(string(o))
-		}
-	}
-	return map[string]interface{}{
+
+	result := map[string]interface{}{
 		"success":      true,
-		"message":      "Update applied successfully. Please restart the server.",
+		"message":      "Update applied successfully.",
 		"output":       out,
-		"npmOutput":    npmOut,
 		"needsRestart": true,
 	}
+
+	// Rebuild the frontend so the pulled changes are actually served, not
+	// just sitting in the checkout. Skipped if there's no fe/ (e.g. a
+	// backend-only deployment layout).
+	frontendDir := filepath.Join(u.root, "fe")
+	if _, err := os.Stat(filepath.Join(frontendDir, "package.json")); err == nil {
+		if _, err := runCommand(ctx, frontendDir, 180*time.Second, "npm", "install"); err != nil {
+			result["frontendBuildError"] = "npm install failed: " + err.Error()
+			return result
+		}
+		if _, err := runCommand(ctx, frontendDir, 120*time.Second, "npm", "run", "build"); err != nil {
+			result["frontendBuildError"] = "npm run build failed: " + err.Error()
+			return result
+		}
+		result["frontendRebuilt"] = true
+	}
+
+	return result
 }
 
 // GetGitInfo ports getGitInfo.
