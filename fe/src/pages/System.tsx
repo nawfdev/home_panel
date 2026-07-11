@@ -3,8 +3,9 @@ import { api } from "../lib/api";
 import { useInterval } from "../hooks/useInterval";
 import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
+import { Modal } from "../components/ui/Modal";
 import { formatBytes } from "../lib/format";
-import { ArrowPathIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, PowerIcon } from "@heroicons/react/24/outline";
 
 interface SystemStats {
   cpu: { usage: number; cores: number };
@@ -35,6 +36,10 @@ export function System() {
   const [stats, setStats] = useState<SystemStats | null>(null);
   const [processes, setProcesses] = useState<ProcessInfo[] | null>(null);
 
+  const [rebootModalOpen, setRebootModalOpen] = useState(false);
+  const [rebootAck, setRebootAck] = useState(false);
+  const [rebooting, setRebooting] = useState(false);
+
   async function load() {
     try {
       const [statsData, procData] = await Promise.all([
@@ -54,6 +59,33 @@ export function System() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  function closeRebootModal() {
+    setRebootModalOpen(false);
+    setRebootAck(false);
+  }
+
+  async function rebootHost() {
+    setRebooting(true);
+    try {
+      const data = await api<{ success: boolean; message?: string; error?: string }>("/system/reboot-host", {
+        method: "POST",
+        body: JSON.stringify({ confirm: true }),
+      });
+      closeRebootModal();
+      if (data.success) {
+        show(data.message ?? "Rebooting host...", "success", 10000);
+      } else {
+        show(data.error ?? "Failed to reboot host", "error");
+        setRebooting(false);
+      }
+      // On success the host is about to go down — leave the button disabled
+      // rather than resetting state, there's nothing left to poll for.
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to reboot host", "error");
+      setRebooting(false);
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -63,9 +95,15 @@ export function System() {
             {stats ? `${stats.os.hostname} · ${stats.os.distro || stats.os.platform}` : "Host overview"}
           </p>
         </div>
-        <button className="btn-secondary" onClick={load}>
-          <ArrowPathIcon className="w-4 h-4 inline mr-1.5" />Refresh
-        </button>
+        <div className="flex gap-2">
+          <button className="btn-secondary" onClick={load}>
+            <ArrowPathIcon className="w-4 h-4 inline mr-1.5" />Refresh
+          </button>
+          <button className="btn-danger" onClick={() => setRebootModalOpen(true)} disabled={rebooting}>
+            <PowerIcon className="w-4 h-4 inline mr-1.5" />
+            {rebooting ? "Rebooting..." : "Reboot host"}
+          </button>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -167,6 +205,32 @@ export function System() {
           )}
         </Panel>
       </div>
+
+      {rebootModalOpen && (
+        <Modal title="Reboot host" onClose={closeRebootModal}>
+          <p className="text-sm text-gray-300">
+            This reboots the entire machine{stats?.os.hostname ? ` (${stats.os.hostname})` : ""} — Docker, PM2,
+            tunnels, and this panel itself will all go down until it finishes booting back up.
+          </p>
+          <label className="flex items-start gap-2 text-sm text-gray-300 mt-4">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={rebootAck}
+              onChange={(e) => setRebootAck(e.target.checked)}
+            />
+            I understand this will reboot the whole machine, not just the panel.
+          </label>
+          <div className="flex gap-2 mt-5">
+            <button className="btn-danger flex-1 disabled:opacity-60" onClick={rebootHost} disabled={!rebootAck || rebooting}>
+              {rebooting ? "Rebooting..." : "Reboot now"}
+            </button>
+            <button className="btn-secondary flex-1" onClick={closeRebootModal}>
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
