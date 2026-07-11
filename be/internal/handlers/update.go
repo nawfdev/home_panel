@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/kaysa/home-panel/internal/httpx"
@@ -45,6 +46,20 @@ func (u *Update) Apply(w http.ResponseWriter, r *http.Request) {
 		// already succeeded, but serving it needs a manual look first.
 		result["message"] = message + " Frontend rebuild failed (" + buildErr + ") — not restarting automatically; check server logs and restart manually once it's fixed."
 	default:
+		// If the operator recorded a fixed binary path (systemd running a
+		// precompiled binary rather than `go run`), rebuild it before
+		// restarting — otherwise restarting just re-executes the same old
+		// binary and none of the pulled Go changes actually take effect.
+		if binaryPath := strings.TrimSpace(str(settingMap(u.Store, "panelService"), "binaryPath")); binaryPath != "" {
+			if _, err := u.Updater.BuildBackendBinary(ctx, binaryPath); err != nil {
+				result["message"] = message + " Backend binary rebuild failed (" + err.Error() + ") — the old binary is still running; fix the build error and restart manually."
+				result["binaryBuildError"] = err.Error()
+				httpx.JSON(w, http.StatusOK, result)
+				return
+			}
+			result["binaryRebuilt"] = true
+		}
+
 		switch triggered, err := triggerPanelRestart(u.Store, u.PM2); {
 		case err != nil:
 			result["message"] = message + " Auto-restart failed (" + err.Error() + ") — restart the panel manually."
