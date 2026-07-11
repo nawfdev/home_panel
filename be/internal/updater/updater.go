@@ -2,8 +2,10 @@
 package updater
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -16,13 +18,37 @@ type Updater struct{ root string }
 
 func New(root string) *Updater { return &Updater{root: root} }
 
+// git runs a git command and returns trimmed stdout. On failure, the error
+// includes stderr so the real reason (no such branch, auth failure, not a
+// repo, merge conflict, ...) reaches the caller instead of a bare exit code.
 func (u *Updater) git(ctx context.Context, timeout time.Duration, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = u.root
-	out, err := cmd.Output()
-	return strings.TrimSpace(string(out)), err
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err != nil {
+		if msg := strings.TrimSpace(stderr.String()); msg != "" {
+			err = fmt.Errorf("%s", msg)
+		}
+	}
+	return strings.TrimSpace(stdout.String()), err
+}
+
+// currentBranch resolves the checked-out branch instead of assuming "main",
+// so updates work on deployments tracking a different default branch.
+func (u *Updater) currentBranch(ctx context.Context) (string, error) {
+	branch, err := u.git(ctx, 5*time.Second, "branch", "--show-current")
+	if err != nil {
+		return "", err
+	}
+	if branch == "" {
+		return "", fmt.Errorf("not on a branch (detached HEAD) or not a git checkout")
+	}
+	return branch, nil
 }
 
 // CheckForUpdates ports checkForUpdates.
@@ -30,18 +56,27 @@ func (u *Updater) CheckForUpdates(ctx context.Context) map[string]interface{} {
 	if _, err := u.git(ctx, 5*time.Second, "--version"); err != nil {
 		return map[string]interface{}{"error": "Git is not installed or not in PATH", "updateAvailable": false}
 	}
-	_, _ = u.git(ctx, 30*time.Second, "fetch", "origin") // best-effort
+
+	branch, err := u.currentBranch(ctx)
+	if err != nil {
+		return map[string]interface{}{"error": "Not a git checkout: " + err.Error(), "updateAvailable": false}
+	}
+
+	if _, err := u.git(ctx, 30*time.Second, "fetch", "origin", branch); err != nil {
+		return map[string]interface{}{"error": "Failed to fetch from origin: " + err.Error(), "updateAvailable": false}
+	}
+	remoteRef := "origin/" + branch
 
 	localCommit, err := u.git(ctx, 10*time.Second, "rev-parse", "HEAD")
 	if err != nil {
 		return map[string]interface{}{"error": "Check failed: " + err.Error(), "updateAvailable": false}
 	}
-	remoteCommit := localCommit
-	if rc, err := u.git(ctx, 10*time.Second, "rev-parse", "origin/main"); err == nil {
-		remoteCommit = rc
+	remoteCommit, err := u.git(ctx, 10*time.Second, "rev-parse", remoteRef)
+	if err != nil {
+		return map[string]interface{}{"error": fmt.Sprintf("Remote branch %s not found: %s", remoteRef, err.Error()), "updateAvailable": false}
 	}
 	behind := 0
-	if bc, err := u.git(ctx, 10*time.Second, "rev-list", "HEAD..origin/main", "--count"); err == nil {
+	if bc, err := u.git(ctx, 10*time.Second, "rev-list", "HEAD.."+remoteRef, "--count"); err == nil {
 		behind, _ = strconv.Atoi(strings.TrimSpace(bc))
 	}
 
@@ -56,7 +91,7 @@ func (u *Updater) CheckForUpdates(ctx context.Context) map[string]interface{} {
 
 	pending := []string{}
 	if behind > 0 {
-		if logOut, err := u.git(ctx, 10*time.Second, "log", "HEAD..origin/main", "--oneline", "--format=%s"); err == nil {
+		if logOut, err := u.git(ctx, 10*time.Second, "log", "HEAD.."+remoteRef, "--oneline", "--format=%s"); err == nil {
 			for _, l := range strings.Split(logOut, "\n") {
 				if strings.TrimSpace(l) != "" {
 					pending = append(pending, l)
@@ -73,6 +108,7 @@ func (u *Updater) CheckForUpdates(ctx context.Context) map[string]interface{} {
 	}
 	return map[string]interface{}{
 		"currentVersion":  version,
+		"branch":          branch,
 		"localCommit":     short(localCommit),
 		"remoteCommit":    short(remoteCommit),
 		"updateAvailable": localCommit != remoteCommit,
@@ -83,10 +119,27 @@ func (u *Updater) CheckForUpdates(ctx context.Context) map[string]interface{} {
 
 // ApplyUpdates ports applyUpdates.
 func (u *Updater) ApplyUpdates(ctx context.Context) map[string]interface{} {
-	_, _ = u.git(ctx, 15*time.Second, "stash")
-	out, err := u.git(ctx, 60*time.Second, "pull", "origin", "main")
+	branch, err := u.currentBranch(ctx)
 	if err != nil {
-		return map[string]interface{}{"success": false, "error": err.Error()}
+		return map[string]interface{}{"success": false, "error": "Not a git checkout: " + err.Error()}
+	}
+
+	stashOut, _ := u.git(ctx, 15*time.Second, "stash")
+	stashed := !strings.Contains(stashOut, "No local changes to save")
+
+	out, pullErr := u.git(ctx, 60*time.Second, "pull", "origin", branch)
+
+	if stashed {
+		if _, popErr := u.git(ctx, 15*time.Second, "stash", "pop"); popErr != nil {
+			return map[string]interface{}{
+				"success": false,
+				"error":   "Update pulled but restoring local changes failed (stash left intact, run 'git stash pop' manually): " + popErr.Error(),
+			}
+		}
+	}
+
+	if pullErr != nil {
+		return map[string]interface{}{"success": false, "error": pullErr.Error()}
 	}
 	npmOut := "npm install skipped (may need manual run)"
 	{
