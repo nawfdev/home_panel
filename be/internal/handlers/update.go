@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/kaysa/home-panel/internal/httpx"
 	"github.com/kaysa/home-panel/internal/store"
@@ -24,7 +26,13 @@ func (u *Update) Info(w http.ResponseWriter, r *http.Request) {
 }
 
 func (u *Update) Apply(w http.ResponseWriter, r *http.Request) {
-	result := u.Updater.ApplyUpdates(r.Context())
+	// Deliberately detached from r.Context(): git pull + npm install + npm
+	// run build can run for minutes, and must not be killed mid-build just
+	// because the browser tab closed or a reverse proxy cut the connection —
+	// that leaves a half-written, stale dist/ silently serving old code.
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
+	defer cancel()
+	result := u.Updater.ApplyUpdates(ctx)
 	success, _ := result["success"].(bool)
 	message, _ := result["message"].(string)
 	buildErr, hasBuildErr := result["frontendBuildError"].(string)

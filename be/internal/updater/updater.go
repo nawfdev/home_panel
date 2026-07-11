@@ -156,6 +156,10 @@ func (u *Updater) ApplyUpdates(ctx context.Context) map[string]interface{} {
 	// backend-only deployment layout).
 	frontendDir := filepath.Join(u.root, "fe")
 	if _, err := os.Stat(filepath.Join(frontendDir, "package.json")); err == nil {
+		// Remove any previous build output first: if an earlier build was
+		// ever interrupted or failed partway through, a stale dist/ can
+		// otherwise linger untouched and keep being served as "current".
+		_ = os.RemoveAll(filepath.Join(frontendDir, "dist"))
 		if _, err := runCommand(ctx, frontendDir, 180*time.Second, "npm", "install"); err != nil {
 			result["frontendBuildError"] = "npm install failed: " + err.Error()
 			return result
