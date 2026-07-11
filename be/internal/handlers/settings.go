@@ -28,8 +28,8 @@ type TelegramConfigurer interface {
 	SendMessage(ctx context.Context, chatID, text string) error
 }
 
-func (s *Settings) settingMap(key string) map[string]interface{} {
-	v, ok := s.Store.GetSetting(key)
+func settingMap(st *store.Store, key string) map[string]interface{} {
+	v, ok := st.GetSetting(key)
 	if !ok {
 		return map[string]interface{}{}
 	}
@@ -38,6 +38,8 @@ func (s *Settings) settingMap(key string) map[string]interface{} {
 	}
 	return map[string]interface{}{}
 }
+
+func (s *Settings) settingMap(key string) map[string]interface{} { return settingMap(s.Store, key) }
 
 func str(m map[string]interface{}, k string) string {
 	if v, ok := m[k].(string); ok {
@@ -164,6 +166,38 @@ func (s *Settings) SavePaths(w http.ResponseWriter, r *http.Request) {
 		"pm2": body.PM2, "docker": body.Docker, "cloudflared": body.Cloudflared,
 	})
 	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Service paths saved!"})
+}
+
+// ---- Panel service (how the panel process itself is supervised) ----
+
+func (s *Settings) GetPanelService(w http.ResponseWriter, r *http.Request) {
+	m := s.settingMap("panelService")
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"manager": str(m, "manager"),
+		"name":    str(m, "name"),
+	})
+}
+
+func (s *Settings) SavePanelService(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Manager string `json:"manager"`
+		Name    string `json:"name"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.Manager != "" && body.Manager != "systemd" && body.Manager != "pm2" {
+		httpx.JSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": "manager must be \"systemd\" or \"pm2\""})
+		return
+	}
+	if name := strings.TrimSpace(body.Name); name != "" && !sanitizeServiceName(name) {
+		httpx.JSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": "Invalid service/process name format"})
+		return
+	}
+	_ = s.Store.SetSetting("panelService", map[string]interface{}{
+		"manager": body.Manager,
+		"name":    strings.TrimSpace(body.Name),
+	})
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Panel service settings saved"})
 }
 
 // DetectPath ports /paths/detect/:service using `where` (Windows) / `command -v`.
