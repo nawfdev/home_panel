@@ -90,6 +90,10 @@ func (windowsController) Restart(ctx context.Context, unit string) error {
 	return exec.CommandContext(ctx, "sc", "start", unit).Run()
 }
 
+func reboot(ctx context.Context) error {
+	return exec.CommandContext(ctx, "shutdown", "/r", "/t", "0").Run()
+}
+
 func (windowsController) Logs(ctx context.Context, unit string, limit int) ([]LogEntry, error) {
 	// No journald on Windows; the UI degrades gracefully to "no logs", exactly
 	// like the Node backend did on non-Linux platforms.
