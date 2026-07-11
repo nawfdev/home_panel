@@ -21,10 +21,18 @@ func New(root string) *Updater { return &Updater{root: root} }
 // git runs a git command and returns trimmed stdout. On failure, the error
 // includes stderr so the real reason (no such branch, auth failure, not a
 // repo, merge conflict, ...) reaches the caller instead of a bare exit code.
+//
+// -c safe.directory=<root> is passed on every call because home-panel is
+// commonly run as root (needed for systemd/Docker management) while the
+// checkout is owned by the deploying user; git's ownership check would
+// otherwise refuse to touch the repo with a bare "exit status 128" and no
+// other explanation. Scoping it as a per-invocation flag avoids mutating any
+// user's global/system gitconfig as a side effect of running the panel.
 func (u *Updater) git(ctx context.Context, timeout time.Duration, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", args...)
+	fullArgs := append([]string{"-c", "safe.directory=" + u.root}, args...)
+	cmd := exec.CommandContext(ctx, "git", fullArgs...)
 	cmd.Dir = u.root
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
