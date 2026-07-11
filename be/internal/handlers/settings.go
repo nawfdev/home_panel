@@ -173,16 +173,18 @@ func (s *Settings) SavePaths(w http.ResponseWriter, r *http.Request) {
 func (s *Settings) GetPanelService(w http.ResponseWriter, r *http.Request) {
 	m := s.settingMap("panelService")
 	httpx.JSON(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"manager": str(m, "manager"),
-		"name":    str(m, "name"),
+		"success":    true,
+		"manager":    str(m, "manager"),
+		"name":       str(m, "name"),
+		"binaryPath": str(m, "binaryPath"),
 	})
 }
 
 func (s *Settings) SavePanelService(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Manager string `json:"manager"`
-		Name    string `json:"name"`
+		Manager    string `json:"manager"`
+		Name       string `json:"name"`
+		BinaryPath string `json:"binaryPath"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 	if body.Manager != "" && body.Manager != "systemd" && body.Manager != "pm2" {
@@ -194,8 +196,9 @@ func (s *Settings) SavePanelService(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.SetSetting("panelService", map[string]interface{}{
-		"manager": body.Manager,
-		"name":    strings.TrimSpace(body.Name),
+		"manager":    body.Manager,
+		"name":       strings.TrimSpace(body.Name),
+		"binaryPath": strings.TrimSpace(body.BinaryPath),
 	})
 	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Panel service settings saved"})
 }
