@@ -78,21 +78,27 @@ func PlayerHTML(mediaType, basePath, fileName string, subs []Subtitle) string {
 	switch mediaType {
 	case "image":
 		b.WriteString(`<div class="stage"><img src="` + htmlEscape(rawURL) + `" alt="` + htmlEscape(fileName) + `" class="media-img"></div>`)
-		b.WriteString(`<a class="dl btn" href="` + htmlEscape(rawURL) + `" download>Download</a></div></body></html>`)
+		b.WriteString(mediaDownloadHTML(rawURL) + `</div></body></html>`)
 		return b.String()
 	case "audio":
 		b.WriteString(`<div class="stage audio"><audio controls src="` + htmlEscape(rawURL) + `" class="media-audio"></audio></div>`)
-		b.WriteString(`<a class="dl btn" href="` + htmlEscape(rawURL) + `" download>Download</a></div></body></html>`)
+		b.WriteString(mediaDownloadHTML(rawURL) + `</div></body></html>`)
 		return b.String()
 	}
 
 	// Custom video player.
 	b.WriteString(videoPlayerHTML(rawURL))
-	b.WriteString(`<a class="dl btn" href="` + htmlEscape(rawURL) + `" download>Download</a></div>`)
+	b.WriteString(mediaDownloadHTML(rawURL) + `</div>`)
 	b.WriteString(`<script>window.__SUBS__=` + string(subsJSON) + `;</script>`)
 	b.WriteString(`<script>` + renderedPlayerJS() + `</script>`)
 	b.WriteString(`</body></html>`)
 	return b.String()
+}
+
+// mediaDownloadHTML is the prominent centered Download button shown below the
+// player/image, matching the download landing page's button style.
+func mediaDownloadHTML(rawURL string) string {
+	return `<div class="mediadl-wrap"><a class="mediadl" href="` + htmlEscape(rawURL) + `" download>` + icoDownload + `Download</a></div>`
 }
 
 func videoPlayerHTML(rawURL string) string {
@@ -166,10 +172,18 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;pad
 .stage.audio{padding:24px}
 .media-img{max-width:100%;max-height:80vh;display:block}
 .media-audio{width:100%}
-.dl{margin-top:16px}
 
-.np{position:relative;background:#000;border:1px solid rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;outline:none;line-height:0}
-.np-video{width:100%;max-height:80vh;display:block;background:#000}
+/* Prominent centered download button below the player/image. */
+.mediadl-wrap{text-align:center;margin-top:18px}
+.mediadl{display:inline-flex;align-items:center;gap:8px;background:#fafafa;color:#0e0e10;font-weight:600;font-size:14px;padding:11px 24px;border-radius:10px;transition:background .15s,transform .1s}
+.mediadl:hover{background:#fff;text-decoration:none;transform:translateY(-1px)}
+.mediadl:active{transform:translateY(0)}
+.mediadl svg{width:18px;height:18px}
+
+/* Player frame stays landscape (16:9) regardless of the source video's
+   aspect ratio; portrait/odd-ratio videos are letterboxed inside it. */
+.np{position:relative;background:#000;border:1px solid rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;outline:none;line-height:0;width:100%;aspect-ratio:16/9;max-height:80vh}
+.np-video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
 .np-scrim{position:absolute;left:0;right:0;bottom:0;height:120px;background:linear-gradient(to top,rgba(0,0,0,.75),transparent);pointer-events:none;opacity:1;transition:opacity .2s}
 .np.hidecursor{cursor:none}
 .np.paused .np-scrim{opacity:1}
