@@ -11,16 +11,45 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/kaysa/home-panel/internal/store"
 )
 
 const (
-	MaxReadSize   = 1024 * 1024
-	MaxUploadSize = 10 * 1024 * 1024
+	MaxReadSize = 1024 * 1024
+	// defaultMaxUploadMb is the fallback upload cap when the operator hasn't
+	// set one in Settings. Uploads used to be hard-capped at 10MB, which
+	// rejected most videos/photos.
+	defaultMaxUploadMb = 500
 )
 
-type Service struct{}
+type Service struct {
+	store *store.Store
+}
 
-func New() *Service { return &Service{} }
+func New(st *store.Store) *Service { return &Service{store: st} }
+
+// MaxUploadBytes returns the configured upload cap in bytes (default 500MB).
+func (s *Service) MaxUploadBytes() int64 {
+	mb := int64(defaultMaxUploadMb)
+	if s.store != nil {
+		if v, ok := s.store.GetSetting("fileManager"); ok {
+			if m, ok := v.(map[string]interface{}); ok {
+				switch n := m["maxUploadMb"].(type) {
+				case float64:
+					if n > 0 {
+						mb = int64(n)
+					}
+				case int:
+					if n > 0 {
+						mb = int64(n)
+					}
+				}
+			}
+		}
+	}
+	return mb * 1024 * 1024
+}
 
 type Item struct {
 	Name        string    `json:"name"`
@@ -156,7 +185,8 @@ func (s *Service) Upload(dirPath string, header *multipart.FileHeader) error {
 	if header == nil {
 		return errNoUpload
 	}
-	if header.Size > MaxUploadSize {
+	maxBytes := s.MaxUploadBytes()
+	if header.Size > maxBytes {
 		return errUploadTooLarge
 	}
 	name := filepath.Base(header.Filename)
@@ -174,7 +204,7 @@ func (s *Service) Upload(dirPath string, header *multipart.FileHeader) error {
 		return err
 	}
 	defer dst.Close()
-	_, err = io.Copy(dst, io.LimitReader(src, MaxUploadSize+1))
+	_, err = io.Copy(dst, io.LimitReader(src, maxBytes+1))
 	return err
 }
 
@@ -242,5 +272,5 @@ var (
 	errExecutableWrite   = errors.New("Cannot write executable files")
 	errDirectoryTooLarge = errors.New("Directory too large. Delete items individually.")
 	errNoUpload          = errors.New("No file uploaded")
-	errUploadTooLarge    = errors.New("File too large (max 10MB)")
+	errUploadTooLarge    = errors.New("File exceeds the upload size limit (adjust it in Settings)")
 )
