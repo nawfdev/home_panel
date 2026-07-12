@@ -268,6 +268,8 @@ func New(d Deps) http.Handler {
 			fr.Post("/share", filesH.CreateShare)
 			fr.Get("/shares", filesH.ListShares)
 			fr.Delete("/shares/{token}", filesH.RevokeShare)
+			fr.Post("/media-info", filesH.MediaInfo)
+			fr.Get("/subtitle", filesH.Subtitle)
 		})
 	})
 
