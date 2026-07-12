@@ -14,6 +14,7 @@ import { PM2 } from "./pages/PM2";
 import { Logs } from "./pages/Logs";
 import { Services } from "./pages/Services";
 import { Files } from "./pages/Files";
+import { Movies } from "./pages/Movies";
 import { Terminal } from "./pages/Terminal";
 import { Projects } from "./pages/Projects";
 import { System } from "./pages/System";
@@ -55,6 +56,7 @@ function AppRoutes() {
         <Route path="/logs" element={<Logs />} />
         <Route path="/services" element={<Services />} />
         <Route path="/files" element={<Files />} />
+        <Route path="/movies" element={<Movies />} />
         <Route path="/terminal" element={<Terminal />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/system" element={<System />} />

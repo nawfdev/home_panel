@@ -22,6 +22,7 @@ import {
   ArrowLeftOnRectangleIcon,
   ServerIcon,
   XMarkIcon,
+  FilmIcon,
 } from "@heroicons/react/24/outline";
 import type { ComponentType, SVGProps } from "react";
 
@@ -49,6 +50,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/projects", label: "Projects", icon: RectangleStackIcon, live: true },
   { to: "/system", label: "System", icon: CpuChipIcon, live: true },
   { to: "/ai-gateway", label: "AI Gateway", icon: SparklesIcon, live: true },
+  { to: "/movies", label: "Movies", icon: FilmIcon, live: true },
   { to: "/settings", label: "Settings", icon: Cog6ToothIcon, live: true },
 ];
 

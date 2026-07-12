@@ -32,6 +32,11 @@ desktop.ini
 *.swo
 *~
 
+# Ignore AI coding tool artifacts (not project code/docs)
+.claude/
+.omo/
+.playwright-mcp/
+
 # Ignore temp files
 tmp/
 temp/

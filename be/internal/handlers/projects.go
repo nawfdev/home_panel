@@ -6,8 +6,8 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/kaysa/home-panel/internal/httpx"
-	"github.com/kaysa/home-panel/internal/projects"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/projects"
 )
 
 // Projects ports backend/routes/projects.js.

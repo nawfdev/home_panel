@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/kaysa/home-panel/internal/httpx"
-	"github.com/kaysa/home-panel/internal/platform"
-	"github.com/kaysa/home-panel/internal/store"
-	"github.com/kaysa/home-panel/internal/sysstats"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/platform"
+	"github.com/nawfdev/home-panel/internal/store"
+	"github.com/nawfdev/home-panel/internal/sysstats"
 )
 
 // triggerPanelRestart looks up the panelService setting and restarts the

@@ -26,13 +26,17 @@ func remuxFaststartAsync(path string) {
 		return
 	}
 	go func() {
-		if err := remuxFaststart(path); err != nil {
+		if err := RemuxFaststart(path); err != nil {
 			log.Printf("faststart remux skipped for %s: %v", path, err)
 		}
 	}()
 }
 
-func remuxFaststart(path string) error {
+// RemuxFaststart moves a video's moov atom to the front of the file, without
+// re-encoding (-c copy). Exported so other packages that save video files
+// outside the upload path (e.g. internal/movies) can reuse the same rewrite
+// instead of shelling out to ffmpeg themselves.
+func RemuxFaststart(path string) error {
 	tmp := path + ".faststart.tmp"
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()

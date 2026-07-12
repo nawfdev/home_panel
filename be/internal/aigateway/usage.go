@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kaysa/home-panel/internal/store"
+	"github.com/nawfdev/home-panel/internal/store"
 )
 
 // KeyUsage is per-provider-key operational state. Kept OUT of Config: it

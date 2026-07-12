@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	filesvc "github.com/kaysa/home-panel/internal/files"
-	"github.com/kaysa/home-panel/internal/httpx"
+	filesvc "github.com/nawfdev/home-panel/internal/files"
+	"github.com/nawfdev/home-panel/internal/httpx"
 )
 
 // Files ports backend/routes/files.js.

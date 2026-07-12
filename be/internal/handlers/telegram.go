@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/kaysa/home-panel/internal/httpx"
-	"github.com/kaysa/home-panel/internal/telegram"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/telegram"
 )
 
 type telegramBot interface {

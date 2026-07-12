@@ -1,4 +1,4 @@
-module github.com/kaysa/home-panel
+module github.com/nawfdev/home-panel
 
 go 1.24.0
 

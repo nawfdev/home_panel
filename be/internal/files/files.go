@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kaysa/home-panel/internal/store"
+	"github.com/nawfdev/home-panel/internal/store"
 )
 
 const (

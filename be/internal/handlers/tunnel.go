@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/kaysa/home-panel/internal/httpx"
-	"github.com/kaysa/home-panel/internal/tunnel"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/tunnel"
 )
 
 // Tunnel ports backend/routes/tunnel.js.

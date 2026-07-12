@@ -7,8 +7,8 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	dockersvc "github.com/kaysa/home-panel/internal/docker"
-	"github.com/kaysa/home-panel/internal/httpx"
+	dockersvc "github.com/nawfdev/home-panel/internal/docker"
+	"github.com/nawfdev/home-panel/internal/httpx"
 )
 
 type dockerService interface {

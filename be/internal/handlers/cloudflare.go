@@ -6,9 +6,9 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	cfapi "github.com/kaysa/home-panel/internal/cloudflare"
-	"github.com/kaysa/home-panel/internal/httpx"
-	"github.com/kaysa/home-panel/internal/store"
+	cfapi "github.com/nawfdev/home-panel/internal/cloudflare"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/store"
 )
 
 type cloudflareService interface {

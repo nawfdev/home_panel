@@ -16,7 +16,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kaysa/home-panel/internal/platform"
+	"github.com/nawfdev/home-panel/internal/platform"
 )
 
 const (
