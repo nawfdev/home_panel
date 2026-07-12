@@ -1,11 +1,20 @@
 package files
 
+import "strings"
+
 // Shared visual theme for the standalone (server-rendered) public pages —
 // the share player and the folder listing. These pages live outside the React
 // app, so they can't use its Tailwind classes; this mirrors the panel's real
 // design tokens from fe/src/index.css so the pages match the panel exactly:
 // near-black monochrome (not blue), zinc grays, white accents, Plus Jakarta
 // Sans / JetBrains Mono.
+
+// jsEscape escapes a string for embedding inside a single-quoted JS string
+// literal (used to inline SVG icon markup into the player script).
+func jsEscape(s string) string {
+	r := strings.NewReplacer("\\", "\\\\", "'", "\\'", "\n", "\\n", "\r", "", "<", "\\x3c")
+	return r.Replace(s)
+}
 
 // themeHead returns the <head> contents (meta, fonts, title) for a public page.
 func themeHead(title string) string {
