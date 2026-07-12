@@ -177,6 +177,8 @@ func New(d Deps) http.Handler {
 			sr.Get("/paths/detect/{service}", settingsH.DetectPath)
 			sr.Get("/panel-service", settingsH.GetPanelService)
 			sr.Post("/panel-service", settingsH.SavePanelService)
+			sr.Get("/file-manager", settingsH.GetFileManager)
+			sr.Post("/file-manager", settingsH.SaveFileManager)
 		})
 
 		api.Route("/telegram", func(tr chi.Router) {
@@ -263,8 +265,17 @@ func New(d Deps) http.Handler {
 			fr.Post("/delete", filesH.Delete)
 			fr.Get("/download", filesH.Download)
 			fr.Post("/upload", filesH.Upload)
+			fr.Post("/share", filesH.CreateShare)
+			fr.Get("/shares", filesH.ListShares)
+			fr.Delete("/shares/{token}", filesH.RevokeShare)
 		})
 	})
+
+	// Public file share links: intentionally OUTSIDE /api and its auth — anyone
+	// with the link can fetch the shared file/folder, which is the whole point.
+	// Mounted on r directly, like /terminal and the ai-gateway proxy.
+	r.Get("/share/{token}", filesH.ServePublicShare)
+	r.Get("/share/{token}/*", filesH.ServePublicShare)
 
 	// AI Gateway proxy: called by an external client app (not the browser),
 	// so it deliberately sits outside apiLimiter's per-IP human-traffic budget

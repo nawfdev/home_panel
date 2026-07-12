@@ -203,6 +203,30 @@ func (s *Settings) SavePanelService(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Panel service settings saved"})
 }
 
+// ---- File manager settings (upload size limit) ----
+
+func (s *Settings) GetFileManager(w http.ResponseWriter, r *http.Request) {
+	m := s.settingMap("fileManager")
+	maxUploadMb := 500
+	if v, ok := m["maxUploadMb"].(float64); ok && v > 0 {
+		maxUploadMb = int(v)
+	}
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "maxUploadMb": maxUploadMb})
+}
+
+func (s *Settings) SaveFileManager(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		MaxUploadMb int `json:"maxUploadMb"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.MaxUploadMb <= 0 {
+		httpx.JSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": "maxUploadMb must be greater than 0"})
+		return
+	}
+	_ = s.Store.SetSetting("fileManager", map[string]interface{}{"maxUploadMb": body.MaxUploadMb})
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "File manager settings saved"})
+}
+
 // DetectPath ports /paths/detect/:service using `where` (Windows) / `command -v`.
 func (s *Settings) DetectPath(w http.ResponseWriter, r *http.Request) {
 	service := chi.URLParam(r, "service")
