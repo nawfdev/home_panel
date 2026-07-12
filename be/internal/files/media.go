@@ -57,6 +57,43 @@ func MediaType(name string) string {
 	}
 }
 
+// contentTypeByExt maps extensions to their MIME type, used instead of Go's
+// OS-dependent mime.TypeByExtension (which has no built-in entries for video
+// formats and, on Windows without the codec's registry entry, falls back to
+// content sniffing that misses containers like QuickTime .mov). Without an
+// explicit Content-Type, browsers refuse to decode the served video — the
+// player shows a black frame with no error.
+var contentTypeByExt = map[string]string{
+	".mp4":  "video/mp4",
+	".m4v":  "video/x-m4v",
+	".webm": "video/webm",
+	".mkv":  "video/x-matroska",
+	".mov":  "video/quicktime",
+	".avi":  "video/x-msvideo",
+	".ogv":  "video/ogg",
+	".mp3":  "audio/mpeg",
+	".m4a":  "audio/mp4",
+	".wav":  "audio/wav",
+	".ogg":  "audio/ogg",
+	".oga":  "audio/ogg",
+	".flac": "audio/flac",
+	".aac":  "audio/aac",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".png":  "image/png",
+	".gif":  "image/gif",
+	".webp": "image/webp",
+	".bmp":  "image/bmp",
+	".svg":  "image/svg+xml",
+	".avif": "image/avif",
+}
+
+// ContentTypeFor returns the MIME type to send for name, or "" if unknown
+// (in which case the caller should let http.ServeFile/ServeContent detect it).
+func ContentTypeFor(name string) string {
+	return contentTypeByExt[strings.ToLower(filepath.Ext(name))]
+}
+
 // Subtitle is a detected sidecar subtitle file for a video.
 type Subtitle struct {
 	Name  string `json:"name"`  // file name (used as the ?sub= value)

@@ -73,6 +73,9 @@ func (f *Files) Download(w http.ResponseWriter, r *http.Request) {
 		fileError(w, err)
 		return
 	}
+	if ct := filesvc.ContentTypeFor(fullPath); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
 	http.ServeFile(w, r, fullPath)
 }
 
@@ -214,6 +217,9 @@ func (f *Files) ServePublicShare(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(filesvc.DownloadPageHTML(r.URL.Path, info.Name(), info.Size(), info.ModTime())))
 		return
+	}
+	if ct := filesvc.ContentTypeFor(target); ct != "" {
+		w.Header().Set("Content-Type", ct)
 	}
 	http.ServeFile(w, r, target)
 }
