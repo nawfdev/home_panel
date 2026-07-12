@@ -6,25 +6,14 @@ import (
 	"strings"
 )
 
-// PlayerHTML renders a self-contained (CSP-safe, no external assets) dark media
-// player page for a shared video/image/audio file. basePath is the request path
-// of the shared file (without query); the media bytes are fetched from
-// basePath?raw=1 and sidecar subtitles from basePath?sub=<name>.
+// PlayerHTML renders a self-contained (CSP-safe, no external assets) media
+// player page for a shared video/image/audio file, styled to match the panel.
+// Video uses a fully custom control bar (not native controls). basePath is the
+// request path of the shared file; media bytes come from basePath?raw=1 and
+// sidecar subtitles from basePath?sub=<name>.
 func PlayerHTML(mediaType, basePath, fileName string, subs []Subtitle) string {
 	rawURL := basePath + "?raw=1"
 	subsJSON, _ := json.Marshal(subtitleTracks(basePath, subs))
-
-	var media string
-	switch mediaType {
-	case "image":
-		media = `<img src="` + htmlEscape(rawURL) + `" alt="` + htmlEscape(fileName) + `" class="media-img">`
-	case "audio":
-		media = `<audio id="player" controls src="` + htmlEscape(rawURL) + `" class="media-audio"></audio>`
-	default: // video
-		media = `<video id="player" controls playsinline class="media-video"><source src="` + htmlEscape(rawURL) + `"></video>`
-	}
-
-	showSubtitleUI := mediaType == "video"
 
 	var b strings.Builder
 	b.WriteString(`<!doctype html><html><head>`)
@@ -33,23 +22,55 @@ func PlayerHTML(mediaType, basePath, fileName string, subs []Subtitle) string {
 	b.WriteString(panelBaseCSS)
 	b.WriteString(playerCSS)
 	b.WriteString(`</style></head><body>`)
-	b.WriteString(`<div class="wrap"><div class="title mono">` + htmlEscape(fileName) + `</div>`)
-	b.WriteString(`<div class="stage">` + media + `</div>`)
-	if showSubtitleUI {
-		b.WriteString(`<div class="bar">`)
-		b.WriteString(`<label class="sublabel">Subtitle:</label>`)
-		b.WriteString(`<select id="subsel" class="btn"><option value="">Off</option></select>`)
-		b.WriteString(`<label class="btn">Load .srt/.vtt<input type="file" id="subfile" accept=".srt,.vtt" hidden></label>`)
-		b.WriteString(`</div>`)
+	b.WriteString(`<div class="wrap">`)
+	b.WriteString(`<div class="title mono">` + htmlEscape(fileName) + `</div>`)
+
+	switch mediaType {
+	case "image":
+		b.WriteString(`<div class="stage"><img src="` + htmlEscape(rawURL) + `" alt="` + htmlEscape(fileName) + `" class="media-img"></div>`)
+		b.WriteString(`<a class="dl btn" href="` + htmlEscape(rawURL) + `" download>Download</a></div></body></html>`)
+		return b.String()
+	case "audio":
+		b.WriteString(`<div class="stage audio"><audio controls src="` + htmlEscape(rawURL) + `" class="media-audio"></audio></div>`)
+		b.WriteString(`<a class="dl btn" href="` + htmlEscape(rawURL) + `" download>Download</a></div></body></html>`)
+		return b.String()
 	}
-	b.WriteString(`<a class="dl btn" href="` + htmlEscape(rawURL) + `" download>Download</a>`)
-	b.WriteString(`</div>`)
-	if showSubtitleUI {
-		b.WriteString(`<script>window.__SUBS__=` + string(subsJSON) + `;</script>`)
-		b.WriteString(`<script>` + playerJS + `</script>`)
-	}
+
+	// Custom video player.
+	b.WriteString(videoPlayerHTML(rawURL))
+	b.WriteString(`<a class="dl btn" href="` + htmlEscape(rawURL) + `" download>Download</a></div>`)
+	b.WriteString(`<script>window.__SUBS__=` + string(subsJSON) + `;</script>`)
+	b.WriteString(`<script>` + renderedPlayerJS() + `</script>`)
 	b.WriteString(`</body></html>`)
 	return b.String()
+}
+
+func videoPlayerHTML(rawURL string) string {
+	return `<div class="np" id="np" tabindex="0">
+<video class="np-video" id="npvideo" playsinline><source src="` + htmlEscape(rawURL) + `"></video>
+<div class="np-center"><button class="np-bigplay" id="npbig" aria-label="Play">` + icoPlay + `</button></div>
+<div class="np-scrim"></div>
+<div class="np-controls" id="npctrls">
+  <div class="np-seek" id="npseek"><div class="np-buffered" id="npbuf"></div><div class="np-played" id="npplayed"></div><div class="np-thumb" id="npthumb"></div></div>
+  <div class="np-row">
+    <button class="np-btn" id="npplay" aria-label="Play/Pause">` + icoPlay + `</button>
+    <button class="np-btn" id="npmute" aria-label="Mute">` + icoVol + `</button>
+    <input class="np-vol" id="npvol" type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+    <span class="np-time mono" id="nptime">0:00 / 0:00</span>
+    <div class="np-spacer"></div>
+    <div class="np-pop">
+      <button class="np-btn" id="npcc" aria-label="Subtitles">` + icoCC + `</button>
+      <div class="np-menu" id="npccmenu"></div>
+    </div>
+    <div class="np-pop">
+      <button class="np-btn np-speedbtn mono" id="npspeed" aria-label="Speed">1x</button>
+      <div class="np-menu" id="npspeedmenu"></div>
+    </div>
+    <button class="np-btn" id="npfull" aria-label="Fullscreen">` + icoFull + `</button>
+  </div>
+</div>
+<input type="file" id="npsubfile" accept=".srt,.vtt" hidden>
+</div>`
 }
 
 type subtitleTrack struct {
@@ -65,71 +86,172 @@ func subtitleTracks(basePath string, subs []Subtitle) []subtitleTrack {
 	return out
 }
 
-// playerCSS holds only layout rules; colours/typography come from panelBaseCSS.
+// Minimal monochrome line/solid SVG icons (24x24, currentColor).
+const (
+	icoPlay  = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`
+	icoPause = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>`
+	icoVol   = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16 8.5a4 4 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>`
+	icoMute  = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M17 9l4 4m0-4l-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`
+	icoCC    = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M9.5 10.5a2 2 0 1 0 0 3M15.5 10.5a2 2 0 1 0 0 3" stroke-linecap="round"/></svg>`
+	icoFull  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>`
+)
+
+// renderedPlayerJS injects the pause/volume/mute SVG icons (which the script
+// swaps in at runtime) into the player script. Kept out of the const so the
+// icon markup lives in one place.
+func renderedPlayerJS() string {
+	return strings.NewReplacer(
+		"__ICON_PAUSE__", jsEscape(icoPause),
+		"__ICON_VOL__", jsEscape(icoVol),
+		"__ICON_MUTE__", jsEscape(icoMute),
+	).Replace(playerJS)
+}
+
+// playerCSS: page layout + the custom video player component.
 const playerCSS = `
 body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
 .wrap{width:100%;max-width:1100px}
 .title{font-size:13px;color:#71717a;margin-bottom:12px;word-break:break-all;text-align:center}
 .stage{background:#000;border:1px solid rgba(255,255,255,0.07);border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}
-.media-video{width:100%;max-height:78vh;display:block;background:#000}
+.stage.audio{padding:24px}
 .media-img{max-width:100%;max-height:80vh;display:block}
-.media-audio{width:100%;padding:24px}
-.bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;justify-content:center}
-.sublabel{font-size:13px;color:#71717a}
+.media-audio{width:100%}
 .dl{margin-top:16px}
+
+.np{position:relative;background:#000;border:1px solid rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;outline:none;line-height:0}
+.np-video{width:100%;max-height:80vh;display:block;background:#000}
+.np-scrim{position:absolute;left:0;right:0;bottom:0;height:120px;background:linear-gradient(to top,rgba(0,0,0,.75),transparent);pointer-events:none;opacity:1;transition:opacity .2s}
+.np.hidecursor{cursor:none}
+.np.paused .np-scrim{opacity:1}
+.np.hide .np-scrim,.np.hide .np-controls{opacity:0;pointer-events:none}
+.np-controls{position:absolute;left:0;right:0;bottom:0;padding:8px 14px 12px;opacity:1;transition:opacity .2s;line-height:normal}
+
+.np-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.np-bigplay{pointer-events:auto;width:72px;height:72px;border-radius:50%;border:none;background:rgba(20,20,22,.66);color:#fafafa;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(4px);transition:transform .15s,background .15s;opacity:0}
+.np-bigplay svg{width:34px;height:34px;margin-left:3px}
+.np-bigplay:hover{background:rgba(40,40,44,.8);transform:scale(1.06)}
+.np.paused .np-bigplay{opacity:1}
+
+.np-seek{position:relative;height:5px;background:rgba(255,255,255,.22);border-radius:3px;cursor:pointer;margin-bottom:10px;transition:height .12s}
+.np-seek:hover{height:8px}
+.np-buffered{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.28);border-radius:3px;width:0}
+.np-played{position:absolute;left:0;top:0;bottom:0;background:#fafafa;border-radius:3px;width:0}
+.np-thumb{position:absolute;top:50%;transform:translate(-50%,-50%);width:13px;height:13px;border-radius:50%;background:#fafafa;left:0;opacity:0;transition:opacity .12s;box-shadow:0 0 0 4px rgba(250,250,250,.15)}
+.np-seek:hover .np-thumb{opacity:1}
+
+.np-row{display:flex;align-items:center;gap:8px}
+.np-btn{width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;color:#e4e4e7;cursor:pointer;border-radius:8px;padding:0}
+.np-btn:hover{background:rgba(255,255,255,.1);color:#fafafa}
+.np-btn svg{width:22px;height:22px}
+.np-speedbtn{font-size:13px;font-weight:600;width:auto;padding:0 10px}
+.np-time{font-size:12px;color:#d4d4d8;margin-left:2px;white-space:nowrap}
+.np-spacer{flex:1}
+.np-vol{width:0;opacity:0;transition:width .18s,opacity .18s;accent-color:#fafafa;cursor:pointer;height:4px}
+.np-mutewrap:hover .np-vol,.np-vol:hover,.np-vol:focus{width:76px;opacity:1}
+.np-row:hover .np-vol{width:76px;opacity:1}
+
+.np-pop{position:relative}
+.np-menu{position:absolute;bottom:46px;right:0;min-width:150px;background:#131316;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:6px;display:none;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+.np-menu.open{display:flex}
+.np-item{text-align:left;background:transparent;border:none;color:#d4d4d8;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:13px;font-family:inherit;white-space:nowrap}
+.np-item:hover{background:rgba(255,255,255,.08);color:#fafafa}
+.np-item.active{color:#fafafa;background:rgba(255,255,255,.06)}
+.np-item.active::after{content:"✓";float:right;margin-left:16px}
+
+video::cue{background:rgba(0,0,0,.72);color:#fff;font-family:"Plus Jakarta Sans",sans-serif}
 `
 
-// playerJS wires the subtitle <select> and local-file loader. It converts an
-// uploaded .srt to WebVTT in the browser (same rule as the server-side path)
-// so viewers can supply their own subtitle file.
 const playerJS = `
 (function(){
-  var video=document.getElementById('player');
-  var sel=document.getElementById('subsel');
-  var fileInput=document.getElementById('subfile');
-  if(!video||!sel) return;
-  var tracks=[];
-  function clearTracks(){
-    tracks.forEach(function(t){ if(t.el&&t.el.parentNode) t.el.parentNode.removeChild(t.el); if(t.url) URL.revokeObjectURL(t.url); });
-    tracks=[];
-  }
-  function addTrack(label,src){
-    var t=document.createElement('track');
-    t.kind='subtitles'; t.label=label; t.src=src; t.default=false;
-    video.appendChild(t);
-    return t;
-  }
-  (window.__SUBS__||[]).forEach(function(s){
-    var el=addTrack(s.label,s.url);
-    tracks.push({el:el});
-    var opt=document.createElement('option'); opt.value=String(tracks.length-1); opt.textContent=s.label; sel.appendChild(opt);
+  var np=document.getElementById('np'), v=document.getElementById('npvideo');
+  var big=document.getElementById('npbig'), playBtn=document.getElementById('npplay');
+  var muteBtn=document.getElementById('npmute'), vol=document.getElementById('npvol');
+  var seek=document.getElementById('npseek'), played=document.getElementById('npplayed');
+  var buf=document.getElementById('npbuf'), thumb=document.getElementById('npthumb');
+  var timeEl=document.getElementById('nptime'), fullBtn=document.getElementById('npfull');
+  var ccBtn=document.getElementById('npcc'), ccMenu=document.getElementById('npccmenu');
+  var speedBtn=document.getElementById('npspeed'), speedMenu=document.getElementById('npspeedmenu');
+  var subFile=document.getElementById('npsubfile');
+  var ICON_PLAY=playBtn.innerHTML, ICON_PAUSE='__ICON_PAUSE__';
+  var ICON_VOL='__ICON_VOL__', ICON_MUTE='__ICON_MUTE__';
+
+  function fmt(t){ if(!isFinite(t))t=0; t=Math.floor(t); var m=Math.floor(t/60), s=t%60; var h=Math.floor(m/60); m=m%60;
+    function p(n){return (n<10?'0':'')+n;} return h>0? h+':'+p(m)+':'+p(s) : m+':'+p(s); }
+  function setPlayIcon(){ var i=v.paused?ICON_PLAY:ICON_PAUSE; playBtn.innerHTML=i; big.innerHTML=ICON_PLAY; np.classList.toggle('paused',v.paused); }
+  function toggle(){ if(v.paused) v.play(); else v.pause(); }
+
+  big.addEventListener('click',toggle);
+  playBtn.addEventListener('click',toggle);
+  v.addEventListener('click',toggle);
+  v.addEventListener('play',setPlayIcon); v.addEventListener('pause',setPlayIcon);
+  v.addEventListener('dblclick',function(){ toggleFull(); });
+
+  v.addEventListener('timeupdate',function(){
+    var p=v.duration? (v.currentTime/v.duration)*100:0;
+    played.style.width=p+'%'; thumb.style.left=p+'%';
+    timeEl.textContent=fmt(v.currentTime)+' / '+fmt(v.duration);
   });
-  function showTrack(idx){
-    for(var i=0;i<video.textTracks.length;i++){ video.textTracks[i].mode='disabled'; }
-    if(idx>=0&&idx<video.textTracks.length){ video.textTracks[idx].mode='showing'; }
+  v.addEventListener('progress',function(){
+    if(v.buffered.length&&v.duration){ buf.style.width=(v.buffered.end(v.buffered.length-1)/v.duration)*100+'%'; }
+  });
+
+  function seekTo(e){ var r=seek.getBoundingClientRect(); var x=(e.clientX-r.left)/r.width; x=Math.max(0,Math.min(1,x)); if(v.duration) v.currentTime=x*v.duration; }
+  var dragging=false;
+  seek.addEventListener('mousedown',function(e){ dragging=true; seekTo(e); });
+  document.addEventListener('mousemove',function(e){ if(dragging) seekTo(e); });
+  document.addEventListener('mouseup',function(){ dragging=false; });
+
+  vol.addEventListener('input',function(){ v.volume=parseFloat(vol.value); v.muted=v.volume===0; updateVol(); });
+  function updateVol(){ muteBtn.innerHTML=(v.muted||v.volume===0)?ICON_MUTE:ICON_VOL; }
+  muteBtn.addEventListener('click',function(){ v.muted=!v.muted; vol.value=v.muted?0:(v.volume||1); updateVol(); });
+
+  function toggleFull(){ if(document.fullscreenElement){ document.exitFullscreen(); } else { np.requestFullscreen&&np.requestFullscreen(); } }
+  fullBtn.addEventListener('click',toggleFull);
+
+  // speed menu
+  var speeds=[0.5,0.75,1,1.25,1.5,2];
+  speeds.forEach(function(s){ var b=document.createElement('button'); b.className='np-item'+(s===1?' active':''); b.textContent=s+'x'; b.onclick=function(){ v.playbackRate=s; speedBtn.textContent=s+'x'; [].forEach.call(speedMenu.children,function(c){c.classList.remove('active');}); b.classList.add('active'); speedMenu.classList.remove('open'); }; speedMenu.appendChild(b); });
+  speedBtn.addEventListener('click',function(e){ e.stopPropagation(); ccMenu.classList.remove('open'); speedMenu.classList.toggle('open'); });
+
+  // subtitles
+  var trackEls=[];
+  function addTrack(label,src){ var t=document.createElement('track'); t.kind='subtitles'; t.label=label; t.src=src; v.appendChild(t); trackEls.push(t); return trackEls.length-1; }
+  function showTrack(idx){ for(var i=0;i<v.textTracks.length;i++){ v.textTracks[i].mode=(i===idx)?'showing':'disabled'; }
+    [].forEach.call(ccMenu.children,function(c){ c.classList.toggle('active', c.dataset.idx===String(idx)); }); }
+  function rebuildCCMenu(){ ccMenu.innerHTML='';
+    var off=document.createElement('button'); off.className='np-item active'; off.textContent='Off'; off.dataset.idx='-1'; off.onclick=function(){ showTrack(-1); ccMenu.classList.remove('open'); }; ccMenu.appendChild(off);
+    trackEls.forEach(function(t,i){ var b=document.createElement('button'); b.className='np-item'; b.textContent=t.label; b.dataset.idx=String(i); b.onclick=function(){ showTrack(i); ccMenu.classList.remove('open'); }; ccMenu.appendChild(b); });
+    var load=document.createElement('button'); load.className='np-item'; load.textContent='＋ Load subtitle…'; load.onclick=function(){ subFile.click(); ccMenu.classList.remove('open'); }; ccMenu.appendChild(load);
   }
-  sel.addEventListener('change',function(){ showTrack(sel.value===''?-1:parseInt(sel.value,10)); });
-  function srtToVtt(t){
-    t=t.replace(/\r\n/g,'\n').replace(/(\d\d:\d\d:\d\d),(\d\d\d)/g,'$1.$2');
-    return 'WEBVTT\n\n'+t;
-  }
-  if(fileInput){
-    fileInput.addEventListener('change',function(){
-      var f=fileInput.files&&fileInput.files[0]; if(!f) return;
-      var reader=new FileReader();
-      reader.onload=function(){
-        var text=String(reader.result||'');
-        if(/\.srt$/i.test(f.name)) text=srtToVtt(text);
-        var blob=new Blob([text],{type:'text/vtt'});
-        var url=URL.createObjectURL(blob);
-        var el=addTrack(f.name,url);
-        tracks.push({el:el,url:url});
-        var opt=document.createElement('option'); opt.value=String(tracks.length-1); opt.textContent=f.name+' (local)'; sel.appendChild(opt);
-        sel.value=String(tracks.length-1);
-        setTimeout(function(){ showTrack(tracks.length-1); },100);
-      };
-      reader.readAsText(f);
-    });
-  }
+  (window.__SUBS__||[]).forEach(function(s){ addTrack(s.label,s.url); });
+  rebuildCCMenu();
+  ccBtn.addEventListener('click',function(e){ e.stopPropagation(); speedMenu.classList.remove('open'); ccMenu.classList.toggle('open'); });
+
+  function srtToVtt(t){ return 'WEBVTT\n\n'+t.replace(/\r\n/g,'\n').replace(/(\d\d:\d\d:\d\d),(\d\d\d)/g,'$1.$2'); }
+  subFile.addEventListener('change',function(){ var f=subFile.files&&subFile.files[0]; if(!f)return; var r=new FileReader();
+    r.onload=function(){ var txt=String(r.result||''); if(/\.srt$/i.test(f.name)) txt=srtToVtt(txt); var url=URL.createObjectURL(new Blob([txt],{type:'text/vtt'}));
+      var idx=addTrack(f.name+' (local)',url); rebuildCCMenu(); setTimeout(function(){ showTrack(idx); },80); }; r.readAsText(f); });
+
+  document.addEventListener('click',function(){ ccMenu.classList.remove('open'); speedMenu.classList.remove('open'); });
+
+  // auto-hide controls
+  var hideT;
+  function activity(){ np.classList.remove('hide','hidecursor'); clearTimeout(hideT); hideT=setTimeout(function(){ if(!v.paused){ np.classList.add('hide','hidecursor'); } },2500); }
+  np.addEventListener('mousemove',activity); np.addEventListener('mouseleave',function(){ if(!v.paused) np.classList.add('hide'); });
+  activity();
+
+  // keyboard
+  np.addEventListener('keydown',function(e){
+    if(e.key===' '||e.key==='k'){ e.preventDefault(); toggle(); }
+    else if(e.key==='ArrowRight'){ v.currentTime=Math.min(v.duration||0,v.currentTime+5); }
+    else if(e.key==='ArrowLeft'){ v.currentTime=Math.max(0,v.currentTime-5); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); v.volume=Math.min(1,v.volume+0.1); vol.value=v.volume; updateVol(); }
+    else if(e.key==='ArrowDown'){ e.preventDefault(); v.volume=Math.max(0,v.volume-0.1); vol.value=v.volume; updateVol(); }
+    else if(e.key==='f'){ toggleFull(); }
+    else if(e.key==='m'){ v.muted=!v.muted; vol.value=v.muted?0:(v.volume||1); updateVol(); }
+    activity();
+  });
+
+  setPlayIcon(); updateVol();
 })();
 `

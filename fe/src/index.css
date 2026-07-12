@@ -365,3 +365,150 @@ h1, h2, h3, h4 {
     transform: scale(0.98);
   }
 }
+
+@layer components {
+  /* Custom video player (Nestcore Player) — shared visual language with the
+     public share player in be/internal/files/player.go. */
+  .np {
+    position: relative;
+    background: #000;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 12px;
+    overflow: hidden;
+    outline: none;
+    line-height: 0;
+  }
+  .np-video {
+    width: 100%;
+    max-height: 70vh;
+    display: block;
+    background: #000;
+  }
+  .np-scrim {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 120px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent);
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .np.hide .np-scrim,
+  .np.hide .np-controls { opacity: 0; pointer-events: none; }
+  .np.hidecursor { cursor: none; }
+  .np-controls {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 8px 14px 12px;
+    transition: opacity 0.2s;
+    line-height: normal;
+  }
+  .np-center {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .np-bigplay {
+    pointer-events: auto;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(20, 20, 22, 0.66);
+    color: #fafafa;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    transition: transform 0.15s, background 0.15s;
+  }
+  .np-bigplay svg { width: 34px; height: 34px; margin-left: 3px; }
+  .np-bigplay:hover { background: rgba(40, 40, 44, 0.8); transform: scale(1.06); }
+  .np-seek {
+    position: relative;
+    height: 5px;
+    background: rgba(255, 255, 255, 0.22);
+    border-radius: 3px;
+    cursor: pointer;
+    margin-bottom: 10px;
+    transition: height 0.12s;
+  }
+  .np-seek:hover { height: 8px; }
+  .np-buffered {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: rgba(255, 255, 255, 0.28);
+    border-radius: 3px;
+  }
+  .np-played {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: #fafafa;
+    border-radius: 3px;
+  }
+  .np-thumb {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: #fafafa;
+    opacity: 0;
+    transition: opacity 0.12s;
+    box-shadow: 0 0 0 4px rgba(250, 250, 250, 0.15);
+  }
+  .np-seek:hover .np-thumb { opacity: 1; }
+  .np-row { display: flex; align-items: center; gap: 8px; }
+  .np-btn {
+    width: 38px; height: 38px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent;
+    border: none;
+    color: #e4e4e7;
+    cursor: pointer;
+    border-radius: 8px;
+    padding: 0;
+  }
+  .np-btn:hover { background: rgba(255, 255, 255, 0.1); color: #fafafa; }
+  .np-btn svg { width: 22px; height: 22px; }
+  .np-speedbtn { font-size: 13px; font-weight: 600; width: auto; padding: 0 10px; }
+  .np-time { font-size: 12px; color: #d4d4d8; margin-left: 2px; white-space: nowrap; }
+  .np-spacer { flex: 1; }
+  .np-vol { width: 76px; accent-color: #fafafa; cursor: pointer; height: 4px; }
+  .np-pop { position: relative; }
+  .np-menu {
+    position: absolute;
+    bottom: 46px;
+    right: 0;
+    min-width: 150px;
+    background: #131316;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    z-index: 5;
+  }
+  .np-item {
+    text-align: left;
+    background: transparent;
+    border: none;
+    color: #d4d4d8;
+    padding: 8px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .np-item:hover { background: rgba(255, 255, 255, 0.08); color: #fafafa; }
+  .np-item.active { color: #fafafa; background: rgba(255, 255, 255, 0.06); }
+  video::cue { background: rgba(0, 0, 0, 0.72); color: #fff; }
+}
