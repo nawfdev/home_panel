@@ -55,6 +55,9 @@ export function Settings() {
   const [savingPaths, setSavingPaths] = useState(false);
   const [detecting, setDetecting] = useState<string | null>(null);
 
+  const [maxUploadMb, setMaxUploadMb] = useState(500);
+  const [savingUpload, setSavingUpload] = useState(false);
+
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheck | null>(null);
@@ -102,7 +105,31 @@ export function Settings() {
         }
       })
       .catch(() => {});
+    api<{ success: boolean; maxUploadMb?: number }>("/settings/file-manager")
+      .then((res) => {
+        if (res.success && res.maxUploadMb) setMaxUploadMb(res.maxUploadMb);
+      })
+      .catch(() => {});
   }, []);
+
+  async function saveFileManager() {
+    setSavingUpload(true);
+    try {
+      const data = await api<{ success: boolean; message?: string; error?: string }>("/settings/file-manager", {
+        method: "POST",
+        body: JSON.stringify({ maxUploadMb }),
+      });
+      if (data.success) {
+        show(data.message ?? "Saved", "success");
+      } else {
+        show(data.error ?? "Failed to save", "error");
+      }
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to save", "error");
+    } finally {
+      setSavingUpload(false);
+    }
+  }
 
   async function changePassword() {
     if (!currentPassword || !newPassword) {
@@ -422,6 +449,29 @@ export function Settings() {
             </div>
             <button className="btn-primary w-full mt-4 disabled:opacity-60" onClick={savePaths} disabled={savingPaths}>
               {savingPaths ? "Saving..." : "Save service paths"}
+            </button>
+          </Panel>
+        )}
+
+        {tab === "paths" && (
+          <Panel title="File manager" className="mt-4">
+            <p className="text-xs text-gray-500 mb-3">
+              Maximum size for a single upload in the Files page.
+            </p>
+            <label className="block text-gray-500 text-xs mb-1.5">Max upload size (MB)</label>
+            <input
+              type="number"
+              min={1}
+              value={maxUploadMb}
+              onChange={(e) => setMaxUploadMb(parseInt(e.target.value) || 0)}
+              className="input-field w-full text-sm"
+            />
+            <p className="text-xs text-gray-500 mt-2">
+              Note: if you access the panel through a Cloudflare tunnel on the free plan, Cloudflare caps a single
+              request at ~100 MB regardless of this setting — large uploads are more reliable over local/LAN access.
+            </p>
+            <button className="btn-primary w-full mt-4 disabled:opacity-60" onClick={saveFileManager} disabled={savingUpload}>
+              {savingUpload ? "Saving..." : "Save file manager settings"}
             </button>
           </Panel>
         )}

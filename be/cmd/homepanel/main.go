@@ -68,7 +68,7 @@ func main() {
 		Cloudflare: cloudflare.New(st),
 		Config:     cfg,
 		Docker:     docker.New(),
-		Files:      files.New(),
+		Files:      files.New(st),
 		Paths:      paths,
 		Store:      st,
 		Sessions:   sess,
