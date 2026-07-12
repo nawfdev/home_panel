@@ -112,6 +112,7 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;pad
 .dlbtn:hover{background:#fff;text-decoration:none;transform:translateY(-1px)}
 .dlbtn:active{transform:translateY(0)}
 .dlbtn svg{width:20px;height:20px}
+.dlcard .actions{margin-top:12px}
 .dlfoot{margin-top:18px;font-size:12px;color:#52525b}
 `
 
