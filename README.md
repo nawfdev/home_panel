@@ -20,6 +20,13 @@ Nestcore is an all-in-one web dashboard for managing homelab infrastructure — 
 
 ---
 
+## 📋 Requirements
+
+- **Go 1.24+** and **Node.js** (build the backend/frontend)
+- **ffmpeg** *(optional)* — on `PATH` so uploaded videos get remuxed to "faststart" in the background. Without it, phone-recorded videos (moov atom at the end of the file) can show as a stuck black player. Install: `apt install ffmpeg` (Linux) / `winget install ffmpeg` (Windows) / `brew install ffmpeg` (macOS).
+
+---
+
 ## 🎯 Key Features
 
 - **Monitoring** — real-time CPU/memory/disk/network stats, temperature, battery, historical graphs, configurable alert thresholds
@@ -118,6 +125,7 @@ home_panel/
 | **Charts** | Chart.js |
 | **Container** | Docker CLI |
 | **Process** | PM2 CLI |
+| **Video processing** | ffmpeg (optional) |
 | **System** | gopsutil |
 | **Alerts** | Telegram Bot API |
 
@@ -169,7 +177,9 @@ server {
 
 **Permission denied on Linux (Docker)?** Add your user to the docker group: `sudo usermod -aG docker $USER`.
 
-**Upload fails?** Check disk space and file size (10MB limit).
+**Upload fails?** Check disk space and file size (default 500MB limit, configurable in Settings).
+
+**Portrait/phone video stuck on a black screen in the player?** Install `ffmpeg` (see Requirements above) so new uploads get remuxed to faststart; re-upload any file that was uploaded before ffmpeg was installed.
 
 ---
 
