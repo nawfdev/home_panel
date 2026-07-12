@@ -98,6 +98,34 @@ func (f *Files) Upload(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "File uploaded"})
 }
 
+// ---- In-panel media player (authenticated) ----
+
+func (f *Files) MediaInfo(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Path string `json:"path"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	mt, subs, err := f.Svc.MediaInfo(req.Path)
+	if err != nil {
+		fileError(w, err)
+		return
+	}
+	if subs == nil {
+		subs = []filesvc.Subtitle{}
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "type": mt, "subtitles": subs})
+}
+
+func (f *Files) Subtitle(w http.ResponseWriter, r *http.Request) {
+	vtt, err := f.Svc.SubtitleForPath(r.URL.Query().Get("path"), r.URL.Query().Get("name"))
+	if err != nil {
+		http.Error(w, "Subtitle not found", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+	_, _ = w.Write([]byte(vtt))
+}
+
 // ---- Share management (authenticated) ----
 
 func (f *Files) CreateShare(w http.ResponseWriter, r *http.Request) {
@@ -156,6 +184,32 @@ func (f *Files) ServePublicShare(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(filesvc.PublicListingHTML(shareBase, relPath, rec.Name, entries)))
 		return
+	}
+
+	q := r.URL.Query()
+	// ?sub=<name> serves a detected sidecar subtitle as WebVTT.
+	if sub := q.Get("sub"); sub != "" {
+		vtt, err := filesvc.SubtitleVTT(target, sub)
+		if err != nil {
+			http.Error(w, "Subtitle not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/vtt; charset=utf-8")
+		_, _ = w.Write([]byte(vtt))
+		return
+	}
+	// ?raw=1 serves the raw bytes (range-enabled for video seeking); without it,
+	// a media file gets the dark player page instead of a bare download.
+	if q.Get("raw") != "1" {
+		if mt := filesvc.MediaType(info.Name()); mt != "" {
+			var subs []filesvc.Subtitle
+			if mt == "video" {
+				subs = filesvc.DetectSubtitles(target)
+			}
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = w.Write([]byte(filesvc.PlayerHTML(mt, r.URL.Path, info.Name(), subs)))
+			return
+		}
 	}
 	http.ServeFile(w, r, target)
 }
