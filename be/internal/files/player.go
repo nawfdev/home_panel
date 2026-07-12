@@ -3,8 +3,58 @@ package files
 import (
 	"encoding/json"
 	"net/url"
+	"path/filepath"
 	"strings"
 )
+
+// DownloadPageHTML renders a modern, panel-themed download landing page for a
+// shared non-media file (documents, archives, ...): a centered card with a
+// file icon, name, size, and a prominent Download button. The bytes come from
+// basePath?raw=1.
+func DownloadPageHTML(basePath, fileName string, size int64) string {
+	rawURL := basePath + "?raw=1"
+	ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(fileName), "."))
+	if len(ext) > 5 {
+		ext = ext[:5]
+	}
+	var b strings.Builder
+	b.WriteString(`<!doctype html><html><head>`)
+	b.WriteString(themeHead(fileName))
+	b.WriteString(`<style>` + panelBaseCSS + downloadCSS + `</style></head><body>`)
+	b.WriteString(`<div class="dlwrap"><div class="dlcard">`)
+	b.WriteString(`<div class="dlicon">` + icoFile)
+	if ext != "" {
+		b.WriteString(`<span class="dlext">` + htmlEscape(ext) + `</span>`)
+	}
+	b.WriteString(`</div>`)
+	b.WriteString(`<div class="dlname mono">` + htmlEscape(fileName) + `</div>`)
+	b.WriteString(`<div class="dlsize">` + formatSize(size) + `</div>`)
+	b.WriteString(`<a class="dlbtn" href="` + htmlEscape(rawURL) + `" download>` + icoDownload + `Download</a>`)
+	b.WriteString(`</div><div class="dlfoot">Shared via Nestcore</div></div>`)
+	b.WriteString(`</body></html>`)
+	return b.String()
+}
+
+const (
+	icoFile     = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>`
+	icoDownload = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 11l4 4 4-4M5 21h14"/></svg>`
+)
+
+const downloadCSS = `
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.dlwrap{width:100%;max-width:440px;text-align:center}
+.dlcard{background:#131316;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:38px 30px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
+.dlicon{position:relative;width:88px;height:88px;margin:0 auto 22px;color:#a1a1aa}
+.dlicon svg{width:88px;height:88px}
+.dlext{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);font-size:11px;font-weight:700;letter-spacing:.04em;color:#0e0e10;background:#fafafa;padding:2px 7px;border-radius:5px}
+.dlname{font-size:15px;color:#f4f4f5;word-break:break-all;margin-bottom:6px;line-height:1.4}
+.dlsize{font-size:13px;color:#71717a;margin-bottom:26px}
+.dlbtn{display:flex;align-items:center;justify-content:center;gap:9px;width:100%;background:#fafafa;color:#0e0e10;font-weight:600;font-size:15px;padding:14px;border-radius:11px;transition:background .15s,transform .1s}
+.dlbtn:hover{background:#fff;text-decoration:none;transform:translateY(-1px)}
+.dlbtn:active{transform:translateY(0)}
+.dlbtn svg{width:20px;height:20px}
+.dlfoot{margin-top:18px;font-size:12px;color:#52525b}
+`
 
 // PlayerHTML renders a self-contained (CSP-safe, no external assets) media
 // player page for a shared video/image/audio file, styled to match the panel.
