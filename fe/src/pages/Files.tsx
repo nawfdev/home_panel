@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
 import { Modal } from "../components/ui/Modal";
+import { MediaPlayer } from "./MediaPlayer";
 import { formatBytes } from "../lib/format";
 import {
   ArrowPathIcon,
@@ -57,6 +58,13 @@ export function Files() {
   const [creatingShare, setCreatingShare] = useState(false);
   const [shares, setShares] = useState<ShareRecord[]>([]);
 
+  const [player, setPlayer] = useState<{
+    path: string;
+    name: string;
+    type: "video" | "image" | "audio";
+    subtitles: { name: string; label: string }[];
+  } | null>(null);
+
   async function loadDirectory(p: string) {
     try {
       const data = await api<{ success: boolean; path: string; items: FileItem[] }>("/files/list", {
@@ -89,12 +97,25 @@ export function Files() {
     }
   }
 
-  function handleClick(item: FileItem) {
+  async function handleClick(item: FileItem) {
     if (item.isDirectory) {
       loadDirectory(item.path);
-    } else {
-      viewFile(item.path);
+      return;
     }
+    // Media files open in the player; everything else in the text viewer.
+    try {
+      const info = await api<{ success: boolean; type: string; subtitles: { name: string; label: string }[] }>(
+        "/files/media-info",
+        { method: "POST", body: JSON.stringify({ path: item.path }) }
+      );
+      if (info.type === "video" || info.type === "image" || info.type === "audio") {
+        setPlayer({ path: item.path, name: item.name, type: info.type, subtitles: info.subtitles ?? [] });
+        return;
+      }
+    } catch {
+      /* fall through to text view */
+    }
+    viewFile(item.path);
   }
 
   async function viewFile(p: string) {
@@ -375,6 +396,16 @@ export function Files() {
             </button>
           </div>
         </Modal>
+      )}
+
+      {player && (
+        <MediaPlayer
+          path={player.path}
+          name={player.name}
+          type={player.type}
+          subtitles={player.subtitles}
+          onClose={() => setPlayer(null)}
+        />
       )}
 
       {shareTarget && (
