@@ -41,9 +41,18 @@ export function MediaPlayer({
         <NestVideo src={rawUrl} tracks={tracks} />
       )}
 
-      <a href={rawUrl} download className="inline-block mt-3 text-sm text-gray-300 hover:text-gray-100 hover:underline">
-        Download
-      </a>
+      <div className="text-center mt-4">
+        <a
+          href={rawUrl}
+          download
+          className="inline-flex items-center gap-2 bg-gray-100 hover:bg-white text-gray-900 font-semibold text-sm px-6 py-2.5 rounded-lg transition active:scale-[0.98]"
+        >
+          <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3v12M8 11l4 4 4-4M5 21h14" />
+          </svg>
+          Download
+        </a>
+      </div>
     </Modal>
   );
 }
