@@ -204,8 +204,11 @@ func (s *Service) Upload(dirPath string, header *multipart.FileHeader) error {
 		return err
 	}
 	defer dst.Close()
-	_, err = io.Copy(dst, io.LimitReader(src, maxBytes+1))
-	return err
+	if _, err = io.Copy(dst, io.LimitReader(src, maxBytes+1)); err != nil {
+		return err
+	}
+	remuxFaststartAsync(dstPath)
+	return nil
 }
 
 func SafePath(userPath string) (string, error) {
