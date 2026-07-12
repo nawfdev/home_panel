@@ -5,6 +5,7 @@ import { Panel } from "../components/ui/Panel";
 import { Modal } from "../components/ui/Modal";
 import { SparklesIcon, KeyIcon, ChartBarIcon, CurrencyDollarIcon, ScissorsIcon, PlusIcon, TrashIcon, PencilIcon, Squares2X2Icon, ArrowPathIcon, CheckCircleIcon, ExclamationCircleIcon } from "@heroicons/react/24/outline";
 import { logoForBaseUrl, PRESET_LOGOS } from "./providerLogos";
+import { copyText } from "../lib/clipboard";
 
 type ProviderKind = "openai" | "anthropic" | "gemini";
 
@@ -665,9 +666,9 @@ export function AiGateway() {
             <input readOnly value={revealedKey} className="input-field flex-1 font-mono text-xs" />
             <button
               className="btn-secondary shrink-0"
-              onClick={() => {
-                navigator.clipboard.writeText(revealedKey);
-                show("Copied to clipboard", "success");
+              onClick={async () => {
+                const ok = await copyText(revealedKey);
+                show(ok ? "Copied to clipboard" : "Couldn't copy — select the key and copy manually", ok ? "success" : "warning");
               }}
             >
               Copy
