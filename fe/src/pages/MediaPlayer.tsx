@@ -115,7 +115,7 @@ export function MediaPlayer({
         </div>
       )}
 
-      <a href={rawUrl} download className="inline-block mt-3 text-sm text-blue-400 hover:underline">
+      <a href={rawUrl} download className="inline-block mt-3 text-sm text-gray-300 hover:text-gray-100 hover:underline">
         Download
       </a>
     </Modal>
