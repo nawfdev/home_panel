@@ -126,8 +126,24 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
   }
 
   function toggleFull() {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else wrapRef.current?.requestFullscreen?.();
+    const doc = document as unknown as {
+      fullscreenElement?: Element;
+      webkitFullscreenElement?: Element;
+      exitFullscreen?: () => void;
+      webkitExitFullscreen?: () => void;
+    };
+    if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+      (doc.exitFullscreen || doc.webkitExitFullscreen)?.call(document);
+      return;
+    }
+    const el = wrapRef.current as unknown as {
+      requestFullscreen?: () => void;
+      webkitRequestFullscreen?: () => void;
+    } | null;
+    const vid = videoRef.current as unknown as { webkitEnterFullscreen?: () => void } | null;
+    if (el?.requestFullscreen) el.requestFullscreen();
+    else if (el?.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    else if (vid?.webkitEnterFullscreen) vid.webkitEnterFullscreen(); // iOS
   }
 
   function onPickLocal(e: React.ChangeEvent<HTMLInputElement>) {
