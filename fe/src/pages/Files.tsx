@@ -98,6 +98,18 @@ export function Files() {
     }
   }
 
+  // Refetch the limit each time the modal opens so a change made in Settings
+  // is reflected without a full page reload.
+  async function openUploadModal() {
+    try {
+      const res = await api<{ success: boolean; maxUploadMb?: number }>("/settings/file-manager");
+      if (res.success && res.maxUploadMb) setMaxUploadMb(res.maxUploadMb);
+    } catch {
+      /* keep the last known limit */
+    }
+    setUploadOpen(true);
+  }
+
   async function handleClick(item: FileItem) {
     if (item.isDirectory) {
       loadDirectory(item.path);
@@ -271,7 +283,7 @@ export function Files() {
           <button className="btn-secondary" onClick={goUp}>
             <ArrowUpIcon className="w-4 h-4 inline mr-1.5" />Up
           </button>
-          <button className="btn-secondary" onClick={() => setUploadOpen(true)}>
+          <button className="btn-secondary" onClick={openUploadModal}>
             <ArrowUpTrayIcon className="w-4 h-4 inline mr-1.5" />Upload
           </button>
           <button className="btn-secondary" onClick={() => loadDirectory(path)}>

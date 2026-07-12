@@ -199,7 +199,8 @@ func (f *Files) ServePublicShare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// ?raw=1 serves the raw bytes (range-enabled for video seeking); without it,
-	// a media file gets the dark player page instead of a bare download.
+	// a media file gets the player page and any other file gets a themed
+	// download landing page instead of an immediate download.
 	if q.Get("raw") != "1" {
 		if mt := filesvc.MediaType(info.Name()); mt != "" {
 			var subs []filesvc.Subtitle
@@ -210,6 +211,9 @@ func (f *Files) ServePublicShare(w http.ResponseWriter, r *http.Request) {
 			_, _ = w.Write([]byte(filesvc.PlayerHTML(mt, r.URL.Path, info.Name(), subs)))
 			return
 		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write([]byte(filesvc.DownloadPageHTML(r.URL.Path, info.Name(), info.Size())))
+		return
 	}
 	http.ServeFile(w, r, target)
 }
