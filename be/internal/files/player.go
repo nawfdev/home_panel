@@ -5,13 +5,70 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+func fileTypeLabel(name string) string {
+	ext := strings.TrimPrefix(filepath.Ext(name), ".")
+	if ext == "" {
+		return "File"
+	}
+	return strings.ToUpper(ext)
+}
+
+// metaChipsHTML renders the size · type · date chip row shown on share pages.
+func metaChipsHTML(size int64, fileName string, modTime time.Time) string {
+	return `<div class="chips">` +
+		`<span class="chip">` + formatSize(size) + `</span>` +
+		`<span class="chip">` + htmlEscape(fileTypeLabel(fileName)) + `</span>` +
+		`<span class="chip">` + modTime.Format("Jan 2, 2006") + `</span>` +
+		`</div>`
+}
+
+// copyShareHTML renders the Copy link + Share secondary buttons.
+func copyShareHTML() string {
+	return `<div class="actions">` +
+		`<button class="actbtn" type="button" data-orig="` + htmlEscape(icoLink) + `Copy link" onclick="nsCopyLink(this)">` + icoLink + `Copy link</button>` +
+		`<button class="actbtn" type="button" onclick="nsShare()">` + icoShare + `Share</button>` +
+		`</div>`
+}
+
+const (
+	icoLink  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 15l6-6M10.5 6l1-1a4 4 0 0 1 6 6l-1 1M13.5 18l-1 1a4 4 0 0 1-6-6l1-1"/></svg>`
+	icoShare = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="M8.2 10.8l7.6-4.6M8.2 13.2l7.6 4.6"/></svg>`
+)
+
+// sharedActionsCSS: chip row + Download/Copy/Share buttons, used by both the
+// media player pages and the file download landing page.
+const sharedActionsCSS = `
+.chips{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:16px}
+.chip{font-size:12px;color:#a1a1aa;background:#18181b;border:1px solid rgba(255,255,255,.07);padding:4px 11px;border-radius:999px}
+.actions{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.mediadl{display:inline-flex;align-items:center;gap:8px;background:#fafafa;color:#0e0e10;font-weight:600;font-size:14px;padding:11px 24px;border-radius:10px;transition:background .15s,transform .1s;border:none;cursor:pointer;font-family:inherit}
+.mediadl:hover{background:#fff;text-decoration:none;transform:translateY(-1px)}
+.mediadl:active{transform:translateY(0)}
+.mediadl svg{width:18px;height:18px}
+.actbtn{display:inline-flex;align-items:center;gap:7px;background:#18181b;border:1px solid rgba(255,255,255,.08);color:#e4e4e7;font-size:13px;padding:11px 18px;border-radius:10px;cursor:pointer;font-family:inherit}
+.actbtn:hover{background:#27272a}
+.actbtn svg{width:16px;height:16px}
+`
+
+// shareActionsJS powers the Copy link / Share buttons on public share pages,
+// with a clipboard fallback for non-secure (HTTP) contexts.
+const shareActionsJS = `
+function nsFlash(btn,msg){ if(!btn)return; var o=btn.getAttribute('data-orig')||btn.innerHTML; btn.textContent=msg; setTimeout(function(){ btn.innerHTML=o; },1500); }
+function nsLegacyCopy(text){ try{ var ta=document.createElement('textarea'); ta.value=text; ta.style.position='fixed'; ta.style.left='-9999px'; document.body.appendChild(ta); ta.select(); var ok=document.execCommand('copy'); document.body.removeChild(ta); return ok; }catch(e){ return false; } }
+function nsCopyLink(btn){ var url=window.location.href;
+  if(navigator.clipboard&&window.isSecureContext){ navigator.clipboard.writeText(url).then(function(){ nsFlash(btn,'Copied!'); },function(){ nsFlash(btn, nsLegacyCopy(url)?'Copied!':'Select & copy'); }); }
+  else { nsFlash(btn, nsLegacyCopy(url)?'Copied!':'Select & copy'); } }
+function nsShare(){ if(navigator.share){ navigator.share({url:window.location.href}).catch(function(){}); } else { nsCopyLink(); } }
+`
 
 // DownloadPageHTML renders a modern, panel-themed download landing page for a
 // shared non-media file (documents, archives, ...): a centered card with a
 // file icon, name, size, and a prominent Download button. The bytes come from
 // basePath?raw=1.
-func DownloadPageHTML(basePath, fileName string, size int64) string {
+func DownloadPageHTML(basePath, fileName string, size int64, modTime time.Time) string {
 	rawURL := basePath + "?raw=1"
 	ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(fileName), "."))
 	if len(ext) > 5 {
@@ -20,7 +77,7 @@ func DownloadPageHTML(basePath, fileName string, size int64) string {
 	var b strings.Builder
 	b.WriteString(`<!doctype html><html><head>`)
 	b.WriteString(themeHead(fileName))
-	b.WriteString(`<style>` + panelBaseCSS + downloadCSS + `</style></head><body>`)
+	b.WriteString(`<style>` + panelBaseCSS + downloadCSS + sharedActionsCSS + `</style></head><body>`)
 	b.WriteString(`<div class="dlwrap"><div class="dlcard">`)
 	b.WriteString(`<div class="dlicon">` + icoFile)
 	if ext != "" {
@@ -28,9 +85,11 @@ func DownloadPageHTML(basePath, fileName string, size int64) string {
 	}
 	b.WriteString(`</div>`)
 	b.WriteString(`<div class="dlname mono">` + htmlEscape(fileName) + `</div>`)
-	b.WriteString(`<div class="dlsize">` + formatSize(size) + `</div>`)
+	b.WriteString(metaChipsHTML(size, fileName, modTime))
 	b.WriteString(`<a class="dlbtn" href="` + htmlEscape(rawURL) + `" download>` + icoDownload + `Download</a>`)
+	b.WriteString(copyShareHTML())
 	b.WriteString(`</div><div class="dlfoot">Shared via Nestcore</div></div>`)
+	b.WriteString(`<script>` + shareActionsJS + `</script>`)
 	b.WriteString(`</body></html>`)
 	return b.String()
 }
@@ -61,7 +120,7 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;pad
 // Video uses a fully custom control bar (not native controls). basePath is the
 // request path of the shared file; media bytes come from basePath?raw=1 and
 // sidecar subtitles from basePath?sub=<name>.
-func PlayerHTML(mediaType, basePath, fileName string, subs []Subtitle) string {
+func PlayerHTML(mediaType, basePath, fileName string, size int64, modTime time.Time, subs []Subtitle) string {
 	rawURL := basePath + "?raw=1"
 	subsJSON, _ := json.Marshal(subtitleTracks(basePath, subs))
 
@@ -71,6 +130,7 @@ func PlayerHTML(mediaType, basePath, fileName string, subs []Subtitle) string {
 	b.WriteString(`<style>`)
 	b.WriteString(panelBaseCSS)
 	b.WriteString(playerCSS)
+	b.WriteString(sharedActionsCSS)
 	b.WriteString(`</style></head><body>`)
 	b.WriteString(`<div class="wrap">`)
 	b.WriteString(`<div class="title mono">` + htmlEscape(fileName) + `</div>`)
@@ -78,27 +138,36 @@ func PlayerHTML(mediaType, basePath, fileName string, subs []Subtitle) string {
 	switch mediaType {
 	case "image":
 		b.WriteString(`<div class="stage"><img src="` + htmlEscape(rawURL) + `" alt="` + htmlEscape(fileName) + `" class="media-img"></div>`)
-		b.WriteString(mediaDownloadHTML(rawURL) + `</div></body></html>`)
+		b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
+		b.WriteString(`<script>` + shareActionsJS + `</script></body></html>`)
 		return b.String()
 	case "audio":
 		b.WriteString(`<div class="stage audio"><audio controls src="` + htmlEscape(rawURL) + `" class="media-audio"></audio></div>`)
-		b.WriteString(mediaDownloadHTML(rawURL) + `</div></body></html>`)
+		b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
+		b.WriteString(`<script>` + shareActionsJS + `</script></body></html>`)
 		return b.String()
 	}
 
 	// Custom video player.
 	b.WriteString(videoPlayerHTML(rawURL))
-	b.WriteString(mediaDownloadHTML(rawURL) + `</div>`)
+	b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
 	b.WriteString(`<script>window.__SUBS__=` + string(subsJSON) + `;</script>`)
 	b.WriteString(`<script>` + renderedPlayerJS() + `</script>`)
+	b.WriteString(`<script>` + shareActionsJS + `</script>`)
 	b.WriteString(`</body></html>`)
 	return b.String()
 }
 
-// mediaDownloadHTML is the prominent centered Download button shown below the
-// player/image, matching the download landing page's button style.
-func mediaDownloadHTML(rawURL string) string {
-	return `<div class="mediadl-wrap"><a class="mediadl" href="` + htmlEscape(rawURL) + `" download>` + icoDownload + `Download</a></div>`
+// mediaActionsHTML is the info + actions block below the player/image: file
+// meta chips and a row with a prominent Download button plus Copy link / Share.
+func mediaActionsHTML(rawURL, fileName string, size int64, modTime time.Time) string {
+	return `<div class="mediainfo">` +
+		metaChipsHTML(size, fileName, modTime) +
+		`<div class="actions">` +
+		`<a class="mediadl" href="` + htmlEscape(rawURL) + `" download>` + icoDownload + `Download</a>` +
+		`<button class="actbtn" type="button" data-orig="` + htmlEscape(icoLink) + `Copy link" onclick="nsCopyLink(this)">` + icoLink + `Copy link</button>` +
+		`<button class="actbtn" type="button" onclick="nsShare()">` + icoShare + `Share</button>` +
+		`</div></div>`
 }
 
 func videoPlayerHTML(rawURL string) string {
@@ -173,12 +242,7 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;pad
 .media-img{max-width:100%;max-height:80vh;display:block}
 .media-audio{width:100%}
 
-/* Prominent centered download button below the player/image. */
-.mediadl-wrap{text-align:center;margin-top:18px}
-.mediadl{display:inline-flex;align-items:center;gap:8px;background:#fafafa;color:#0e0e10;font-weight:600;font-size:14px;padding:11px 24px;border-radius:10px;transition:background .15s,transform .1s}
-.mediadl:hover{background:#fff;text-decoration:none;transform:translateY(-1px)}
-.mediadl:active{transform:translateY(0)}
-.mediadl svg{width:18px;height:18px}
+.mediainfo{margin-top:20px;text-align:center}
 
 /* Player frame stays landscape (16:9) regardless of the source video's
    aspect ratio; portrait/odd-ratio videos are letterboxed inside it. */
