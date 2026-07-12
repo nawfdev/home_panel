@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
+import { copyText } from "../lib/clipboard";
 import { Panel } from "../components/ui/Panel";
 import { Modal } from "../components/ui/Modal";
 import {
@@ -135,9 +136,9 @@ export function PM2() {
     }
   }
 
-  function copyInstallCommand(command: string) {
-    navigator.clipboard.writeText(command);
-    show("Copied to clipboard", "success");
+  async function copyInstallCommand(command: string) {
+    const ok = await copyText(command);
+    show(ok ? "Copied to clipboard" : "Couldn't copy — select the text and copy manually", ok ? "success" : "warning");
   }
 
   return (
