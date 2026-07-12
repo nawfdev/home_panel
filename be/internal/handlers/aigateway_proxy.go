@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/kaysa/home-panel/internal/aigateway"
-	"github.com/kaysa/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/aigateway"
+	"github.com/nawfdev/home-panel/internal/httpx"
 )
 
 // GatewayAuth guards the proxy endpoint, which is called by an external

@@ -10,23 +10,24 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/kaysa/home-panel/internal/aigateway"
-	"github.com/kaysa/home-panel/internal/cloudflare"
-	"github.com/kaysa/home-panel/internal/config"
-	dockersvc "github.com/kaysa/home-panel/internal/docker"
-	filesvc "github.com/kaysa/home-panel/internal/files"
-	"github.com/kaysa/home-panel/internal/handlers"
-	"github.com/kaysa/home-panel/internal/httpx"
-	"github.com/kaysa/home-panel/internal/logs"
-	"github.com/kaysa/home-panel/internal/metrics"
-	pm2svc "github.com/kaysa/home-panel/internal/pm2"
-	"github.com/kaysa/home-panel/internal/projects"
-	"github.com/kaysa/home-panel/internal/session"
-	"github.com/kaysa/home-panel/internal/store"
-	"github.com/kaysa/home-panel/internal/telegram"
-	termsvc "github.com/kaysa/home-panel/internal/terminal"
-	"github.com/kaysa/home-panel/internal/tunnel"
-	"github.com/kaysa/home-panel/internal/updater"
+	"github.com/nawfdev/home-panel/internal/aigateway"
+	"github.com/nawfdev/home-panel/internal/cloudflare"
+	"github.com/nawfdev/home-panel/internal/config"
+	dockersvc "github.com/nawfdev/home-panel/internal/docker"
+	filesvc "github.com/nawfdev/home-panel/internal/files"
+	"github.com/nawfdev/home-panel/internal/handlers"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/logs"
+	"github.com/nawfdev/home-panel/internal/metrics"
+	moviesvc "github.com/nawfdev/home-panel/internal/movies"
+	pm2svc "github.com/nawfdev/home-panel/internal/pm2"
+	"github.com/nawfdev/home-panel/internal/projects"
+	"github.com/nawfdev/home-panel/internal/session"
+	"github.com/nawfdev/home-panel/internal/store"
+	"github.com/nawfdev/home-panel/internal/telegram"
+	termsvc "github.com/nawfdev/home-panel/internal/terminal"
+	"github.com/nawfdev/home-panel/internal/tunnel"
+	"github.com/nawfdev/home-panel/internal/updater"
 )
 
 // Deps holds everything the router needs.
@@ -75,6 +76,7 @@ func New(d Deps) http.Handler {
 	exportH := handlers.Export{}
 	aigatewayH := &handlers.AiGateway{Svc: d.AiGateway}
 	gatewayAuth := &handlers.GatewayAuth{Svc: d.AiGateway}
+	moviesH := &handlers.Movies{Svc: moviesvc.New()}
 
 	// Rate limiters mirror express-rate-limit windows from server.js.
 	apiLimiter := httpx.NewRateLimiter(15*time.Minute, 500, false,
@@ -270,6 +272,19 @@ func New(d Deps) http.Handler {
 			fr.Delete("/shares/{token}", filesH.RevokeShare)
 			fr.Post("/media-info", filesH.MediaInfo)
 			fr.Get("/subtitle", filesH.Subtitle)
+		})
+
+		// Movie section: scrape pahe.ink + server-side download queue. Finished
+		// files land under the SafePath allowlist, so they reuse the /files
+		// player, streaming and share endpoints above with no extra wiring.
+		api.Route("/movies", func(mr chi.Router) {
+			mr.Use(auth.RequireAuth)
+			mr.Post("/search", moviesH.Search)
+			mr.Post("/detail", moviesH.Detail)
+			mr.Post("/download", moviesH.StartDownload)
+			mr.Get("/downloads", moviesH.ListDownloads)
+			mr.Get("/downloads/stream", moviesH.DownloadsStream)
+			mr.Delete("/downloads/{id}", moviesH.CancelDownload)
 		})
 	})
 

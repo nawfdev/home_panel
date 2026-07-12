@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kaysa/home-panel/internal/httpx"
-	"github.com/kaysa/home-panel/internal/netinfo"
-	"github.com/kaysa/home-panel/internal/tunnel"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/netinfo"
+	"github.com/nawfdev/home-panel/internal/tunnel"
 )
 
 // Network ports backend/routes/network.js.

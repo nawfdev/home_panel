@@ -6,8 +6,8 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/kaysa/home-panel/internal/httpx"
-	logsvc "github.com/kaysa/home-panel/internal/logs"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	logsvc "github.com/nawfdev/home-panel/internal/logs"
 )
 
 type logsService interface {

@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/kaysa/home-panel/internal/httpx"
-	"github.com/kaysa/home-panel/internal/metrics"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/metrics"
 )
 
 // Metrics ports backend/routes/metrics.js. All routes return historical series

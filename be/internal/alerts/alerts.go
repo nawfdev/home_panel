@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kaysa/home-panel/internal/config"
-	"github.com/kaysa/home-panel/internal/sysstats"
-	"github.com/kaysa/home-panel/internal/telegram"
-	"github.com/kaysa/home-panel/internal/tunnel"
+	"github.com/nawfdev/home-panel/internal/config"
+	"github.com/nawfdev/home-panel/internal/sysstats"
+	"github.com/nawfdev/home-panel/internal/telegram"
+	"github.com/nawfdev/home-panel/internal/tunnel"
 )
 
 type Config struct {

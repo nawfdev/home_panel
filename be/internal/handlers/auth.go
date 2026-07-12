@@ -7,9 +7,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/kaysa/home-panel/internal/httpx"
-	"github.com/kaysa/home-panel/internal/session"
-	"github.com/kaysa/home-panel/internal/store"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/session"
+	"github.com/nawfdev/home-panel/internal/store"
 	"golang.org/x/crypto/bcrypt"
 )
 

@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"time"
 
-	cfapi "github.com/kaysa/home-panel/internal/cloudflare"
-	"github.com/kaysa/home-panel/internal/httpx"
-	"github.com/kaysa/home-panel/internal/projects"
-	"github.com/kaysa/home-panel/internal/store"
-	"github.com/kaysa/home-panel/internal/sysstats"
-	"github.com/kaysa/home-panel/internal/tunnel"
+	cfapi "github.com/nawfdev/home-panel/internal/cloudflare"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/projects"
+	"github.com/nawfdev/home-panel/internal/store"
+	"github.com/nawfdev/home-panel/internal/sysstats"
+	"github.com/nawfdev/home-panel/internal/tunnel"
 )
 
 // Dashboard ports backend/routes/dashboard.js.

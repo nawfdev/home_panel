@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kaysa/home-panel/internal/store"
+	"github.com/nawfdev/home-panel/internal/store"
 )
 
 // LogLine mirrors the {type, data, time} log objects from projects.js.

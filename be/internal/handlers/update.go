@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kaysa/home-panel/internal/httpx"
-	"github.com/kaysa/home-panel/internal/store"
-	"github.com/kaysa/home-panel/internal/updater"
+	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/store"
+	"github.com/nawfdev/home-panel/internal/updater"
 )
 
 // Update ports backend/routes/update.js.

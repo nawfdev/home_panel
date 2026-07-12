@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kaysa/home-panel/internal/sysstats"
+	"github.com/nawfdev/home-panel/internal/sysstats"
 )
 
 const maxDataPoints = 1440 // 24h at 1-minute intervals

@@ -5,8 +5,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/kaysa/home-panel/internal/aigateway"
-	"github.com/kaysa/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/aigateway"
+	"github.com/nawfdev/home-panel/internal/httpx"
 )
 
 // AiGateway serves the config/dashboard endpoints (cookie-session auth, same

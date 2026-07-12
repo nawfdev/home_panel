@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/kaysa/home-panel/internal/session"
+	"github.com/nawfdev/home-panel/internal/session"
 )
 
 var blockedCommands = []string{
