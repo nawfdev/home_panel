@@ -5,6 +5,7 @@ import { Panel } from "../components/ui/Panel";
 import { Modal } from "../components/ui/Modal";
 import { MediaPlayer } from "./MediaPlayer";
 import { formatBytes } from "../lib/format";
+import { copyText } from "../lib/clipboard";
 import {
   ArrowPathIcon,
   ArrowUpIcon,
@@ -449,9 +450,9 @@ export function Files() {
                       <button
                         className="btn-secondary shrink-0"
                         title="Copy"
-                        onClick={() => {
-                          navigator.clipboard.writeText(shareUrl(s.token));
-                          show("Link copied", "success");
+                        onClick={async () => {
+                          const ok = await copyText(shareUrl(s.token));
+                          show(ok ? "Link copied" : "Couldn't copy — select the link and copy manually", ok ? "success" : "warning");
                         }}
                       >
                         <ClipboardIcon className="w-4 h-4" />
