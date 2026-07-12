@@ -248,6 +248,8 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;pad
 /* Player frame stays landscape (16:9) regardless of the source video's
    aspect ratio; portrait/odd-ratio videos are letterboxed inside it. */
 .np{position:relative;background:#000;border:1px solid rgba(255,255,255,0.07);border-radius:12px;overflow:hidden;outline:none;line-height:0;width:100%;aspect-ratio:16/9;max-height:80vh}
+.np:fullscreen{aspect-ratio:auto;max-height:none;width:100%;height:100%;border:none;border-radius:0}
+.np:-webkit-full-screen{aspect-ratio:auto;max-height:none;width:100%;height:100%;border:none;border-radius:0}
 .np-video{width:100%;height:100%;object-fit:contain;display:block;background:#000}
 .np-scrim{position:absolute;left:0;right:0;bottom:0;height:120px;background:linear-gradient(to top,rgba(0,0,0,.75),transparent);pointer-events:none;opacity:1;transition:opacity .2s}
 .np.hidecursor{cursor:none}
@@ -334,7 +336,13 @@ const playerJS = `
   function updateVol(){ muteBtn.innerHTML=(v.muted||v.volume===0)?ICON_MUTE:ICON_VOL; }
   muteBtn.addEventListener('click',function(){ v.muted=!v.muted; vol.value=v.muted?0:(v.volume||1); updateVol(); });
 
-  function toggleFull(){ if(document.fullscreenElement){ document.exitFullscreen(); } else { np.requestFullscreen&&np.requestFullscreen(); } }
+  function toggleFull(){
+    var fsEl=document.fullscreenElement||document.webkitFullscreenElement;
+    if(fsEl){ (document.exitFullscreen||document.webkitExitFullscreen).call(document); return; }
+    if(np.requestFullscreen){ np.requestFullscreen(); }
+    else if(np.webkitRequestFullscreen){ np.webkitRequestFullscreen(); }
+    else if(v.webkitEnterFullscreen){ v.webkitEnterFullscreen(); } /* iOS: only the video can go fullscreen */
+  }
   fullBtn.addEventListener('click',toggleFull);
 
   // speed menu
