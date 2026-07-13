@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nawfdev/home-panel/internal/aria2"
 	filesvc "github.com/nawfdev/home-panel/internal/files"
 )
 
@@ -24,13 +25,20 @@ import (
 // directory is derived from the OS (under the existing SafePath allowlist) so
 // finished files immediately appear in the file manager, player and shares.
 type Service struct {
-	mu   sync.Mutex
-	jobs map[string]*Job
-	seq  int
+	mu    sync.Mutex
+	jobs  map[string]*Job
+	seq   int
+	aria2 *aria2.Manager
 }
 
 func New() *Service {
-	return &Service{jobs: make(map[string]*Job)}
+	return &Service{jobs: make(map[string]*Job), aria2: aria2.New()}
+}
+
+// Shutdown stops the aria2c child process (if one was ever spawned). Called
+// from main.go's graceful shutdown sequence.
+func (s *Service) Shutdown() {
+	s.aria2.Shutdown()
 }
 
 // downloadClient fetches movie files. Unlike httpClient (used for scraping,
@@ -123,6 +131,7 @@ type Job struct {
 	Error       string    `json:"error,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 	cancel      context.CancelFunc
+	gid         string // aria2 job id; empty when using the fallback downloader
 }
 
 // MoviesDir returns the on-disk directory movies are saved to, creating it if
@@ -202,7 +211,8 @@ func (s *Service) Start(title, rawURL string) (*Job, error) {
 	if err != nil {
 		return nil, err
 	}
-	dest := filepath.Join(dir, safeFilename(title, rawURL))
+	filename := safeFilename(title, rawURL)
+	dest := filepath.Join(dir, filename)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
@@ -218,6 +228,20 @@ func (s *Service) Start(title, rawURL string) (*Job, error) {
 	}
 	s.jobs[job.ID] = job
 	s.mu.Unlock()
+
+	// Prefer aria2 (resumable, multi-connection) when it's on PATH. If it's
+	// missing, or fails to start/accept the job, fall back to the built-in
+	// single-connection downloader so a broken aria2 install never breaks
+	// downloads outright.
+	if aria2.Available {
+		if err := s.aria2.EnsureRunning(); err == nil {
+			if gid, err := s.aria2.AddURI(rawURL, dir, filename); err == nil {
+				job.gid = gid
+				go s.pollAria2(ctx, job)
+				return job.snapshot(), nil
+			}
+		}
+	}
 
 	go s.run(ctx, job)
 	return job.snapshot(), nil
@@ -279,15 +303,97 @@ func (s *Service) run(ctx context.Context, job *Job) {
 		return
 	}
 
-	// Reuse the exact faststart remux the uploader uses, so streaming seeks
-	// instantly. remux is best-effort; failure doesn't fail the download.
+	s.finish(job)
+}
+
+// finish runs the post-download pipeline shared by both download engines:
+// faststart remux (streaming-friendly moov atom placement) and mkv-embedded
+// subtitle extraction, both best-effort, then marks the job done.
+func (s *Service) finish(job *Job) {
 	s.set(job, func(j *Job) { j.Status = StatusRemuxing })
 	if ext := strings.ToLower(filepath.Ext(job.Dest)); ext == ".mp4" || ext == ".mov" || ext == ".m4v" {
 		if err := filesvc.RemuxFaststart(job.Dest); err != nil {
 			log.Printf("movies: faststart remux skipped for %s: %v", job.Dest, err)
 		}
 	}
+	// Best-effort: pull any subtitle tracks muxed inside the container (common
+	// for .mkv) out into sidecar .srt files so the player's existing
+	// DetectSubtitles picks them up with no further wiring.
+	if err := filesvc.ExtractEmbeddedSubtitles(job.Dest); err != nil {
+		log.Printf("movies: subtitle extract skipped for %s: %v", job.Dest, err)
+	}
 	s.set(job, func(j *Job) { j.Status = StatusDone })
+}
+
+// pollAria2 tracks a download handed off to aria2, translating its RPC
+// status into the same Job fields copyWithProgress updates for the fallback
+// downloader — DownloadsStream needs no changes to serve either engine.
+func (s *Service) pollAria2(ctx context.Context, job *Job) {
+	s.set(job, func(j *Job) { j.Status = StatusDownloading })
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			_ = os.Remove(job.Dest)
+			s.set(job, func(j *Job) { j.Status = StatusCanceled })
+			return
+		case <-ticker.C:
+		}
+
+		st, err := s.aria2.Status(job.gid)
+		if err != nil {
+			s.fail(job, err)
+			return
+		}
+		s.set(job, func(j *Job) {
+			j.Downloaded = st.CompletedLength
+			j.Total = st.TotalLength
+			j.SpeedBps = st.DownloadSpeed
+		})
+
+		switch st.State {
+		case "complete":
+			// Unlike the fallback downloader (which checks Content-Type before
+			// ever writing to disk), aria2 writes the full response body
+			// itself, so the HTML/captcha guard has to run after the fact here.
+			if err := sniffHTML(job.Dest); err != nil {
+				os.Remove(job.Dest)
+				s.fail(job, err)
+				return
+			}
+			s.finish(job)
+			return
+		case "error":
+			msg := st.ErrorMessage
+			if msg == "" {
+				msg = "aria2 download failed"
+			}
+			s.fail(job, errors.New(msg))
+			return
+		case "removed":
+			s.set(job, func(j *Job) { j.Status = StatusCanceled })
+			return
+		}
+	}
+}
+
+// sniffHTML reports an error if path's first bytes look like an HTML page
+// rather than a video file — the same captcha/landing-page guard the
+// fallback downloader applies to the live HTTP response, reapplied here
+// after the fact since aria2 already wrote the full file to disk.
+func sniffHTML(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	if strings.Contains(http.DetectContentType(buf[:n]), "text/html") {
+		return errors.New("link returned an HTML page, not a video file (likely a captcha/landing page); resolve it manually and paste the direct file link")
+	}
+	return nil
 }
 
 // copyWithProgress streams src->dst while updating job progress and honoring
@@ -333,6 +439,9 @@ func (s *Service) Cancel(id string) error {
 	s.mu.Unlock()
 	if !ok {
 		return errors.New("download not found")
+	}
+	if job.gid != "" {
+		_ = s.aria2.Remove(job.gid)
 	}
 	if job.cancel != nil {
 		job.cancel()

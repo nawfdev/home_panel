@@ -37,6 +37,7 @@ type Deps struct {
 	Config     *config.Config
 	Docker     *dockersvc.Service
 	Files      *filesvc.Service
+	Movies     *moviesvc.Service
 	Paths      config.Paths
 	Store      *store.Store
 	Sessions   *session.Manager
@@ -76,7 +77,8 @@ func New(d Deps) http.Handler {
 	exportH := handlers.Export{}
 	aigatewayH := &handlers.AiGateway{Svc: d.AiGateway}
 	gatewayAuth := &handlers.GatewayAuth{Svc: d.AiGateway}
-	moviesH := &handlers.Movies{Svc: moviesvc.New()}
+	moviesH := &handlers.Movies{Svc: d.Movies}
+	subtitlesH := &handlers.Subtitles{}
 
 	// Rate limiters mirror express-rate-limit windows from server.js.
 	apiLimiter := httpx.NewRateLimiter(15*time.Minute, 500, false,
@@ -285,6 +287,11 @@ func New(d Deps) http.Handler {
 			mr.Get("/downloads", moviesH.ListDownloads)
 			mr.Get("/downloads/stream", moviesH.DownloadsStream)
 			mr.Delete("/downloads/{id}", moviesH.CancelDownload)
+			// Subtitle search/download (subsource.net) — saves sidecars next to a
+			// downloaded movie so the player's existing subtitle detection picks
+			// them up with no extra wiring.
+			mr.Post("/subtitles/search", subtitlesH.Search)
+			mr.Post("/subtitles/download", subtitlesH.Download)
 		})
 	})
 

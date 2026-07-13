@@ -17,6 +17,7 @@ import {
   ClipboardIcon,
   XMarkIcon,
   FilmIcon,
+  LanguageIcon,
 } from "@heroicons/react/24/outline";
 
 interface Film {
@@ -46,6 +47,14 @@ interface Job {
   createdAt: string;
 }
 
+interface SubtitleResult {
+  subtitleId: number;
+  language: string;
+  releaseInfo: string[];
+  downloads: number;
+  rating: { good: number; bad: number; total: number };
+}
+
 const TTL_OPTIONS: { label: string; seconds: number }[] = [
   { label: "Never expires", seconds: 0 },
   { label: "1 hour", seconds: 3600 },
@@ -72,12 +81,24 @@ export function Movies() {
   const [manualUrl, setManualUrl] = useState("");
 
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [downloadsOpen, setDownloadsOpen] = useState(false);
 
-  const [player, setPlayer] = useState<{ path: string; name: string } | null>(null);
+  const [player, setPlayer] = useState<{
+    path: string;
+    name: string;
+    type: "video" | "image" | "audio";
+    subtitles: { name: string; label: string }[];
+  } | null>(null);
   const [shareTarget, setShareTarget] = useState<Job | null>(null);
   const [shareTtl, setShareTtl] = useState(0);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [creatingShare, setCreatingShare] = useState(false);
+
+  const [subtitleTarget, setSubtitleTarget] = useState<Job | null>(null);
+  const [subtitleLang, setSubtitleLang] = useState("english");
+  const [subtitleResults, setSubtitleResults] = useState<SubtitleResult[] | null>(null);
+  const [searchingSubs, setSearchingSubs] = useState(false);
+  const [downloadingSubId, setDownloadingSubId] = useState<number | null>(null);
 
   const esRef = useRef<EventSource | null>(null);
 
@@ -235,9 +256,68 @@ export function Movies() {
     return dest;
   }
 
-  function playJob(job: Job) {
+  // Detects sidecar subtitles (including ones the subtitle search saved, or
+  // extracted from an mkv's embedded tracks) the same way Files.tsx does.
+  async function playJob(job: Job) {
     const name = job.dest.split(/[\\/]/).pop() ?? job.title;
-    setPlayer({ path: playerPath(job.dest), name });
+    const path = playerPath(job.dest);
+    try {
+      const info = await api<{ success: boolean; type: string; subtitles: { name: string; label: string }[] }>(
+        "/files/media-info",
+        { method: "POST", body: JSON.stringify({ path }) }
+      );
+      const type = info.type === "image" || info.type === "audio" ? info.type : "video";
+      setPlayer({ path, name, type, subtitles: info.subtitles ?? [] });
+    } catch {
+      setPlayer({ path, name, type: "video", subtitles: [] });
+    }
+  }
+
+  function openSubtitleSearch(job: Job) {
+    setSubtitleTarget(job);
+    setSubtitleResults(null);
+    searchSubtitles(job, subtitleLang);
+  }
+
+  async function searchSubtitles(job: Job, lang: string) {
+    setSearchingSubs(true);
+    try {
+      const data = await api<{ success: boolean; results?: SubtitleResult[]; error?: string }>(
+        "/movies/subtitles/search",
+        { method: "POST", body: JSON.stringify({ title: job.title, lang }) }
+      );
+      if (data.success) {
+        setSubtitleResults(data.results ?? []);
+      } else {
+        show(data.error ?? "Subtitle search failed", "error");
+        setSubtitleResults([]);
+      }
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Subtitle search failed", "error");
+      setSubtitleResults([]);
+    } finally {
+      setSearchingSubs(false);
+    }
+  }
+
+  async function downloadSubtitle(result: SubtitleResult) {
+    if (!subtitleTarget || downloadingSubId) return;
+    setDownloadingSubId(result.subtitleId);
+    try {
+      const data = await api<{ success: boolean; error?: string }>("/movies/subtitles/download", {
+        method: "POST",
+        body: JSON.stringify({ subtitleId: result.subtitleId, videoDest: subtitleTarget.dest, lang: result.language }),
+      });
+      if (data.success) {
+        show("Subtitle saved", "success");
+      } else {
+        show(data.error ?? "Couldn't download subtitle", "error");
+      }
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Couldn't download subtitle", "error");
+    } finally {
+      setDownloadingSubId(null);
+    }
   }
 
   function openShare(job: Job) {
@@ -267,6 +347,8 @@ export function Movies() {
     }
   }
 
+  const activeJobCount = jobs.filter((j) => j.status === "queued" || j.status === "downloading" || j.status === "remuxing").length;
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -292,11 +374,25 @@ export function Movies() {
         </button>
       </form>
 
-      {/* Downloads panel — always visible so in-flight jobs are never hidden. */}
+      {/* Downloads dropdown — collapsed by default; badge shows active jobs. */}
       {jobs.length > 0 && (
         <Panel className="mb-6">
-          <h3 className="text-sm font-semibold text-gray-300 mb-3">Downloads</h3>
-          <div className="space-y-2">
+          <button
+            className="flex items-center justify-between w-full text-left"
+            onClick={() => setDownloadsOpen((o) => !o)}
+          >
+            <span className="text-sm font-semibold text-gray-300 flex items-center gap-2">
+              Downloads
+              {activeJobCount > 0 && (
+                <span className="bg-blue-500/20 text-blue-300 text-xs rounded-full px-2 py-0.5">
+                  {activeJobCount}
+                </span>
+              )}
+            </span>
+            <ChevronDownIcon className={`w-4 h-4 text-gray-400 transition-transform ${downloadsOpen ? "rotate-180" : ""}`} />
+          </button>
+          {downloadsOpen && (
+          <div className="space-y-2 mt-3">
             {jobs.map((job) => {
               const pct = job.total > 0 ? Math.round((job.downloaded / job.total) * 100) : 0;
               return (
@@ -324,6 +420,9 @@ export function Movies() {
                           <button className="btn-secondary" title="Share" onClick={() => openShare(job)}>
                             <ShareIcon className="w-4 h-4" />
                           </button>
+                          <button className="btn-secondary" title="Find subtitles" onClick={() => openSubtitleSearch(job)}>
+                            <LanguageIcon className="w-4 h-4" />
+                          </button>
                         </>
                       )}
                       {(job.status === "downloading" || job.status === "queued") && (
@@ -345,6 +444,7 @@ export function Movies() {
               );
             })}
           </div>
+          )}
         </Panel>
       )}
 
@@ -461,7 +561,13 @@ export function Movies() {
       )}
 
       {player && (
-        <MediaPlayer path={player.path} name={player.name} type="video" subtitles={[]} onClose={() => setPlayer(null)} />
+        <MediaPlayer
+          path={player.path}
+          name={player.name}
+          type={player.type}
+          subtitles={player.subtitles}
+          onClose={() => setPlayer(null)}
+        />
       )}
 
       {shareTarget && (
@@ -498,6 +604,54 @@ export function Movies() {
               >
                 <ClipboardIcon className="w-4 h-4" />
               </button>
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {subtitleTarget && (
+        <Modal title={`Subtitles for "${subtitleTarget.title}"`} onClose={() => setSubtitleTarget(null)} wide>
+          <div className="flex gap-2 mb-3">
+            <input
+              value={subtitleLang}
+              onChange={(e) => setSubtitleLang(e.target.value)}
+              placeholder="Language (e.g. english, indonesian)"
+              className="input-field flex-1 text-sm"
+            />
+            <button
+              className="btn-primary disabled:opacity-60"
+              onClick={() => searchSubtitles(subtitleTarget, subtitleLang)}
+              disabled={searchingSubs}
+            >
+              <MagnifyingGlassIcon className="w-4 h-4 inline mr-1.5" />
+              {searchingSubs ? "Searching…" : "Search"}
+            </button>
+          </div>
+          {subtitleResults === null ? (
+            <p className="text-sm text-gray-500">Searching…</p>
+          ) : subtitleResults.length === 0 ? (
+            <p className="text-sm text-gray-500">No subtitles found.</p>
+          ) : (
+            <div className="space-y-2">
+              {subtitleResults.map((r) => (
+                <div key={r.subtitleId} className="bg-white/5 rounded-lg p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm text-gray-100 truncate">{r.releaseInfo.join(" ") || r.language}</p>
+                    <p className="text-xs text-gray-500">
+                      {r.language} · {r.downloads} downloads
+                      {r.rating.total > 0 && ` · ${r.rating.good}/${r.rating.total} rated good`}
+                    </p>
+                  </div>
+                  <button
+                    className="btn-primary shrink-0 disabled:opacity-60"
+                    onClick={() => downloadSubtitle(r)}
+                    disabled={downloadingSubId !== null}
+                  >
+                    <ArrowDownTrayIcon className="w-4 h-4 inline mr-1.5" />
+                    {downloadingSubId === r.subtitleId ? "Saving…" : "Download"}
+                  </button>
+                </div>
+              ))}
             </div>
           )}
         </Modal>
