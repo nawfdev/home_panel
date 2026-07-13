@@ -24,6 +24,8 @@ Nestcore is an all-in-one web dashboard for managing homelab infrastructure — 
 
 - **Go 1.24+** and **Node.js** (build the backend/frontend)
 - **ffmpeg** *(optional)* — on `PATH` so uploaded videos get remuxed to "faststart" in the background. Without it, phone-recorded videos (moov atom at the end of the file) can show as a stuck black player. Install: `apt install ffmpeg` (Linux) / `winget install ffmpeg` (Windows) / `brew install ffmpeg` (macOS).
+- **aria2c** *(optional)* — on `PATH` so Movie downloads use aria2's resumable, multi-connection engine instead of the built-in single-connection downloader. The panel spawns/manages it automatically; no separate setup needed beyond having the binary available. Install: `apt install aria2` (Linux) / `winget install aria2.aria2` (Windows) / `brew install aria2` (macOS).
+- **`SUBSOURCE_API_KEY`** *(optional env var)* — enables in-panel subtitle search on the Movies page (via [subsource.net](https://subsource.net)'s API). Get a free key from your subsource.net profile page.
 
 ---
 

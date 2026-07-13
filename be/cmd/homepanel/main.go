@@ -20,6 +20,7 @@ import (
 	"github.com/nawfdev/home-panel/internal/files"
 	"github.com/nawfdev/home-panel/internal/logs"
 	"github.com/nawfdev/home-panel/internal/metrics"
+	"github.com/nawfdev/home-panel/internal/movies"
 	"github.com/nawfdev/home-panel/internal/pm2"
 	"github.com/nawfdev/home-panel/internal/projects"
 	"github.com/nawfdev/home-panel/internal/server"
@@ -63,12 +64,15 @@ func main() {
 	aigw := aigateway.New(st)
 	aigw.StartUsageFlusher(context.Background(), 30*time.Second)
 
+	mov := movies.New()
+
 	handler := server.New(server.Deps{
 		AiGateway:  aigw,
 		Cloudflare: cloudflare.New(st),
 		Config:     cfg,
 		Docker:     docker.New(),
 		Files:      files.New(st),
+		Movies:     mov,
 		Paths:      paths,
 		Store:      st,
 		Sessions:   sess,
@@ -102,6 +106,7 @@ func main() {
 	tun.Shutdown()
 	proj.StopAll()
 	aigw.FlushUsage()
+	mov.Shutdown()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
