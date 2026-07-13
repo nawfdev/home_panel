@@ -15,18 +15,38 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 )
 
 const baseURL = "https://api.subsource.net/api/v1"
 
-// apiKey is read once at process start. Available() gates every call on it
-// being set, so a panel without the key configured gets a clear error
-// instead of failing deep inside an HTTP call.
-var apiKey = os.Getenv("SUBSOURCE_API_KEY")
+// apiKey defaults to SUBSOURCE_API_KEY at process start, but can be
+// overridden at runtime by SetAPIKey — the Settings page saves a key there
+// so it doesn't have to live in the environment. main.go calls SetAPIKey
+// once at boot with whatever was last saved, and the settings handler calls
+// it again immediately after a save so the change takes effect without a
+// restart.
+var (
+	apiKeyMu sync.RWMutex
+	apiKey   = os.Getenv("SUBSOURCE_API_KEY")
+)
 
-// Available reports whether SUBSOURCE_API_KEY is configured.
-func Available() bool { return apiKey != "" }
+// SetAPIKey overrides the API key used for every subsequent call.
+func SetAPIKey(key string) {
+	apiKeyMu.Lock()
+	apiKey = key
+	apiKeyMu.Unlock()
+}
+
+func currentAPIKey() string {
+	apiKeyMu.RLock()
+	defer apiKeyMu.RUnlock()
+	return apiKey
+}
+
+// Available reports whether an API key is configured (env var or Settings).
+func Available() bool { return currentAPIKey() != "" }
 
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
@@ -44,7 +64,7 @@ func doGet(path string, query url.Values) ([]byte, http.Header, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set("X-API-Key", currentAPIKey())
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return nil, nil, err

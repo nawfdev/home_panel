@@ -23,9 +23,11 @@ import (
 	"github.com/nawfdev/home-panel/internal/movies"
 	"github.com/nawfdev/home-panel/internal/pm2"
 	"github.com/nawfdev/home-panel/internal/projects"
+	"github.com/nawfdev/home-panel/internal/qbittorrent"
 	"github.com/nawfdev/home-panel/internal/server"
 	"github.com/nawfdev/home-panel/internal/session"
 	"github.com/nawfdev/home-panel/internal/store"
+	"github.com/nawfdev/home-panel/internal/subtitles"
 	"github.com/nawfdev/home-panel/internal/telegram"
 	"github.com/nawfdev/home-panel/internal/terminal"
 	"github.com/nawfdev/home-panel/internal/tunnel"
@@ -47,6 +49,16 @@ func main() {
 	if err := st.InitDefaultAdmin(cfg.DefaultAdmin.Username, cfg.DefaultAdmin.Password); err != nil {
 		log.Fatalf("failed to init default admin: %v", err)
 	}
+	// A subsource.net API key saved via Settings survives a restart without
+	// needing SUBSOURCE_API_KEY re-set — the env var is only the initial
+	// default (see internal/subtitles.SetAPIKey).
+	if v, ok := st.GetSetting("subsource"); ok {
+		if m, ok := v.(map[string]interface{}); ok {
+			if key, ok := m["apiKey"].(string); ok && key != "" {
+				subtitles.SetAPIKey(key)
+			}
+		}
+	}
 
 	sess := session.New(cfg.Session.Secret, cfg.Session.MaxAge)
 	tg := telegram.New(st)
@@ -64,26 +76,28 @@ func main() {
 	aigw := aigateway.New(st)
 	aigw.StartUsageFlusher(context.Background(), 30*time.Second)
 
-	mov := movies.New()
+	qb := qbittorrent.New(st)
+	mov := movies.New(qb)
 
 	handler := server.New(server.Deps{
-		AiGateway:  aigw,
-		Cloudflare: cloudflare.New(st),
-		Config:     cfg,
-		Docker:     docker.New(),
-		Files:      files.New(st),
-		Movies:     mov,
-		Paths:      paths,
-		Store:      st,
-		Sessions:   sess,
-		Metrics:    mc,
-		Logs:       logs.New(paths.Root),
-		PM2:        pm2.New(),
-		Projects:   proj,
-		Telegram:   tg,
-		Terminal:   term,
-		Tunnel:     tun,
-		Updater:    updater.New(paths.Root),
+		AiGateway:   aigw,
+		Cloudflare:  cloudflare.New(st),
+		Config:      cfg,
+		Docker:      docker.New(),
+		Files:       files.New(st),
+		Movies:      mov,
+		QBittorrent: qb,
+		Paths:       paths,
+		Store:       st,
+		Sessions:    sess,
+		Metrics:     mc,
+		Logs:        logs.New(paths.Root),
+		PM2:         pm2.New(),
+		Projects:    proj,
+		Telegram:    tg,
+		Terminal:    term,
+		Tunnel:      tun,
+		Updater:     updater.New(paths.Root),
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)

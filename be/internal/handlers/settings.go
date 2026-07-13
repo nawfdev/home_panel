@@ -11,14 +11,17 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/nawfdev/home-panel/internal/httpx"
+	qbittorrent "github.com/nawfdev/home-panel/internal/qbittorrent"
 	"github.com/nawfdev/home-panel/internal/store"
+	subtitlesvc "github.com/nawfdev/home-panel/internal/subtitles"
 )
 
 // Settings ports backend/routes/settings.js. Telegram delivery is performed by
 // the telegram service once configured; here we persist + verify settings.
 type Settings struct {
-	Store    *store.Store
-	Telegram TelegramConfigurer // optional; nil until telegram module is wired
+	Store       *store.Store
+	Telegram    TelegramConfigurer // optional; nil until telegram module is wired
+	QBittorrent *qbittorrent.Service
 }
 
 // TelegramConfigurer lets the telegram service receive config updates without a
@@ -143,6 +146,74 @@ func (s *Settings) SaveTelegram(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Telegram settings saved & test message sent!"})
+}
+
+// ---- qBittorrent (torrent search + downloads) ----
+
+func (s *Settings) GetQBittorrent(w http.ResponseWriter, r *http.Request) {
+	qb := s.settingMap("qbittorrent")
+	masked := ""
+	if str(qb, "password") != "" {
+		masked = "••••••••"
+	}
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{
+		"success": true, "baseUrl": str(qb, "baseUrl"), "username": str(qb, "username"), "password": masked,
+	})
+}
+
+func (s *Settings) SaveQBittorrent(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		BaseURL  string `json:"baseUrl"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	existing := s.settingMap("qbittorrent")
+	newPassword := body.Password
+	if newPassword == "" || newPassword == "••••••••" {
+		newPassword = str(existing, "password")
+	}
+
+	if s.QBittorrent != nil {
+		if err := s.QBittorrent.UpdateConfig(body.BaseURL, body.Username, newPassword); err != nil {
+			httpx.JSON(w, http.StatusBadRequest, map[string]interface{}{"success": false, "error": err.Error()})
+			return
+		}
+	}
+
+	_ = s.Store.SetSetting("qbittorrent", map[string]interface{}{
+		"baseUrl": body.BaseURL, "username": body.Username, "password": newPassword,
+	})
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "qBittorrent connection verified and saved!"})
+}
+
+// ---- Subsource (subtitle search) ----
+
+func (s *Settings) GetSubsource(w http.ResponseWriter, r *http.Request) {
+	sub := s.settingMap("subsource")
+	masked := ""
+	if str(sub, "apiKey") != "" {
+		masked = "••••••••"
+	}
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "apiKey": masked})
+}
+
+func (s *Settings) SaveSubsource(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		APIKey string `json:"apiKey"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	existing := s.settingMap("subsource")
+	newKey := body.APIKey
+	if newKey == "" || newKey == "••••••••" {
+		newKey = str(existing, "apiKey")
+	}
+
+	_ = s.Store.SetSetting("subsource", map[string]interface{}{"apiKey": newKey})
+	subtitlesvc.SetAPIKey(newKey)
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Subtitle search API key saved"})
 }
 
 // ---- Service paths ----
