@@ -65,6 +65,27 @@ export function Settings() {
   const [checkingUpdate, setCheckingUpdate] = useState(false);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
   const [updateResult, setUpdateResult] = useState<UpdateCheck | null>(null);
+  const [updateStep, setUpdateStep] = useState(0);
+
+  // The backend does git pull + npm install + build as one blocking call with
+  // no progress events, so there's no real percentage to show — this cycles
+  // through the steps it's actually doing underneath so "Applying..." isn't
+  // the only feedback for up to several minutes.
+  const UPDATE_STEPS = [
+    "Pulling latest code…",
+    "Installing dependencies…",
+    "Rebuilding frontend…",
+    "Almost done…",
+  ];
+  useEffect(() => {
+    if (!applyingUpdate) {
+      setUpdateStep(0);
+      return;
+    }
+    const interval = setInterval(() => setUpdateStep((s) => Math.min(s + 1, UPDATE_STEPS.length - 1)), 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [applyingUpdate]);
 
   const [panelManager, setPanelManager] = useState<"" | "systemd" | "pm2">("");
   const [panelServiceName, setPanelServiceName] = useState("");
@@ -569,6 +590,14 @@ export function Settings() {
                   <button className="btn-primary disabled:opacity-60" onClick={applyUpdate} disabled={applyingUpdate}>
                     {applyingUpdate ? "Applying..." : "Update now"}
                   </button>
+                  {applyingUpdate && (
+                    <div className="mt-3">
+                      <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-500 animate-pulse w-full" />
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1.5">{UPDATE_STEPS[updateStep]}</p>
+                    </div>
+                  )}
                 </div>
               )}
               {updateResult && !updateResult.error && !updateResult.updateAvailable && (
