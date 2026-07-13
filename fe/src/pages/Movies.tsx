@@ -288,13 +288,13 @@ export function Movies() {
           ) : torrents.length === 0 ? (
             <p className="text-sm text-gray-500">No results.</p>
           ) : torrents.filter(
-              (t) => t.sizeBytes >= SIZE_FILTERS[sizeFilter].min && t.sizeBytes < SIZE_FILTERS[sizeFilter].max
+              (t) => !t.sizeBytes || (t.sizeBytes >= SIZE_FILTERS[sizeFilter].min && t.sizeBytes < SIZE_FILTERS[sizeFilter].max)
             ).length === 0 ? (
             <p className="text-sm text-gray-500">No torrents in that size range.</p>
           ) : (
             <div className="space-y-2">
               {torrents
-                .filter((t) => t.sizeBytes >= SIZE_FILTERS[sizeFilter].min && t.sizeBytes < SIZE_FILTERS[sizeFilter].max)
+                .filter((t) => !t.sizeBytes || (t.sizeBytes >= SIZE_FILTERS[sizeFilter].min && t.sizeBytes < SIZE_FILTERS[sizeFilter].max))
                 .map((t) => {
                 const quality = torrentQuality(t.seeds);
                 return (
