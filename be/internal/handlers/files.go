@@ -108,7 +108,7 @@ func (f *Files) MediaInfo(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	mt, subs, err := f.Svc.MediaInfo(req.Path)
+	mt, subs, path, err := f.Svc.MediaInfo(req.Path)
 	if err != nil {
 		fileError(w, err)
 		return
@@ -116,7 +116,7 @@ func (f *Files) MediaInfo(w http.ResponseWriter, r *http.Request) {
 	if subs == nil {
 		subs = []filesvc.Subtitle{}
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "type": mt, "subtitles": subs})
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "type": mt, "subtitles": subs, "path": path})
 }
 
 func (f *Files) Subtitle(w http.ResponseWriter, r *http.Request) {
