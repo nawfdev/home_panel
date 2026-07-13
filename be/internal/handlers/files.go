@@ -208,6 +208,7 @@ func (f *Files) ServePublicShare(w http.ResponseWriter, r *http.Request) {
 		if mt := filesvc.MediaType(info.Name()); mt != "" {
 			var subs []filesvc.Subtitle
 			if mt == "video" {
+				_ = filesvc.ExtractEmbeddedSubtitles(target)
 				subs = filesvc.DetectSubtitles(target)
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
