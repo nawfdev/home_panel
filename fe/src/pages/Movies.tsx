@@ -55,6 +55,15 @@ interface SubtitleResult {
   rating: { good: number; bad: number; total: number };
 }
 
+interface TorrentResult {
+  name: string;
+  sizeBytes: number;
+  url: string;
+  seeders: number;
+  leechers: number;
+  site: string;
+}
+
 const TTL_OPTIONS: { label: string; seconds: number }[] = [
   { label: "Never expires", seconds: 0 },
   { label: "1 hour", seconds: 3600 },
@@ -67,9 +76,14 @@ const TTL_OPTIONS: { label: string; seconds: number }[] = [
 // share endpoints — same stack the Files page uses.
 export function Movies() {
   const { show } = useToast();
+  const [mode, setMode] = useState<"pahe" | "torrent">("pahe");
   const [query, setQuery] = useState("");
   const [films, setFilms] = useState<Film[] | null>(null);
   const [searching, setSearching] = useState(false);
+
+  const [torrents, setTorrents] = useState<TorrentResult[] | null>(null);
+  const [searchingTorrents, setSearchingTorrents] = useState(false);
+  const [startingTorrent, setStartingTorrent] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -154,6 +168,50 @@ export function Movies() {
       show(err instanceof Error ? err.message : "Search failed", "error");
     } finally {
       setSearching(false);
+    }
+  }
+
+  async function searchTorrents(e?: React.FormEvent) {
+    e?.preventDefault();
+    if (searchingTorrents) return;
+    setSearchingTorrents(true);
+    try {
+      const data = await api<{ success: boolean; results?: TorrentResult[]; error?: string }>("/movies/torrents/search", {
+        method: "POST",
+        body: JSON.stringify({ query }),
+      });
+      if (data.success) {
+        setTorrents(data.results ?? []);
+      } else {
+        show(data.error ?? "Torrent search failed", "error");
+        setTorrents([]);
+      }
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Torrent search failed", "error");
+      setTorrents([]);
+    } finally {
+      setSearchingTorrents(false);
+    }
+  }
+
+  async function startTorrentDownload(t: TorrentResult) {
+    if (startingTorrent) return;
+    setStartingTorrent(t.url);
+    try {
+      const data = await api<{ success: boolean; job?: Job; error?: string }>("/movies/torrents/download", {
+        method: "POST",
+        body: JSON.stringify({ title: t.name, url: t.url }),
+      });
+      if (data.success) {
+        show("Download started", "success");
+        loadJobs();
+      } else {
+        show(data.error ?? "Couldn't start download", "error");
+      }
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Couldn't start download", "error");
+    } finally {
+      setStartingTorrent(null);
     }
   }
 
@@ -361,16 +419,25 @@ export function Movies() {
         </button>
       </div>
 
-      <form onSubmit={search} className="flex gap-2 mb-6">
+      <div className="tab-bar mb-4">
+        <button className={`tab-btn ${mode === "pahe" ? "active" : ""}`} onClick={() => setMode("pahe")}>
+          Pahe.ink
+        </button>
+        <button className={`tab-btn ${mode === "torrent" ? "active" : ""}`} onClick={() => setMode("torrent")}>
+          Torrent
+        </button>
+      </div>
+
+      <form onSubmit={mode === "pahe" ? search : searchTorrents} className="flex gap-2 mb-6">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search a movie title, or leave empty to browse latest…"
+          placeholder={mode === "pahe" ? "Search a movie title, or leave empty to browse latest…" : "Search a movie/show title…"}
           className="input-field flex-1 text-sm"
         />
-        <button type="submit" className="btn-primary disabled:opacity-60" disabled={searching}>
+        <button type="submit" className="btn-primary disabled:opacity-60" disabled={mode === "pahe" ? searching : searchingTorrents}>
           <MagnifyingGlassIcon className="w-4 h-4 inline mr-1.5" />
-          {searching ? "Searching…" : "Search"}
+          {mode === "pahe" ? (searching ? "Searching…" : "Search") : searchingTorrents ? "Searching…" : "Search"}
         </button>
       </form>
 
@@ -448,6 +515,39 @@ export function Movies() {
         </Panel>
       )}
 
+      {mode === "torrent" && (
+        <Panel>
+          {torrents === null ? (
+            <p className="text-sm text-gray-500">Search to see torrent results from your qBittorrent's Search tab.</p>
+          ) : torrents.length === 0 ? (
+            <p className="text-sm text-gray-500">No results.</p>
+          ) : (
+            <div className="space-y-2">
+              {torrents.map((t) => (
+                <div key={t.url} className="bg-white/5 rounded-lg p-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-gray-100 truncate">{t.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {formatBytes(t.sizeBytes)} · {t.seeders} seeders / {t.leechers} leechers
+                      {t.site && ` · ${t.site}`}
+                    </p>
+                  </div>
+                  <button
+                    className="btn-primary shrink-0 disabled:opacity-60"
+                    onClick={() => startTorrentDownload(t)}
+                    disabled={startingTorrent !== null}
+                  >
+                    <ArrowDownTrayIcon className="w-4 h-4 inline mr-1.5" />
+                    {startingTorrent === t.url ? "Starting…" : "Download"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {mode === "pahe" && (
       <Panel>
         {films === null ? (
           <p className="text-sm text-gray-500">Search or browse to see movies.</p>
@@ -496,6 +596,7 @@ export function Movies() {
           </>
         )}
       </Panel>
+      )}
 
       {detail && (
         <Modal title={detail.film.title} onClose={() => setDetail(null)} wide>
