@@ -1,10 +1,7 @@
 {
   "name": "homepanel-torrent-search",
   "private": true,
-  "version": "1.0.0",
-  "description": "One-shot sidecar the Go backend shells out to: searches torrent-search-api's providers and prints matching results (with resolved magnet links) as JSON.",
-  "main": "search.js",
-  "dependencies": {
-    "torrent-search-api": "^2.1.4"
-  }
+  "version": "2.0.0",
+  "description": "One-shot sidecar the Go backend shells out to: queries YTS and apibay's (ThePirateBay) JSON APIs directly and prints matching results (with resolved magnet links) as JSON. No dependencies — uses Node's built-in fetch.",
+  "main": "search.js"
 }
