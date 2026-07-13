@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -38,10 +39,20 @@ func triggerPanelRestart(st *store.Store, pm2Svc pm2Service) (triggered bool, er
 		time.Sleep(700 * time.Millisecond) // let the HTTP response reach the client first
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
+		// Errors here used to be silently discarded: the HTTP response already
+		// told the operator "restarting now" before this runs, so a failure
+		// (wrong unit name, systemctl needing a password, PM2 process not
+		// found) previously vanished — the update looked successful but the
+		// old code just kept serving. Logging it is the only way to surface
+		// that after the fact, since there's no request left to answer.
+		var restartErr error
 		if manager == "pm2" {
-			_, _ = pm2Svc.Restart(ctx, name)
+			_, restartErr = pm2Svc.Restart(ctx, name)
 		} else {
-			_ = platform.Controller().Restart(ctx, name)
+			restartErr = platform.Controller().Restart(ctx, name)
+		}
+		if restartErr != nil {
+			log.Printf("[PanelRestart] failed to restart %s (manager=%s): %v", name, manager, restartErr)
 		}
 	}()
 	return true, nil
