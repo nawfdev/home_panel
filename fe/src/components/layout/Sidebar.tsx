@@ -15,13 +15,13 @@ import {
   FolderIcon,
   CommandLineIcon,
   RectangleStackIcon,
-  CpuChipIcon,
   SparklesIcon,
   Cog6ToothIcon,
   ArrowLeftOnRectangleIcon,
   ServerIcon,
   XMarkIcon,
   FilmIcon,
+  ArrowDownTrayIcon,
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import type { ComponentType, SVGProps } from "react";
@@ -81,10 +81,16 @@ const NAV_ITEMS: NavEntry[] = [
       { to: "/projects", label: "Projects", icon: RectangleStackIcon },
     ],
   },
-  { to: "/system", label: "System", icon: CpuChipIcon },
   { to: "/ai-gateway", label: "AI Gateway", icon: SparklesIcon },
   { to: "/telegram", label: "Telegram", icon: PaperAirplaneIcon },
-  { to: "/movies", label: "Movies", icon: FilmIcon },
+  {
+    label: "Movies",
+    icon: FilmIcon,
+    children: [
+      { to: "/movies", label: "Movies", icon: FilmIcon },
+      { to: "/downloads", label: "Downloads", icon: ArrowDownTrayIcon },
+    ],
+  },
   { to: "/settings", label: "Settings", icon: Cog6ToothIcon },
 ];
 

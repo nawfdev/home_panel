@@ -62,11 +62,12 @@ func (m *Movies) Detail(w http.ResponseWriter, r *http.Request) {
 // StartDownload enqueues a server-side download.
 func (m *Movies) StartDownload(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Title string `json:"title"`
-		URL   string `json:"url"`
+		Title  string `json:"title"`
+		URL    string `json:"url"`
+		Poster string `json:"poster"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	job, err := m.Svc.Start(req.Title, req.URL)
+	job, err := m.Svc.Start(req.Title, req.URL, req.Poster)
 	if err != nil {
 		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
 		return
@@ -109,11 +110,12 @@ func (m *Movies) TorrentSearch(w http.ResponseWriter, r *http.Request) {
 // StartTorrentDownload enqueues a magnet download, handled by aria2.
 func (m *Movies) StartTorrentDownload(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Title string `json:"title"`
-		URL   string `json:"url"`
+		Title  string `json:"title"`
+		URL    string `json:"url"`
+		Poster string `json:"poster"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	job, err := m.Svc.StartTorrent(req.Title, req.URL)
+	job, err := m.Svc.StartTorrent(req.Title, req.URL, req.Poster)
 	if err != nil {
 		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
 		return
