@@ -132,9 +132,9 @@ export function RemoteDesktop() {
                   </div>
                 )}
                 <div className="flex gap-2 flex-wrap">
-                  <a href={connectUri(d)} className="btn-primary">
+                  <button className="btn-primary" onClick={() => { window.location.href = connectUri(d); }}>
                     <ComputerDesktopIcon className="w-4 h-4 inline mr-1.5" />Connect
-                  </a>
+                  </button>
                   <button className="btn-secondary" onClick={() => openEdit(d)}>
                     <PencilIcon className="w-4 h-4 inline mr-1.5" />Edit
                   </button>
