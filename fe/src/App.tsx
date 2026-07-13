@@ -15,9 +15,10 @@ import { Logs } from "./pages/Logs";
 import { Services } from "./pages/Services";
 import { Files } from "./pages/Files";
 import { Movies } from "./pages/Movies";
+import { Downloads } from "./pages/Downloads";
+import { Watch } from "./pages/Watch";
 import { Terminal } from "./pages/Terminal";
 import { Projects } from "./pages/Projects";
-import { System } from "./pages/System";
 import { Settings } from "./pages/Settings";
 import { AiGateway } from "./pages/AiGateway";
 
@@ -57,9 +58,11 @@ function AppRoutes() {
         <Route path="/services" element={<Services />} />
         <Route path="/files" element={<Files />} />
         <Route path="/movies" element={<Movies />} />
+        <Route path="/downloads" element={<Downloads />} />
+        <Route path="/movies/watch/:id" element={<Watch />} />
         <Route path="/terminal" element={<Terminal />} />
         <Route path="/projects" element={<Projects />} />
-        <Route path="/system" element={<System />} />
+        <Route path="/system" element={<Navigate to="/dashboard" replace />} />
         <Route path="/ai-gateway" element={<AiGateway />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
