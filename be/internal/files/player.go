@@ -172,7 +172,7 @@ func mediaActionsHTML(rawURL, fileName string, size int64, modTime time.Time) st
 }
 
 func videoPlayerHTML(rawURL string) string {
-	return `<div class="np" id="np" tabindex="0">
+	return `<div class="np subbg-solid" id="np" tabindex="0">
 <video class="np-video" id="npvideo" playsinline><source src="` + htmlEscape(rawURL) + `"></video>
 <div class="np-center"><button class="np-bigplay" id="npbig" aria-label="Play">` + icoPlay + `</button></div>
 <div class="np-scrim"></div>
@@ -289,7 +289,12 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;pad
 .np-item.active{color:#fafafa;background:rgba(255,255,255,.06)}
 .np-item.active::after{content:"✓";float:right;margin-left:16px}
 
-video::cue{background:rgba(0,0,0,.72);color:#fff;font-family:"Plus Jakarta Sans",sans-serif}
+.np-menu-sep{border-top:1px solid rgba(255,255,255,.08);margin:4px 2px}
+
+.np video::cue{font-family:"Plus Jakarta Sans",sans-serif}
+.np.subbg-solid video::cue{background:rgba(0,0,0,.72);color:#fff}
+.np.subbg-semi video::cue{background:rgba(0,0,0,.35);color:#fff}
+.np.subbg-none video::cue{background:transparent;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 2px rgba(0,0,0,.9)}
 `
 
 const playerJS = `
@@ -355,12 +360,19 @@ const playerJS = `
   function addTrack(label,src){ var t=document.createElement('track'); t.kind='subtitles'; t.label=label; t.src=src; v.appendChild(t); trackEls.push(t); return trackEls.length-1; }
   function showTrack(idx){ for(var i=0;i<v.textTracks.length;i++){ v.textTracks[i].mode=(i===idx)?'showing':'disabled'; }
     [].forEach.call(ccMenu.children,function(c){ c.classList.toggle('active', c.dataset.idx===String(idx)); }); }
+  var subBgs=[['solid','Solid background'],['semi','Semi-transparent'],['none','Transparent']];
+  function setSubBg(id){ np.classList.remove('subbg-solid','subbg-semi','subbg-none'); np.classList.add('subbg-'+id); try{localStorage.setItem('np-subbg',id);}catch(e){} }
+  function loadSubBg(){ var v; try{v=localStorage.getItem('np-subbg');}catch(e){} return (v==='semi'||v==='none')?v:'solid'; }
   function rebuildCCMenu(){ ccMenu.innerHTML='';
     var off=document.createElement('button'); off.className='np-item active'; off.textContent='Off'; off.dataset.idx='-1'; off.onclick=function(){ showTrack(-1); ccMenu.classList.remove('open'); }; ccMenu.appendChild(off);
     trackEls.forEach(function(t,i){ var b=document.createElement('button'); b.className='np-item'; b.textContent=t.label; b.dataset.idx=String(i); b.onclick=function(){ showTrack(i); ccMenu.classList.remove('open'); }; ccMenu.appendChild(b); });
     var load=document.createElement('button'); load.className='np-item'; load.textContent='＋ Load subtitle…'; load.onclick=function(){ subFile.click(); ccMenu.classList.remove('open'); }; ccMenu.appendChild(load);
+    var sep=document.createElement('div'); sep.className='np-menu-sep'; ccMenu.appendChild(sep);
+    var cur=loadSubBg();
+    subBgs.forEach(function(pair){ var b=document.createElement('button'); b.className='np-item'+(pair[0]===cur?' active':''); b.textContent=pair[1]; b.onclick=function(){ setSubBg(pair[0]); rebuildCCMenu(); }; ccMenu.appendChild(b); });
   }
   (window.__SUBS__||[]).forEach(function(s){ addTrack(s.label,s.url); });
+  setSubBg(loadSubBg());
   rebuildCCMenu();
   ccBtn.addEventListener('click',function(e){ e.stopPropagation(); speedMenu.classList.remove('open'); ccMenu.classList.toggle('open'); });
 

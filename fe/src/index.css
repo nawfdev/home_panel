@@ -532,5 +532,8 @@ h1, h2, h3, h4 {
   }
   .np-item:hover { background: rgba(255, 255, 255, 0.08); color: #fafafa; }
   .np-item.active { color: #fafafa; background: rgba(255, 255, 255, 0.06); }
-  video::cue { background: rgba(0, 0, 0, 0.72); color: #fff; }
+  .np-menu-sep { border-top: 1px solid rgba(255, 255, 255, 0.08); margin: 4px 2px; }
+  .np.subbg-solid video::cue { background: rgba(0, 0, 0, 0.72); color: #fff; }
+  .np.subbg-semi video::cue { background: rgba(0, 0, 0, 0.35); color: #fff; }
+  .np.subbg-none video::cue { background: transparent; color: #fff; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.9); }
 }
