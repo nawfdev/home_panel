@@ -102,7 +102,6 @@ func (m *Manager) ensureRunning() error {
 	cmd := exec.Command("aria2c",
 		"--enable-rpc=true",
 		"--rpc-listen-all=false",
-		"--rpc-listen-address=127.0.0.1",
 		"--rpc-listen-port="+strconv.Itoa(port),
 		"--rpc-secret="+secret,
 		"--continue=true",
