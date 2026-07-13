@@ -117,15 +117,12 @@ export function Files() {
     }
     // Media files open in the player; everything else in the text viewer.
     try {
-      const info = await api<{ success: boolean; type: string; subtitles: { name: string; label: string }[]; path?: string }>(
+      const info = await api<{ success: boolean; type: string; subtitles: { name: string; label: string }[] }>(
         "/files/media-info",
         { method: "POST", body: JSON.stringify({ path: item.path }) }
       );
       if (info.type === "video" || info.type === "image" || info.type === "audio") {
-        // path may differ from item.path: a .mkv gets rewrapped to .mp4 (for
-        // iOS Safari, which can't play Matroska) the first time it's opened.
-        setPlayer({ path: info.path ?? item.path, name: item.name, type: info.type, subtitles: info.subtitles ?? [] });
-        if (info.path && info.path !== item.path) loadDirectory(path);
+        setPlayer({ path: item.path, name: item.name, type: info.type, subtitles: info.subtitles ?? [] });
         return;
       }
     } catch {
