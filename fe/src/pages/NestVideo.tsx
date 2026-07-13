@@ -34,6 +34,12 @@ const IcoFull = () => (
     <path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4" />
   </svg>
 );
+const IcoGear = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+  </svg>
+);
 
 interface Track {
   label: string;
@@ -52,16 +58,40 @@ function fmt(t: number) {
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const SUB_BGS = [
-  { id: "solid", label: "Solid background" },
-  { id: "semi", label: "Semi-transparent" },
-  { id: "none", label: "Transparent" },
+  { id: "solid", label: "Solid" },
+  { id: "semi", label: "Semi" },
+  { id: "none", label: "None" },
+] as const;
+const SUB_SIZES = [
+  { id: "sm", label: "S" },
+  { id: "md", label: "M" },
+  { id: "lg", label: "L" },
+  { id: "xl", label: "XL" },
+] as const;
+const SUB_COLORS = [
+  { id: "white", label: "White", hex: "#fff" },
+  { id: "yellow", label: "Yellow", hex: "#ffeb3b" },
+  { id: "cyan", label: "Cyan", hex: "#00e5ff" },
+  { id: "green", label: "Green", hex: "#76ff03" },
+] as const;
+const SUB_EDGES = [
+  { id: "none", label: "None" },
+  { id: "drop", label: "Drop shadow" },
+  { id: "outline", label: "Outline" },
 ] as const;
 type SubBg = (typeof SUB_BGS)[number]["id"];
+type SubSize = (typeof SUB_SIZES)[number]["id"];
+type SubColor = (typeof SUB_COLORS)[number]["id"];
+type SubEdge = (typeof SUB_EDGES)[number]["id"];
 
-function loadSubBg(): SubBg {
-  const v = localStorage.getItem("np-subbg");
-  return v === "semi" || v === "none" ? v : "solid";
+function loadSubSetting<T extends string>(key: string, valid: readonly T[], fallback: T): T {
+  const v = localStorage.getItem(key);
+  return (valid as readonly string[]).includes(v ?? "") ? (v as T) : fallback;
 }
+const loadSubBg = () => loadSubSetting<SubBg>("np-subbg", ["solid", "semi", "none"], "solid");
+const loadSubSize = () => loadSubSetting<SubSize>("np-subsize", ["sm", "md", "lg", "xl"], "md");
+const loadSubColor = () => loadSubSetting<SubColor>("np-subcolor", ["white", "yellow", "cyan", "green"], "white");
+const loadSubEdge = () => loadSubSetting<SubEdge>("np-subedge", ["none", "drop", "outline"], "none");
 
 export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -75,7 +105,11 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
   const [speed, setSpeed] = useState(1);
   const [selTrack, setSelTrack] = useState(-1);
   const [subBg, setSubBg] = useState<SubBg>(loadSubBg);
+  const [subSize, setSubSize] = useState<SubSize>(loadSubSize);
+  const [subColor, setSubColor] = useState<SubColor>(loadSubColor);
+  const [subEdge, setSubEdge] = useState<SubEdge>(loadSubEdge);
   const [ccOpen, setCcOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [speedOpen, setSpeedOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [localTracks, setLocalTracks] = useState<Track[]>([]);
@@ -180,7 +214,7 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
   return (
     <div
       ref={wrapRef}
-      className={`np subbg-${subBg} ${hidden ? "hide hidecursor" : ""}`}
+      className={`np subbg-${subBg} subsize-${subSize} subcolor-${subColor} subedge-${subEdge} ${hidden ? "hide hidecursor" : ""}`}
       tabIndex={0}
       onMouseMove={activity}
       onKeyDown={(e) => {
@@ -283,6 +317,7 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
               onClick={(e) => {
                 e.stopPropagation();
                 setSpeedOpen(false);
+                setSettingsOpen(false);
                 setCcOpen((o) => !o);
               }}
               aria-label="Subtitles"
@@ -303,19 +338,81 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
                   ＋ Load subtitle…
                   <input type="file" accept=".srt,.vtt" hidden onChange={onPickLocal} />
                 </label>
-                <div className="np-menu-sep" />
-                {SUB_BGS.map((o) => (
-                  <button
-                    key={o.id}
-                    className={`np-item ${subBg === o.id ? "active" : ""}`}
-                    onClick={() => {
-                      setSubBg(o.id);
-                      localStorage.setItem("np-subbg", o.id);
-                    }}
-                  >
-                    {o.label}
-                  </button>
-                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="np-pop">
+            <button
+              className="np-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                setCcOpen(false);
+                setSpeedOpen(false);
+                setSettingsOpen((o) => !o);
+              }}
+              aria-label="Subtitle settings"
+            >
+              <IcoGear />
+            </button>
+            {settingsOpen && (
+              <div className="np-menu np-menu-wide">
+                <div className="np-setrow">
+                  <div className="np-setlabel">Size</div>
+                  <div className="np-chips">
+                    {SUB_SIZES.map((o) => (
+                      <button
+                        key={o.id}
+                        className={`np-chip ${subSize === o.id ? "active" : ""}`}
+                        onClick={() => { setSubSize(o.id); localStorage.setItem("np-subsize", o.id); }}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="np-setrow">
+                  <div className="np-setlabel">Color</div>
+                  <div className="np-chips">
+                    {SUB_COLORS.map((o) => (
+                      <button
+                        key={o.id}
+                        className={`np-swatch ${subColor === o.id ? "active" : ""}`}
+                        style={{ background: o.hex }}
+                        aria-label={o.label}
+                        onClick={() => { setSubColor(o.id); localStorage.setItem("np-subcolor", o.id); }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="np-setrow">
+                  <div className="np-setlabel">Background</div>
+                  <div className="np-chips">
+                    {SUB_BGS.map((o) => (
+                      <button
+                        key={o.id}
+                        className={`np-chip ${subBg === o.id ? "active" : ""}`}
+                        onClick={() => { setSubBg(o.id); localStorage.setItem("np-subbg", o.id); }}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="np-setrow">
+                  <div className="np-setlabel">Edge style</div>
+                  <div className="np-chips">
+                    {SUB_EDGES.map((o) => (
+                      <button
+                        key={o.id}
+                        className={`np-chip ${subEdge === o.id ? "active" : ""}`}
+                        onClick={() => { setSubEdge(o.id); localStorage.setItem("np-subedge", o.id); }}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -326,6 +423,7 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
               onClick={(e) => {
                 e.stopPropagation();
                 setCcOpen(false);
+                setSettingsOpen(false);
                 setSpeedOpen((o) => !o);
               }}
               aria-label="Speed"
