@@ -77,37 +77,32 @@ async function searchApibay(query) {
     }));
 }
 
-// YTS's official movies API. Torrents carry an info hash (not a magnet)
-// resolved into one here the same way apibay's is.
-async function searchYts(query) {
+// bitsearch.eu — DHT-backed torrent metasearch with a stable JSON API
+// (formerly solidtorrents.to; both redirect here now — the underlying
+// project just renamed). category 2 is its Movies bucket.
+async function searchBitsearch(query) {
   const data = await fetchJson(
-    `https://yts.mx/api/v2/list_movies.json?query_term=${encodeURIComponent(query)}&limit=20`,
+    `https://bitsearch.eu/api/v1/search?q=${encodeURIComponent(query)}`,
     10000
   );
-  const movies = data?.data?.movies;
-  if (!Array.isArray(movies)) return [];
-  const results = [];
-  for (const m of movies) {
-    for (const t of m.torrents || []) {
-      if (!t.hash) continue;
-      results.push({
-        title: `${m.title_long} [${t.quality}${t.type ? " " + t.type : ""}]`,
-        size: t.size || formatBytes(t.size_bytes),
-        sizeBytes: Number(t.size_bytes) || 0,
-        seeds: Number(t.seeds) || 0,
-        peers: Number(t.peers) || 0,
-        provider: "Yts",
-        magnet: magnetFromHash(t.hash, m.title_long),
-        poster: m.medium_cover_image || "",
-      });
-    }
-  }
-  return results;
+  const results = data?.results;
+  if (!Array.isArray(results)) return [];
+  return results
+    .filter((r) => r.category === 2 && r.infohash)
+    .map((r) => ({
+      title: r.title || "",
+      size: formatBytes(r.size),
+      sizeBytes: Number(r.size) || 0,
+      seeds: Number(r.seeders) || 0,
+      peers: Number(r.leechers) || 0,
+      provider: "BitSearch",
+      magnet: magnetFromHash(r.infohash, r.title || "torrent"),
+    }));
 }
 
 async function main() {
   const query = process.argv[2] || "";
-  const providers = [searchApibay(query), searchYts(query)];
+  const providers = [searchApibay(query), searchBitsearch(query)];
   const settled = await Promise.allSettled(providers);
   const results = settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
   process.stdout.write(JSON.stringify(results));
