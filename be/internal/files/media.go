@@ -8,23 +8,37 @@ import (
 )
 
 // MediaInfo validates userPath and reports its media type and any sidecar
-// subtitles (for the in-panel player). type is "" for non-media files.
-func (s *Service) MediaInfo(userPath string) (string, []Subtitle, error) {
+// subtitles (for the in-panel player), plus the (possibly rewritten, see
+// below) path the player should actually request bytes from. type is "" for
+// non-media files.
+func (s *Service) MediaInfo(userPath string) (string, []Subtitle, string, error) {
 	full, err := SafePath(userPath)
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
 	info, err := os.Stat(full)
 	if os.IsNotExist(err) {
-		return "", nil, errFileNotFound
+		return "", nil, "", errFileNotFound
 	}
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
 	if info.IsDir() {
-		return "", nil, errReadDirectory
+		return "", nil, "", errReadDirectory
 	}
 	mt := MediaType(full)
+	if mt == "video" && strings.ToLower(filepath.Ext(full)) == ".mkv" {
+		// iOS Safari can't decode Matroska at all (not a codec issue, the
+		// container itself is rejected) — rewrap to .mp4 in place, once, the
+		// first time this file is opened in the panel. userPath tracks the
+		// same rename so the caller can tell the player to request the new
+		// name instead of the now-deleted .mkv.
+		mp4Full := full[:len(full)-len(filepath.Ext(full))] + ".mp4"
+		if err := RemuxToMP4(full, mp4Full); err == nil {
+			full = mp4Full
+			userPath = userPath[:len(userPath)-len(filepath.Ext(userPath))] + ".mp4"
+		}
+	}
 	var subs []Subtitle
 	if mt == "video" {
 		// Best-effort: files that never went through the movies download
@@ -33,7 +47,7 @@ func (s *Service) MediaInfo(userPath string) (string, []Subtitle, error) {
 		_ = ExtractEmbeddedSubtitles(full)
 		subs = DetectSubtitles(full)
 	}
-	return mt, subs, nil
+	return mt, subs, userPath, nil
 }
 
 // SubtitleForPath validates userPath and returns the named sidecar subtitle as
