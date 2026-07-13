@@ -489,28 +489,16 @@ func (s *Service) run(ctx context.Context, job *Job) {
 // subtitle extraction, both best-effort, then marks the job done.
 func (s *Service) finish(job *Job) {
 	s.set(job, func(j *Job) { j.Status = StatusRemuxing })
-	// Extract subtitle tracks before any mkv->mp4 conversion below strips
-	// them — best-effort, pulls tracks out into sidecar .srt files so the
-	// player's existing DetectSubtitles picks them up with no further wiring.
-	if err := filesvc.ExtractEmbeddedSubtitles(job.Dest); err != nil {
-		log.Printf("movies: subtitle extract skipped for %s: %v", job.Dest, err)
-	}
-	// iOS Safari won't play Matroska at all, so rewrap to .mp4 — cheap
-	// container copy, no re-encode. Subtitle streams are dropped (-sn) since
-	// they're already pulled out above and mp4 can't carry mkv subtitle
-	// codecs anyway.
-	if strings.ToLower(filepath.Ext(job.Dest)) == ".mkv" {
-		mp4 := job.Dest[:len(job.Dest)-len(filepath.Ext(job.Dest))] + ".mp4"
-		if err := filesvc.RemuxToMP4(job.Dest, mp4); err != nil {
-			log.Printf("movies: mkv->mp4 remux skipped for %s: %v", job.Dest, err)
-		} else {
-			s.set(job, func(j *Job) { j.Dest = mp4 })
-		}
-	}
 	if ext := strings.ToLower(filepath.Ext(job.Dest)); ext == ".mp4" || ext == ".mov" || ext == ".m4v" {
 		if err := filesvc.RemuxFaststart(job.Dest); err != nil {
 			log.Printf("movies: faststart remux skipped for %s: %v", job.Dest, err)
 		}
+	}
+	// Best-effort: pull any subtitle tracks muxed inside the container (common
+	// for .mkv) out into sidecar .srt files so the player's existing
+	// DetectSubtitles picks them up with no further wiring.
+	if err := filesvc.ExtractEmbeddedSubtitles(job.Dest); err != nil {
+		log.Printf("movies: subtitle extract skipped for %s: %v", job.Dest, err)
 	}
 	s.set(job, func(j *Job) { j.Status = StatusDone })
 	s.persist()

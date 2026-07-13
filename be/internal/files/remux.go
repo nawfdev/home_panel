@@ -59,26 +59,3 @@ func RemuxFaststart(path string) error {
 	}
 	return os.Rename(tmp, path)
 }
-
-// RemuxToMP4 rewraps a video into an MP4 container without re-encoding
-// (-c copy), so e.g. iOS Safari — which won't play Matroska (.mkv) at all —
-// can play it. Exported for internal/movies to rewrap finished torrent
-// downloads.
-func RemuxToMP4(src, dst string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "ffmpeg",
-		"-y", "-i", src,
-		"-c", "copy", "-sn", "-movflags", "+faststart",
-		dst,
-	)
-	if err := cmd.Run(); err != nil {
-		_ = os.Remove(dst)
-		return err
-	}
-	if info, err := os.Stat(dst); err != nil || info.Size() == 0 {
-		_ = os.Remove(dst)
-		return err
-	}
-	return os.Remove(src)
-}
