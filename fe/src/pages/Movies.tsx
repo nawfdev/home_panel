@@ -62,7 +62,9 @@ const SIZE_FILTERS: { label: string; min: number; max: number }[] = [
 export function Movies() {
   const { show } = useToast();
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"pahe" | "torrent">("pahe");
+  const [mode, setMode] = useState<"pahe" | "torrent" | "direct">("pahe");
+  const [directTitle, setDirectTitle] = useState("");
+  const [directUrl, setDirectUrl] = useState("");
   const [query, setQuery] = useState("");
   const [films, setFilms] = useState<Film[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -234,6 +236,15 @@ export function Movies() {
     setManualUrl("");
   }
 
+  function startDirectDownload(e?: React.FormEvent) {
+    e?.preventDefault();
+    const url = directUrl.trim();
+    if (!url) return;
+    startDownloadRequest("direct", directTitle.trim() || url, url, "");
+    setDirectTitle("");
+    setDirectUrl("");
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -250,20 +261,58 @@ export function Movies() {
         <button className={`tab-btn ${mode === "torrent" ? "active" : ""}`} onClick={() => setMode("torrent")}>
           Torrent
         </button>
+        <button className={`tab-btn ${mode === "direct" ? "active" : ""}`} onClick={() => setMode("direct")}>
+          Direct URL
+        </button>
       </div>
 
-      <form onSubmit={mode === "pahe" ? search : searchTorrents} className="flex gap-2 mb-6">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder={mode === "pahe" ? "Search a movie title, or leave empty to browse latest…" : "Search a movie/show title…"}
-          className="input-field flex-1 text-sm"
-        />
-        <button type="submit" className="btn-primary disabled:opacity-60" disabled={mode === "pahe" ? searching : searchingTorrents}>
-          <MagnifyingGlassIcon className="w-4 h-4 inline mr-1.5" />
-          {mode === "pahe" ? (searching ? "Searching…" : "Search") : searchingTorrents ? "Searching…" : "Search"}
-        </button>
-      </form>
+      {mode !== "direct" && (
+        <form onSubmit={mode === "pahe" ? search : searchTorrents} className="flex gap-2 mb-6">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={mode === "pahe" ? "Search a movie title, or leave empty to browse latest…" : "Search a movie/show title…"}
+            className="input-field flex-1 text-sm"
+          />
+          <button type="submit" className="btn-primary disabled:opacity-60" disabled={mode === "pahe" ? searching : searchingTorrents}>
+            <MagnifyingGlassIcon className="w-4 h-4 inline mr-1.5" />
+            {mode === "pahe" ? (searching ? "Searching…" : "Search") : searchingTorrents ? "Searching…" : "Search"}
+          </button>
+        </form>
+      )}
+
+      {mode === "direct" && (
+        <Panel>
+          <p className="text-sm text-gray-500 mb-4">
+            Paste a direct file link (not a page/redirect link) and the panel will download it the same way as the
+            other modes — aria2 if available, with a fallback downloader otherwise.
+          </p>
+          <form onSubmit={startDirectDownload} className="space-y-2">
+            <input
+              value={directTitle}
+              onChange={(e) => setDirectTitle(e.target.value)}
+              placeholder="Title (optional — defaults to the URL)"
+              className="input-field w-full text-sm"
+            />
+            <div className="flex gap-2">
+              <input
+                value={directUrl}
+                onChange={(e) => setDirectUrl(e.target.value)}
+                placeholder="https://example.com/movie.mp4"
+                className="input-field flex-1 text-sm"
+              />
+              <button
+                type="submit"
+                className="btn-primary shrink-0 disabled:opacity-60"
+                disabled={startingKey !== null || !directUrl.trim()}
+              >
+                <ArrowDownTrayIcon className="w-4 h-4 inline mr-1.5" />
+                {startingKey === "direct" ? "Starting…" : "Download"}
+              </button>
+            </div>
+          </form>
+        </Panel>
+      )}
 
       {mode === "torrent" && (
         <Panel>
