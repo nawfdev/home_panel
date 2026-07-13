@@ -56,6 +56,8 @@ type Status struct {
 	TotalLength     int64
 	DownloadSpeed   int64
 	ErrorMessage    string
+	FollowedBy      []string // set on a magnet's metadata-fetch GID once aria2 hands off to the real download GID
+	Files           []string // on-disk path(s), populated once data has been written
 }
 
 // freePort asks the OS for an unused loopback port. There's an inherent
@@ -179,13 +181,16 @@ func (m *Manager) call(method string, params []any) (json.RawMessage, error) {
 	return rpcResp.Result, nil
 }
 
-// AddURI starts a new download. Call EnsureRunning first.
+// AddURI starts a new download. Call EnsureRunning first. filename is
+// optional ("out" option) — pass "" for magnet links, where BitTorrent
+// metadata determines the real file name(s) rather than us; forcing "out" on
+// a magnet either gets ignored or breaks multi-file torrents.
 func (m *Manager) AddURI(rawURL, dir, filename string) (gid string, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	options := map[string]string{
-		"dir": dir,
-		"out": filename,
+	options := map[string]string{"dir": dir}
+	if filename != "" {
+		options["out"] = filename
 	}
 	result, err := m.call("aria2.addUri", []any{[]string{rawURL}, options})
 	if err != nil {
@@ -198,19 +203,27 @@ func (m *Manager) AddURI(rawURL, dir, filename string) (gid string, err error) {
 }
 
 type tellStatusResult struct {
-	Status          string `json:"status"`
-	CompletedLength string `json:"completedLength"`
-	TotalLength     string `json:"totalLength"`
-	DownloadSpeed   string `json:"downloadSpeed"`
-	ErrorMessage    string `json:"errorMessage"`
+	Status          string   `json:"status"`
+	CompletedLength string   `json:"completedLength"`
+	TotalLength     string   `json:"totalLength"`
+	DownloadSpeed   string   `json:"downloadSpeed"`
+	ErrorMessage    string   `json:"errorMessage"`
+	FollowedBy      []string `json:"followedBy"`
+	Files           []struct {
+		Path string `json:"path"`
+	} `json:"files"`
 }
 
-// Status returns gid's current progress.
+// Status returns gid's current progress. FollowedBy/Files matter for
+// BitTorrent downloads: adding a magnet link returns a GID for a short-lived
+// "fetch metadata" task; once that finishes, aria2 auto-starts the real
+// download under a *new* GID listed in FollowedBy. Files lists the on-disk
+// path(s) once a download (torrent or not) has data written.
 func (m *Manager) Status(gid string) (Status, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	result, err := m.call("aria2.tellStatus", []any{gid,
-		[]string{"status", "completedLength", "totalLength", "downloadSpeed", "errorMessage"},
+		[]string{"status", "completedLength", "totalLength", "downloadSpeed", "errorMessage", "followedBy", "files"},
 	})
 	if err != nil {
 		return Status{}, err
@@ -223,12 +236,18 @@ func (m *Manager) Status(gid string) (Status, error) {
 		n, _ := strconv.ParseInt(s, 10, 64)
 		return n
 	}
+	files := make([]string, 0, len(r.Files))
+	for _, f := range r.Files {
+		files = append(files, f.Path)
+	}
 	return Status{
 		State:           r.Status,
 		CompletedLength: parseInt(r.CompletedLength),
 		TotalLength:     parseInt(r.TotalLength),
 		DownloadSpeed:   parseInt(r.DownloadSpeed),
 		ErrorMessage:    r.ErrorMessage,
+		FollowedBy:      r.FollowedBy,
+		Files:           files,
 	}, nil
 }
 

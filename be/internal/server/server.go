@@ -22,35 +22,35 @@ import (
 	moviesvc "github.com/nawfdev/home-panel/internal/movies"
 	pm2svc "github.com/nawfdev/home-panel/internal/pm2"
 	"github.com/nawfdev/home-panel/internal/projects"
-	"github.com/nawfdev/home-panel/internal/qbittorrent"
 	"github.com/nawfdev/home-panel/internal/session"
 	"github.com/nawfdev/home-panel/internal/store"
 	"github.com/nawfdev/home-panel/internal/telegram"
 	termsvc "github.com/nawfdev/home-panel/internal/terminal"
+	"github.com/nawfdev/home-panel/internal/torrentsearch"
 	"github.com/nawfdev/home-panel/internal/tunnel"
 	"github.com/nawfdev/home-panel/internal/updater"
 )
 
 // Deps holds everything the router needs.
 type Deps struct {
-	AiGateway   *aigateway.Service
-	Cloudflare  *cloudflare.Service
-	Config      *config.Config
-	Docker      *dockersvc.Service
-	Files       *filesvc.Service
-	Movies      *moviesvc.Service
-	QBittorrent *qbittorrent.Service
-	Paths       config.Paths
-	Store       *store.Store
-	Sessions    *session.Manager
-	Metrics     *metrics.Collector
-	Logs        *logs.Service
-	PM2         *pm2svc.Service
-	Projects    *projects.Manager
-	Telegram    *telegram.Service
-	Terminal    *termsvc.Service
-	Tunnel      *tunnel.Service
-	Updater     *updater.Updater
+	AiGateway     *aigateway.Service
+	Cloudflare    *cloudflare.Service
+	Config        *config.Config
+	Docker        *dockersvc.Service
+	Files         *filesvc.Service
+	Movies        *moviesvc.Service
+	TorrentSearch *torrentsearch.Service
+	Paths         config.Paths
+	Store         *store.Store
+	Sessions      *session.Manager
+	Metrics       *metrics.Collector
+	Logs          *logs.Service
+	PM2           *pm2svc.Service
+	Projects      *projects.Manager
+	Telegram      *telegram.Service
+	Terminal      *termsvc.Service
+	Tunnel        *tunnel.Service
+	Updater       *updater.Updater
 }
 
 // New builds the top-level http.Handler.
@@ -74,12 +74,12 @@ func New(d Deps) http.Handler {
 	dashboardH := &handlers.Dashboard{Cloudflare: d.Cloudflare, Store: d.Store, Tunnel: d.Tunnel, Projects: d.Projects}
 	updateH := &handlers.Update{Updater: d.Updater, Store: d.Store, PM2: d.PM2}
 	cloudflareH := &handlers.Cloudflare{Store: d.Store, Svc: d.Cloudflare}
-	settingsH := &handlers.Settings{Store: d.Store, Telegram: d.Telegram, QBittorrent: d.QBittorrent}
+	settingsH := &handlers.Settings{Store: d.Store, Telegram: d.Telegram}
 	telegramH := &handlers.Telegram{Bot: d.Telegram}
 	exportH := handlers.Export{}
 	aigatewayH := &handlers.AiGateway{Svc: d.AiGateway}
 	gatewayAuth := &handlers.GatewayAuth{Svc: d.AiGateway}
-	moviesH := &handlers.Movies{Svc: d.Movies, QBittorrent: d.QBittorrent}
+	moviesH := &handlers.Movies{Svc: d.Movies, Torrents: d.TorrentSearch}
 	subtitlesH := &handlers.Subtitles{}
 
 	// Rate limiters mirror express-rate-limit windows from server.js.
@@ -185,8 +185,6 @@ func New(d Deps) http.Handler {
 			sr.Post("/panel-service", settingsH.SavePanelService)
 			sr.Get("/file-manager", settingsH.GetFileManager)
 			sr.Post("/file-manager", settingsH.SaveFileManager)
-			sr.Get("/qbittorrent", settingsH.GetQBittorrent)
-			sr.Post("/qbittorrent", settingsH.SaveQBittorrent)
 			sr.Get("/subsource", settingsH.GetSubsource)
 			sr.Post("/subsource", settingsH.SaveSubsource)
 		})
@@ -298,9 +296,8 @@ func New(d Deps) http.Handler {
 			// them up with no extra wiring.
 			mr.Post("/subtitles/search", subtitlesH.Search)
 			mr.Post("/subtitles/download", subtitlesH.Download)
-			// Torrent search (qBittorrent's own multi-plugin Search tab) +
-			// download, handled by qBittorrent itself and tracked through the
-			// same Job list/SSE stream as the engines above.
+			// Torrent search (torrent-search-api sidecar) + magnet download via
+			// aria2, tracked through the same Job list/SSE stream as above.
 			mr.Post("/torrents/search", moviesH.TorrentSearch)
 			mr.Post("/torrents/download", moviesH.StartTorrentDownload)
 		})

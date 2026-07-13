@@ -23,13 +23,13 @@ import (
 	"github.com/nawfdev/home-panel/internal/movies"
 	"github.com/nawfdev/home-panel/internal/pm2"
 	"github.com/nawfdev/home-panel/internal/projects"
-	"github.com/nawfdev/home-panel/internal/qbittorrent"
 	"github.com/nawfdev/home-panel/internal/server"
 	"github.com/nawfdev/home-panel/internal/session"
 	"github.com/nawfdev/home-panel/internal/store"
 	"github.com/nawfdev/home-panel/internal/subtitles"
 	"github.com/nawfdev/home-panel/internal/telegram"
 	"github.com/nawfdev/home-panel/internal/terminal"
+	"github.com/nawfdev/home-panel/internal/torrentsearch"
 	"github.com/nawfdev/home-panel/internal/tunnel"
 	"github.com/nawfdev/home-panel/internal/updater"
 )
@@ -76,28 +76,28 @@ func main() {
 	aigw := aigateway.New(st)
 	aigw.StartUsageFlusher(context.Background(), 30*time.Second)
 
-	qb := qbittorrent.New(st)
-	mov := movies.New(qb)
+	mov := movies.New()
+	ts := torrentsearch.New(paths)
 
 	handler := server.New(server.Deps{
-		AiGateway:   aigw,
-		Cloudflare:  cloudflare.New(st),
-		Config:      cfg,
-		Docker:      docker.New(),
-		Files:       files.New(st),
-		Movies:      mov,
-		QBittorrent: qb,
-		Paths:       paths,
-		Store:       st,
-		Sessions:    sess,
-		Metrics:     mc,
-		Logs:        logs.New(paths.Root),
-		PM2:         pm2.New(),
-		Projects:    proj,
-		Telegram:    tg,
-		Terminal:    term,
-		Tunnel:      tun,
-		Updater:     updater.New(paths.Root),
+		AiGateway:     aigw,
+		Cloudflare:    cloudflare.New(st),
+		Config:        cfg,
+		Docker:        docker.New(),
+		Files:         files.New(st),
+		Movies:        mov,
+		TorrentSearch: ts,
+		Paths:         paths,
+		Store:         st,
+		Sessions:      sess,
+		Metrics:       mc,
+		Logs:          logs.New(paths.Root),
+		PM2:           pm2.New(),
+		Projects:      proj,
+		Telegram:      tg,
+		Terminal:      term,
+		Tunnel:        tun,
+		Updater:       updater.New(paths.Root),
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)

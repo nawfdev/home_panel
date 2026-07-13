@@ -56,12 +56,12 @@ interface SubtitleResult {
 }
 
 interface TorrentResult {
-  name: string;
-  sizeBytes: number;
-  url: string;
-  seeders: number;
-  leechers: number;
-  site: string;
+  title: string;
+  size: string;
+  seeds: number;
+  peers: number;
+  provider: string;
+  magnet: string;
 }
 
 const TTL_OPTIONS: { label: string; seconds: number }[] = [
@@ -196,11 +196,11 @@ export function Movies() {
 
   async function startTorrentDownload(t: TorrentResult) {
     if (startingTorrent) return;
-    setStartingTorrent(t.url);
+    setStartingTorrent(t.magnet);
     try {
       const data = await api<{ success: boolean; job?: Job; error?: string }>("/movies/torrents/download", {
         method: "POST",
-        body: JSON.stringify({ title: t.name, url: t.url }),
+        body: JSON.stringify({ title: t.title, url: t.magnet }),
       });
       if (data.success) {
         show("Download started", "success");
@@ -518,18 +518,18 @@ export function Movies() {
       {mode === "torrent" && (
         <Panel>
           {torrents === null ? (
-            <p className="text-sm text-gray-500">Search to see torrent results from your qBittorrent's Search tab.</p>
+            <p className="text-sm text-gray-500">Search to see torrent results.</p>
           ) : torrents.length === 0 ? (
             <p className="text-sm text-gray-500">No results.</p>
           ) : (
             <div className="space-y-2">
               {torrents.map((t) => (
-                <div key={t.url} className="bg-white/5 rounded-lg p-3 flex items-center justify-between gap-3">
+                <div key={t.magnet} className="bg-white/5 rounded-lg p-3 flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-gray-100 truncate">{t.name}</p>
+                    <p className="text-sm text-gray-100 truncate">{t.title}</p>
                     <p className="text-xs text-gray-500">
-                      {formatBytes(t.sizeBytes)} · {t.seeders} seeders / {t.leechers} leechers
-                      {t.site && ` · ${t.site}`}
+                      {t.size} · {t.seeds} seeds / {t.peers} peers
+                      {t.provider && ` · ${t.provider}`}
                     </p>
                   </div>
                   <button
@@ -538,7 +538,7 @@ export function Movies() {
                     disabled={startingTorrent !== null}
                   >
                     <ArrowDownTrayIcon className="w-4 h-4 inline mr-1.5" />
-                    {startingTorrent === t.url ? "Starting…" : "Download"}
+                    {startingTorrent === t.magnet ? "Starting…" : "Download"}
                   </button>
                 </div>
               ))}

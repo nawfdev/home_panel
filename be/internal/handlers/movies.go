@@ -9,16 +9,16 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/nawfdev/home-panel/internal/httpx"
 	moviesvc "github.com/nawfdev/home-panel/internal/movies"
-	qbittorrent "github.com/nawfdev/home-panel/internal/qbittorrent"
+	"github.com/nawfdev/home-panel/internal/torrentsearch"
 )
 
-// Movies exposes the pahe.ink scraper, qBittorrent-backed torrent search, and
-// the server-side download queue. Downloaded files land under the SafePath
-// allowlist, so the existing file player and share endpoints serve them
-// without extra wiring.
+// Movies exposes the pahe.ink scraper, torrent-search-api-backed torrent
+// search, and the server-side download queue. Downloaded files land under
+// the SafePath allowlist, so the existing file player and share endpoints
+// serve them without extra wiring.
 type Movies struct {
-	Svc         *moviesvc.Service
-	QBittorrent *qbittorrent.Service
+	Svc      *moviesvc.Service
+	Torrents *torrentsearch.Service
 }
 
 // Search browses/searches pahe.ink. Empty query => homepage.
@@ -88,29 +88,25 @@ func (m *Movies) CancelDownload(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Download canceled"})
 }
 
-// TorrentSearch runs a query across every plugin installed in the user's own
-// qBittorrent Search tab.
+// TorrentSearch runs a query through the torrent-search-api sidecar (across
+// every provider it has enabled) and returns results with resolved magnets.
 func (m *Movies) TorrentSearch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Query string `json:"query"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	if m.QBittorrent == nil || !m.QBittorrent.Configured() {
-		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "qBittorrent isn't configured yet — set the WebUI URL in Settings"})
-		return
-	}
-	results, err := m.QBittorrent.Search(req.Query)
+	results, err := m.Torrents.Search(req.Query)
 	if err != nil {
 		httpx.JSON(w, http.StatusBadGateway, map[string]any{"success": false, "error": err.Error()})
 		return
 	}
 	if results == nil {
-		results = []qbittorrent.SearchResult{}
+		results = []torrentsearch.Result{}
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "results": results})
 }
 
-// StartTorrentDownload enqueues a torrent download, handled by qBittorrent.
+// StartTorrentDownload enqueues a magnet download, handled by aria2.
 func (m *Movies) StartTorrentDownload(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Title string `json:"title"`
