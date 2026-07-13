@@ -124,6 +124,7 @@ type Job struct {
 	Title       string    `json:"title"`
 	URL         string    `json:"url"`
 	Dest        string    `json:"dest"`
+	Poster      string    `json:"poster,omitempty"`
 	Status      Status    `json:"status"`
 	Downloaded  int64     `json:"downloaded"`
 	Total       int64     `json:"total"`
@@ -197,7 +198,7 @@ func safeFilename(title, rawURL string) string {
 // Start enqueues a download from a direct/simple link. Shortener links
 // (oii.la/tpi.li) are rejected in Fase 1 with a clear message so the UI can
 // tell the user to resolve them manually until Fase 2 lands.
-func (s *Service) Start(title, rawURL string) (*Job, error) {
+func (s *Service) Start(title, rawURL, poster string) (*Job, error) {
 	if !strings.HasPrefix(rawURL, "http://") && !strings.HasPrefix(rawURL, "https://") {
 		return nil, errors.New("download link must be an http(s) URL")
 	}
@@ -222,6 +223,7 @@ func (s *Service) Start(title, rawURL string) (*Job, error) {
 		Title:     title,
 		URL:       rawURL,
 		Dest:      dest,
+		Poster:    poster,
 		Status:    StatusQueued,
 		CreatedAt: time.Now(),
 		cancel:    cancel,
@@ -252,7 +254,7 @@ func (s *Service) Start(title, rawURL string) (*Job, error) {
 // fallback torrent engine). dir is the same SafePath-validated Movies folder
 // the HTTP engines use, so the finished file is served by the existing
 // player/share stack with no extra wiring.
-func (s *Service) StartTorrent(title, magnetURI string) (*Job, error) {
+func (s *Service) StartTorrent(title, magnetURI, poster string) (*Job, error) {
 	trimmed := strings.TrimSpace(magnetURI)
 	if !strings.HasPrefix(trimmed, "magnet:") {
 		return nil, errors.New("expected a magnet: link")
@@ -283,6 +285,7 @@ func (s *Service) StartTorrent(title, magnetURI string) (*Job, error) {
 		ID:        fmt.Sprintf("dl-%d-%d", time.Now().Unix(), s.seq),
 		Title:     title,
 		URL:       trimmed,
+		Poster:    poster,
 		Status:    StatusQueued,
 		CreatedAt: time.Now(),
 		cancel:    cancel,
