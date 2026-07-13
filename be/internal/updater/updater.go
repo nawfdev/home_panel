@@ -162,7 +162,66 @@ func (u *Updater) ApplyUpdates(ctx context.Context) map[string]interface{} {
 		}
 	}
 
+	// Same idea for any Node sidecar scripts under be/scripts/* (e.g.
+	// torrent-search): a pull can bring in a new/changed package.json for one
+	// of these, and without this they'd silently keep running against
+	// whatever was installed at initial setup until someone notices a
+	// "dependency not installed" error and runs npm install by hand.
+	if sidecarErrs := u.installSidecarDeps(ctx); len(sidecarErrs) > 0 {
+		result["sidecarInstallErrors"] = sidecarErrs
+	}
+
+	// Surface missing optional system binaries (aria2c, ffmpeg) right after
+	// the update instead of letting the operator find out mid-download —
+	// these aren't npm packages, so they can't be silently installed here
+	// (no safe cross-distro/OS package manager to shell out to); this just
+	// makes the gap visible immediately.
+	if warnings := checkOptionalDeps(); len(warnings) > 0 {
+		result["dependencyWarnings"] = warnings
+	}
+
 	return result
+}
+
+// installSidecarDeps runs `npm install` for every be/scripts/<name> directory
+// that has its own package.json, so a pulled dependency bump takes effect
+// without a manual step. Returns one message per sidecar whose install
+// failed; a sidecar with no package.json is skipped, not an error.
+func (u *Updater) installSidecarDeps(ctx context.Context) []string {
+	scriptsDir := filepath.Join(u.root, "be", "scripts")
+	entries, err := os.ReadDir(scriptsDir)
+	if err != nil {
+		return nil
+	}
+	var errs []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dir := filepath.Join(scriptsDir, e.Name())
+		if _, err := os.Stat(filepath.Join(dir, "package.json")); err != nil {
+			continue
+		}
+		if _, err := runCommand(ctx, dir, 120*time.Second, "npm", "install"); err != nil {
+			errs = append(errs, fmt.Sprintf("%s: npm install failed: %s", e.Name(), err.Error()))
+		}
+	}
+	return errs
+}
+
+// checkOptionalDeps reports optional external binaries the panel's features
+// depend on that aren't on PATH, so a fresh gap (e.g. a new feature landing
+// in this update needing aria2c) is surfaced right away rather than
+// discovered later as a runtime error.
+func checkOptionalDeps() []string {
+	var warnings []string
+	if _, err := exec.LookPath("aria2c"); err != nil {
+		warnings = append(warnings, "aria2c isn't installed — torrent downloads won't work until it is (see README).")
+	}
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		warnings = append(warnings, "ffmpeg isn't installed — video remux/faststart won't work until it is (optional, see README).")
+	}
+	return warnings
 }
 
 // minNodeMajor is the lowest Node.js major version the frontend toolchain

@@ -278,11 +278,20 @@ export function Settings() {
   async function applyUpdate() {
     setApplyingUpdate(true);
     try {
-      const data = await api<{ success: boolean; message?: string; error?: string }>("/update/apply", {
-        method: "POST",
-      });
+      const data = await api<{
+        success: boolean;
+        message?: string;
+        error?: string;
+        dependencyWarnings?: string[];
+        sidecarInstallErrors?: string[];
+      }>("/update/apply", { method: "POST" });
       if (data.success) {
         show(data.message ?? "Update applied", "success", 10000);
+        // Surfaced separately (not folded into the main toast) so a fresh
+        // "aria2c missing" gap from this update doesn't get lost inside a
+        // longer success message the operator skims past.
+        for (const w of data.dependencyWarnings ?? []) show(w, "warning", 15000);
+        for (const e of data.sidecarInstallErrors ?? []) show(e, "error", 15000);
       } else {
         show(data.error ?? "Update failed", "error");
       }
