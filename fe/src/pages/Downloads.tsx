@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
 import { formatBytes, formatDuration } from "../lib/format";
-import { ArrowPathIcon, XMarkIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, XMarkIcon, PauseIcon, PlayIcon } from "@heroicons/react/24/outline";
 
 interface Job {
   id: string;
@@ -10,7 +11,7 @@ interface Job {
   url: string;
   dest: string;
   poster?: string;
-  status: "queued" | "downloading" | "remuxing" | "done" | "error" | "canceled";
+  status: "queued" | "downloading" | "paused" | "remuxing" | "done" | "error" | "canceled";
   downloaded: number;
   total: number;
   speedBps: number;
@@ -28,6 +29,7 @@ function eta(job: Job): string | null {
 // here, so this stays a clean, proper "downloads panel" — not a growing
 // list mixed with a media library.
 export function Downloads() {
+  const { show } = useToast();
   const [jobs, setJobs] = useState<Job[]>([]);
   const esRef = useRef<EventSource | null>(null);
 
@@ -67,6 +69,24 @@ export function Downloads() {
     }
   }
 
+  async function pauseJob(id: string) {
+    try {
+      await api(`/movies/downloads/${id}/pause`, { method: "POST" });
+      loadJobs();
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Couldn't pause", "error");
+    }
+  }
+
+  async function resumeJob(id: string) {
+    try {
+      await api(`/movies/downloads/${id}/resume`, { method: "POST" });
+      loadJobs();
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Couldn't resume", "error");
+    }
+  }
+
   // "done" jobs live in the Stream library, not here — this list is purely
   // the active queue plus recent failures/cancellations worth seeing once.
   const activeJobs = jobs.filter((j) => j.status !== "done");
@@ -103,22 +123,38 @@ export function Downloads() {
                             (remaining ? ` · ETA ${remaining}` : "") +
                             (job.total > 0 ? ` · ${pct}%` : "")}
                         {job.status === "queued" && "Queued…"}
+                        {job.status === "paused" &&
+                          `Paused · ${formatBytes(job.downloaded)}${job.total > 0 ? " / " + formatBytes(job.total) : ""}`}
                         {job.status === "remuxing" && "Optimizing for streaming…"}
                         {job.status === "canceled" && "Canceled"}
                         {job.status === "error" && <span className="text-red-400">{job.error}</span>}
                       </p>
                     </div>
-                    {(job.status === "downloading" || job.status === "queued") && (
-                      <button className="btn-danger shrink-0" title="Cancel" onClick={() => cancelJob(job.id)}>
-                        <XMarkIcon className="w-4 h-4" />
-                      </button>
-                    )}
+                    <div className="flex gap-2 shrink-0">
+                      {job.status === "downloading" && (
+                        <button className="btn-secondary" title="Pause" onClick={() => pauseJob(job.id)}>
+                          <PauseIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                      {job.status === "paused" && (
+                        <button className="btn-secondary" title="Resume" onClick={() => resumeJob(job.id)}>
+                          <PlayIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                      {(job.status === "downloading" || job.status === "queued" || job.status === "paused") && (
+                        <button className="btn-danger" title="Cancel" onClick={() => cancelJob(job.id)}>
+                          <XMarkIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  {(job.status === "downloading" || job.status === "remuxing") && (
+                  {(job.status === "downloading" || job.status === "remuxing" || job.status === "paused") && (
                     <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden mt-2">
                       <div
-                        className={`h-full transition-all duration-300 ${job.status === "remuxing" ? "bg-purple-500 animate-pulse w-full" : "bg-blue-500"}`}
-                        style={job.status === "downloading" ? { width: `${pct}%` } : undefined}
+                        className={`h-full transition-all duration-300 ${
+                          job.status === "remuxing" ? "bg-purple-500 animate-pulse w-full" : job.status === "paused" ? "bg-gray-500" : "bg-blue-500"
+                        }`}
+                        style={job.status !== "remuxing" ? { width: `${pct}%` } : undefined}
                       />
                     </div>
                   )}

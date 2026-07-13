@@ -109,6 +109,7 @@ func (m *Manager) ensureRunning() error {
 		"--split=5",
 		"--allow-overwrite=true",
 		"--quiet=true",
+		"--seed-time=0", // this is a downloader, not a seedbox — stop the instant a torrent finishes instead of lingering in "active" (seeding) state forever
 	)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("aria2: failed to start aria2c: %w", err)
@@ -255,6 +256,23 @@ func (m *Manager) Remove(gid string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	_, err := m.call("aria2.forceRemove", []any{gid})
+	return err
+}
+
+// Pause suspends an active download in place — unlike Remove, the partial
+// data and gid stay alive so Unpause picks up exactly where it left off.
+func (m *Manager) Pause(gid string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, err := m.call("aria2.pause", []any{gid})
+	return err
+}
+
+// Unpause resumes a download previously stopped with Pause.
+func (m *Manager) Unpause(gid string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	_, err := m.call("aria2.unpause", []any{gid})
 	return err
 }
 
