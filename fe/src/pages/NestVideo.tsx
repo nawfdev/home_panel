@@ -51,6 +51,17 @@ function fmt(t: number) {
 }
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+const SUB_BGS = [
+  { id: "solid", label: "Solid background" },
+  { id: "semi", label: "Semi-transparent" },
+  { id: "none", label: "Transparent" },
+] as const;
+type SubBg = (typeof SUB_BGS)[number]["id"];
+
+function loadSubBg(): SubBg {
+  const v = localStorage.getItem("np-subbg");
+  return v === "semi" || v === "none" ? v : "solid";
+}
 
 export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -63,6 +74,7 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
   const [buffered, setBuffered] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [selTrack, setSelTrack] = useState(-1);
+  const [subBg, setSubBg] = useState<SubBg>(loadSubBg);
   const [ccOpen, setCcOpen] = useState(false);
   const [speedOpen, setSpeedOpen] = useState(false);
   const [hidden, setHidden] = useState(false);
@@ -168,7 +180,7 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
   return (
     <div
       ref={wrapRef}
-      className={`np ${hidden ? "hide hidecursor" : ""}`}
+      className={`np subbg-${subBg} ${hidden ? "hide hidecursor" : ""}`}
       tabIndex={0}
       onMouseMove={activity}
       onKeyDown={(e) => {
@@ -291,6 +303,19 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
                   ＋ Load subtitle…
                   <input type="file" accept=".srt,.vtt" hidden onChange={onPickLocal} />
                 </label>
+                <div className="np-menu-sep" />
+                {SUB_BGS.map((o) => (
+                  <button
+                    key={o.id}
+                    className={`np-item ${subBg === o.id ? "active" : ""}`}
+                    onClick={() => {
+                      setSubBg(o.id);
+                      localStorage.setItem("np-subbg", o.id);
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
               </div>
             )}
           </div>
