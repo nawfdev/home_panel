@@ -7,33 +7,46 @@ import (
 	"strings"
 )
 
-// MediaInfo validates userPath and reports its media type and any sidecar
-// subtitles (for the in-panel player). type is "" for non-media files.
-func (s *Service) MediaInfo(userPath string) (string, []Subtitle, error) {
+// MediaInfo validates userPath and reports its media type, any sidecar
+// subtitles, and the path the player should actually request bytes from
+// (for the in-panel player). type is "" for non-media files.
+//
+// playPath differs from userPath only when the source isn't safely
+// browser-playable as-is (wrong container/codec) — in which case it points
+// at a generated ".web.mp4" sibling instead, leaving the original file (and
+// downloads of it) untouched. See EnsureWebPlayable.
+func (s *Service) MediaInfo(userPath string) (mt string, subs []Subtitle, playPath string, err error) {
 	full, err := SafePath(userPath)
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
 	info, err := os.Stat(full)
 	if os.IsNotExist(err) {
-		return "", nil, errFileNotFound
+		return "", nil, "", errFileNotFound
 	}
 	if err != nil {
-		return "", nil, err
+		return "", nil, "", err
 	}
 	if info.IsDir() {
-		return "", nil, errReadDirectory
+		return "", nil, "", errReadDirectory
 	}
-	mt := MediaType(full)
-	var subs []Subtitle
+	mt = MediaType(full)
+	playFull := full
 	if mt == "video" {
 		// Best-effort: files that never went through the movies download
 		// pipeline (uploads, pre-existing files) never had their embedded
 		// subtitle tracks pulled into sidecars — do it lazily on first view.
 		_ = ExtractEmbeddedSubtitles(full)
 		subs = DetectSubtitles(full)
+		if p, werr := EnsureWebPlayable(full); werr == nil {
+			playFull = p
+		}
 	}
-	return mt, subs, nil
+	playPath = userPath
+	if playFull != full {
+		playPath = userPath[:len(userPath)-len(filepath.Ext(userPath))] + ".web.mp4"
+	}
+	return mt, subs, playPath, nil
 }
 
 // SubtitleForPath validates userPath and returns the named sidecar subtitle as

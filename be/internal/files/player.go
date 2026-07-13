@@ -120,8 +120,12 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;pad
 // player page for a shared video/image/audio file, styled to match the panel.
 // Video uses a fully custom control bar (not native controls). basePath is the
 // request path of the shared file; media bytes come from basePath?raw=1 and
-// sidecar subtitles from basePath?sub=<name>.
-func PlayerHTML(mediaType, basePath, fileName string, size int64, modTime time.Time, subs []Subtitle) string {
+// sidecar subtitles from basePath?sub=<name>. videoSrc is what actually feeds
+// the <video>/<audio>/<img> element — normally the same as basePath?raw=1,
+// but the caller may point it at a web-compat sibling instead (see
+// EnsureWebPlayable) while the Download button/link below still uses the
+// original via basePath?raw=1, so downloads are never affected.
+func PlayerHTML(mediaType, basePath, videoSrc, fileName string, size int64, modTime time.Time, subs []Subtitle) string {
 	rawURL := basePath + "?raw=1"
 	subsJSON, _ := json.Marshal(subtitleTracks(basePath, subs))
 
@@ -138,19 +142,19 @@ func PlayerHTML(mediaType, basePath, fileName string, size int64, modTime time.T
 
 	switch mediaType {
 	case "image":
-		b.WriteString(`<div class="stage"><img src="` + htmlEscape(rawURL) + `" alt="` + htmlEscape(fileName) + `" class="media-img"></div>`)
+		b.WriteString(`<div class="stage"><img src="` + htmlEscape(videoSrc) + `" alt="` + htmlEscape(fileName) + `" class="media-img"></div>`)
 		b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
 		b.WriteString(`<script>` + shareActionsJS + `</script></body></html>`)
 		return b.String()
 	case "audio":
-		b.WriteString(`<div class="stage audio"><audio controls src="` + htmlEscape(rawURL) + `" class="media-audio"></audio></div>`)
+		b.WriteString(`<div class="stage audio"><audio controls src="` + htmlEscape(videoSrc) + `" class="media-audio"></audio></div>`)
 		b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
 		b.WriteString(`<script>` + shareActionsJS + `</script></body></html>`)
 		return b.String()
 	}
 
 	// Custom video player.
-	b.WriteString(videoPlayerHTML(rawURL))
+	b.WriteString(videoPlayerHTML(videoSrc))
 	b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
 	b.WriteString(`<script>window.__SUBS__=` + string(subsJSON) + `;</script>`)
 	b.WriteString(`<script>` + renderedPlayerJS() + `</script>`)

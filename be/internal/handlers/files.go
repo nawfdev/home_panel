@@ -108,7 +108,7 @@ func (f *Files) MediaInfo(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	mt, subs, err := f.Svc.MediaInfo(req.Path)
+	mt, subs, path, err := f.Svc.MediaInfo(req.Path)
 	if err != nil {
 		fileError(w, err)
 		return
@@ -116,7 +116,7 @@ func (f *Files) MediaInfo(w http.ResponseWriter, r *http.Request) {
 	if subs == nil {
 		subs = []filesvc.Subtitle{}
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "type": mt, "subtitles": subs})
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "type": mt, "subtitles": subs, "path": path})
 }
 
 func (f *Files) Subtitle(w http.ResponseWriter, r *http.Request) {
@@ -203,21 +203,33 @@ func (f *Files) ServePublicShare(w http.ResponseWriter, r *http.Request) {
 	}
 	// ?raw=1 serves the raw bytes (range-enabled for video seeking); without it,
 	// a media file gets the player page and any other file gets a themed
-	// download landing page instead of an immediate download.
+	// download landing page instead of an immediate download. ?raw=1&web=1
+	// serves a web-compat sibling instead of target — only ever requested by
+	// the player's own <video> src (see videoSrc below), never the Download
+	// button/link, so downloads always get the original bytes.
 	if q.Get("raw") != "1" {
 		if mt := filesvc.MediaType(info.Name()); mt != "" {
 			var subs []filesvc.Subtitle
+			videoSrc := r.URL.Path + "?raw=1"
 			if mt == "video" {
 				_ = filesvc.ExtractEmbeddedSubtitles(target)
 				subs = filesvc.DetectSubtitles(target)
+				if playable, werr := filesvc.EnsureWebPlayable(target); werr == nil && playable != target {
+					videoSrc = r.URL.Path + "?raw=1&web=1"
+				}
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(filesvc.PlayerHTML(mt, r.URL.Path, info.Name(), info.Size(), info.ModTime(), subs)))
+			_, _ = w.Write([]byte(filesvc.PlayerHTML(mt, r.URL.Path, videoSrc, info.Name(), info.Size(), info.ModTime(), subs)))
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(filesvc.DownloadPageHTML(r.URL.Path, info.Name(), info.Size(), info.ModTime())))
 		return
+	}
+	if q.Get("web") == "1" {
+		if playable, werr := filesvc.EnsureWebPlayable(target); werr == nil {
+			target = playable
+		}
 	}
 	if ct := filesvc.ContentTypeFor(target); ct != "" {
 		w.Header().Set("Content-Type", ct)

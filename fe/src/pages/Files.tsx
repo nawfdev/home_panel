@@ -117,12 +117,15 @@ export function Files() {
     }
     // Media files open in the player; everything else in the text viewer.
     try {
-      const info = await api<{ success: boolean; type: string; subtitles: { name: string; label: string }[] }>(
+      const info = await api<{ success: boolean; type: string; subtitles: { name: string; label: string }[]; path?: string }>(
         "/files/media-info",
         { method: "POST", body: JSON.stringify({ path: item.path }) }
       );
       if (info.type === "video" || info.type === "image" || info.type === "audio") {
-        setPlayer({ path: item.path, name: item.name, type: info.type, subtitles: info.subtitles ?? [] });
+        // path may point at a generated ".web.mp4" sibling instead of
+        // item.path when the original isn't safely browser-playable — the
+        // original itself is untouched, so downloads still use item.path.
+        setPlayer({ path: info.path || item.path, name: item.name, type: info.type, subtitles: info.subtitles ?? [] });
         return;
       }
     } catch {
