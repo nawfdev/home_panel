@@ -25,7 +25,7 @@ type Service struct {
 }
 
 func New(paths config.Paths) *Service {
-	return &Service{scriptDir: filepath.Join(paths.Root, "scripts", "torrent-search")}
+	return &Service{scriptDir: filepath.Join(paths.Root, "be", "scripts", "torrent-search")}
 }
 
 // Available reports whether node is on PATH and the sidecar's dependency has
