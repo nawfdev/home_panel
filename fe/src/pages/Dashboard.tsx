@@ -1,10 +1,12 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { api } from "../lib/api";
 import { useInterval } from "../hooks/useInterval";
+import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
+import { Modal } from "../components/ui/Modal";
 import { PerformanceChart } from "../components/dashboard/PerformanceChart";
 import { formatBytes, formatUptime, formatDuration } from "../lib/format";
-import { ChartBarIcon, ServerIcon, CircleStackIcon } from "@heroicons/react/24/outline";
+import { ChartBarIcon, ServerIcon, CircleStackIcon, SignalIcon, PowerIcon } from "@heroicons/react/24/outline";
 
 interface SystemStats {
   cpu: { usage: number; cores: number };
@@ -13,6 +15,15 @@ interface SystemStats {
   os: { platform: string; distro: string; release: string; hostname: string; arch: string };
   uptime: number;
   battery: { hasBattery: boolean; percent: number; isCharging: boolean; acConnected: boolean };
+  network: { iface: string; rx_bytes: number; tx_bytes: number }[];
+}
+
+interface ProcessInfo {
+  pid: number;
+  name: string;
+  cpu: number;
+  mem: number;
+  state: string;
 }
 
 interface DashboardData {
@@ -78,10 +89,16 @@ function InfoRow({ label, value, dot }: { label: string; value: ReactNode; dot?:
 }
 
 export function Dashboard() {
+  const { show } = useToast();
   const [data, setData] = useState<DashboardData | null>(null);
   const [cpuHistory, setCpuHistory] = useState<MetricPoint[]>([]);
   const [memHistory, setMemHistory] = useState<MetricPoint[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [processes, setProcesses] = useState<ProcessInfo[] | null>(null);
+
+  const [rebootModalOpen, setRebootModalOpen] = useState(false);
+  const [rebootAck, setRebootAck] = useState(false);
+  const [rebooting, setRebooting] = useState(false);
 
   async function loadDashboard() {
     try {
@@ -90,6 +107,14 @@ export function Dashboard() {
       setLastUpdated(new Date());
     } catch (err) {
       console.error("Dashboard error:", err);
+    }
+  }
+
+  async function loadProcesses() {
+    try {
+      setProcesses(await api<ProcessInfo[]>("/system/processes"));
+    } catch (err) {
+      console.error("Processes error:", err);
     }
   }
 
@@ -106,10 +131,39 @@ export function Dashboard() {
     }
   }
 
+  function closeRebootModal() {
+    setRebootModalOpen(false);
+    setRebootAck(false);
+  }
+
+  async function rebootHost() {
+    setRebooting(true);
+    try {
+      const res = await api<{ success: boolean; message?: string; error?: string }>("/system/reboot-host", {
+        method: "POST",
+        body: JSON.stringify({ confirm: true }),
+      });
+      closeRebootModal();
+      if (res.success) {
+        show(res.message ?? "Rebooting host...", "success", 10000);
+      } else {
+        show(res.error ?? "Failed to reboot host", "error");
+        setRebooting(false);
+      }
+      // On success the host is about to go down — leave the button disabled
+      // rather than resetting state, there's nothing left to poll for.
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to reboot host", "error");
+      setRebooting(false);
+    }
+  }
+
   useInterval(loadDashboard, 10000);
+  useInterval(loadProcesses, 5000);
   useInterval(loadGraphs, 60000);
   useEffect(() => {
     loadDashboard();
+    loadProcesses();
     loadGraphs();
   }, []);
 
@@ -123,15 +177,21 @@ export function Dashboard() {
           <h2 className="text-2xl font-bold text-gray-100">Dashboard</h2>
           <p className="text-gray-500 text-sm mt-1">Live overview of this host's health and services</p>
         </div>
-        {lastUpdated && (
-          <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500 mt-2">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
-            </span>
-            Updated {lastUpdated.toLocaleTimeString()}
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {lastUpdated && (
+            <div className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-green-400" />
+              </span>
+              Updated {lastUpdated.toLocaleTimeString()}
+            </div>
+          )}
+          <button className="btn-danger" onClick={() => setRebootModalOpen(true)} disabled={rebooting}>
+            <PowerIcon className="w-4 h-4 inline mr-1.5" />
+            {rebooting ? "Rebooting..." : "Reboot host"}
+          </button>
+        </div>
       </div>
 
       <div className="metric-strip mb-6">
@@ -228,7 +288,83 @@ export function Dashboard() {
             <p className="text-sm text-gray-500">Loading...</p>
           )}
         </Panel>
+        <Panel title="Network stats" icon={SignalIcon}>
+          {data ? (
+            data.system.network.length === 0 ? (
+              <p className="text-sm text-gray-500">No interfaces found</p>
+            ) : (
+              <div className="space-y-3">
+                {data.system.network.map((n) => (
+                  <div key={n.iface} className="flex items-center justify-between text-sm">
+                    <span className="text-gray-300">{n.iface}</span>
+                    <span className="text-gray-500 text-xs font-mono">
+                      RX {formatBytes(n.rx_bytes)} · TX {formatBytes(n.tx_bytes)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )
+          ) : (
+            <p className="text-sm text-gray-500">Loading...</p>
+          )}
+        </Panel>
+        <Panel title="Top processes">
+          {processes === null ? (
+            <p className="text-sm text-gray-500">Loading...</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-gray-500 text-xs border-b border-white/7">
+                    <th className="text-left py-2 font-medium">PID</th>
+                    <th className="text-left py-2 font-medium">Name</th>
+                    <th className="text-left py-2 font-medium">CPU %</th>
+                    <th className="text-left py-2 font-medium">MEM %</th>
+                    <th className="text-left py-2 font-medium">State</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {processes.slice(0, 10).map((p) => (
+                    <tr key={p.pid} className="border-b border-white/5 text-gray-300">
+                      <td className="py-2 font-mono text-xs">{p.pid}</td>
+                      <td className="py-2">{p.name}</td>
+                      <td className="py-2 font-mono">{p.cpu.toFixed(1)}</td>
+                      <td className="py-2 font-mono">{p.mem.toFixed(1)}</td>
+                      <td className="py-2 text-xs capitalize">{p.state}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Panel>
       </div>
+
+      {rebootModalOpen && (
+        <Modal title="Reboot host" onClose={closeRebootModal}>
+          <p className="text-sm text-gray-300">
+            This reboots the entire machine{data?.system.os.hostname ? ` (${data.system.os.hostname})` : ""} — Docker,
+            PM2, tunnels, and this panel itself will all go down until it finishes booting back up.
+          </p>
+          <label className="flex items-start gap-2 text-sm text-gray-300 mt-4">
+            <input
+              type="checkbox"
+              className="mt-0.5"
+              checked={rebootAck}
+              onChange={(e) => setRebootAck(e.target.checked)}
+            />
+            I understand this will reboot the whole machine, not just the panel.
+          </label>
+          <div className="flex gap-2 mt-5">
+            <button className="btn-danger flex-1 disabled:opacity-60" onClick={rebootHost} disabled={!rebootAck || rebooting}>
+              {rebooting ? "Rebooting..." : "Reboot now"}
+            </button>
+            <button className="btn-secondary flex-1" onClick={closeRebootModal}>
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
