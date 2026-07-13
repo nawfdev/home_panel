@@ -64,6 +64,15 @@ interface TorrentResult {
   magnet: string;
 }
 
+// Seeds are the clearest at-a-glance signal a layperson has for "will this
+// actually download at a decent speed" — few/no seeds means a stalled or dead
+// torrent no matter how good the title match looks.
+function torrentQuality(seeds: number): { label: string; className: string } {
+  if (seeds >= 20) return { label: "Good", className: "bg-green-500/15 text-green-400" };
+  if (seeds >= 5) return { label: "OK", className: "bg-yellow-500/15 text-yellow-400" };
+  return { label: "Risky", className: "bg-red-500/15 text-red-400" };
+}
+
 const TTL_OPTIONS: { label: string; seconds: number }[] = [
   { label: "Never expires", seconds: 0 },
   { label: "1 hour", seconds: 3600 },
@@ -181,7 +190,7 @@ export function Movies() {
         body: JSON.stringify({ query }),
       });
       if (data.success) {
-        setTorrents(data.results ?? []);
+        setTorrents([...(data.results ?? [])].sort((a, b) => b.seeds - a.seeds));
       } else {
         show(data.error ?? "Torrent search failed", "error");
         setTorrents([]);
@@ -523,13 +532,22 @@ export function Movies() {
             <p className="text-sm text-gray-500">No results.</p>
           ) : (
             <div className="space-y-2">
-              {torrents.map((t) => (
+              {torrents.map((t) => {
+                const quality = torrentQuality(t.seeds);
+                return (
                 <div key={t.magnet} className="bg-white/5 rounded-lg p-3 flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm text-gray-100 truncate">{t.title}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm text-gray-100 truncate">{t.title}</p>
+                      <span className={`status-badge shrink-0 ${quality.className}`}>{quality.label}</span>
+                      {t.provider && (
+                        <span className="shrink-0 px-2 py-0.5 rounded-md text-[11px] font-medium bg-white/10 text-gray-300">
+                          {t.provider}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-gray-500">
                       {t.size} · {t.seeds} seeds / {t.peers} peers
-                      {t.provider && ` · ${t.provider}`}
                     </p>
                   </div>
                   <button
@@ -541,7 +559,8 @@ export function Movies() {
                     {startingTorrent === t.magnet ? "Starting…" : "Download"}
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </Panel>
