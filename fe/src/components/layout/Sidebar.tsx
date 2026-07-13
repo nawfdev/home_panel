@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import { useToast } from "../../context/ToastContext";
 import { api } from "../../lib/api";
 import {
   HomeIcon,
@@ -23,41 +22,92 @@ import {
   ServerIcon,
   XMarkIcon,
   FilmIcon,
+  ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import type { ComponentType, SVGProps } from "react";
 
 type IconType = ComponentType<SVGProps<SVGSVGElement>>;
 
-interface NavItem {
+interface NavLeaf {
   to: string;
   label: string;
   icon: IconType;
-  live: boolean;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { to: "/dashboard", label: "Dashboard", icon: HomeIcon, live: true },
-  { to: "/tunnel", label: "Tunnel", icon: ArrowsRightLeftIcon, live: true },
-  { to: "/cloudflare", label: "Cloudflare", icon: CloudIcon, live: true },
-  { to: "/telegram", label: "Telegram", icon: PaperAirplaneIcon, live: true },
-  { to: "/network", label: "Network", icon: GlobeAltIcon, live: true },
-  { to: "/docker", label: "Docker", icon: CubeIcon, live: true },
-  { to: "/pm2", label: "PM2", icon: ServerStackIcon, live: true },
-  { to: "/logs", label: "Logs", icon: DocumentTextIcon, live: true },
-  { to: "/services", label: "Services", icon: AdjustmentsHorizontalIcon, live: true },
-  { to: "/files", label: "Files", icon: FolderIcon, live: true },
-  { to: "/terminal", label: "Terminal", icon: CommandLineIcon, live: true },
-  { to: "/projects", label: "Projects", icon: RectangleStackIcon, live: true },
-  { to: "/system", label: "System", icon: CpuChipIcon, live: true },
-  { to: "/ai-gateway", label: "AI Gateway", icon: SparklesIcon, live: true },
-  { to: "/movies", label: "Movies", icon: FilmIcon, live: true },
-  { to: "/settings", label: "Settings", icon: Cog6ToothIcon, live: true },
+// Groups collapse related pages under one dropdown so the sidebar doesn't
+// list 16 flat items — the pages/routes themselves are untouched, this is
+// purely a nav presentation grouping.
+interface NavGroup {
+  label: string;
+  icon: IconType;
+  children: NavLeaf[];
+}
+
+type NavEntry = (NavLeaf & { children?: undefined }) | NavGroup;
+
+const NAV_ITEMS: NavEntry[] = [
+  { to: "/dashboard", label: "Dashboard", icon: HomeIcon },
+  {
+    label: "Networking",
+    icon: ArrowsRightLeftIcon,
+    children: [
+      { to: "/tunnel", label: "Tunnel", icon: ArrowsRightLeftIcon },
+      { to: "/cloudflare", label: "Cloudflare", icon: CloudIcon },
+      { to: "/network", label: "Network", icon: GlobeAltIcon },
+    ],
+  },
+  {
+    label: "Processes",
+    icon: CubeIcon,
+    children: [
+      { to: "/docker", label: "Docker", icon: CubeIcon },
+      { to: "/pm2", label: "PM2", icon: ServerStackIcon },
+      { to: "/services", label: "Services", icon: AdjustmentsHorizontalIcon },
+    ],
+  },
+  {
+    label: "Diagnostics",
+    icon: DocumentTextIcon,
+    children: [
+      { to: "/logs", label: "Logs", icon: DocumentTextIcon },
+      { to: "/terminal", label: "Terminal", icon: CommandLineIcon },
+    ],
+  },
+  {
+    label: "Files",
+    icon: FolderIcon,
+    children: [
+      { to: "/files", label: "Files", icon: FolderIcon },
+      { to: "/projects", label: "Projects", icon: RectangleStackIcon },
+    ],
+  },
+  { to: "/system", label: "System", icon: CpuChipIcon },
+  { to: "/ai-gateway", label: "AI Gateway", icon: SparklesIcon },
+  { to: "/telegram", label: "Telegram", icon: PaperAirplaneIcon },
+  { to: "/movies", label: "Movies", icon: FilmIcon },
+  { to: "/settings", label: "Settings", icon: Cog6ToothIcon },
 ];
+
+function isGroup(item: NavEntry): item is NavGroup {
+  return item.children !== undefined;
+}
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { logout } = useAuth();
-  const { show } = useToast();
+  const location = useLocation();
   const [gitInfo, setGitInfo] = useState<{ branch?: string; commit?: string } | null>(null);
+  // Group whose children contain the active route auto-expands; the rest
+  // start collapsed. Keyed by group label since groups have no route of
+  // their own.
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const item of NAV_ITEMS) {
+      if (isGroup(item) && item.children.some((c) => location.pathname.startsWith(c.to))) {
+        initial[item.label] = true;
+      }
+    }
+    return initial;
+  });
 
   useEffect(() => {
     api<{ branch?: string; commit?: string; error?: string }>("/update/info")
@@ -103,24 +153,51 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         <nav className="p-3 overflow-y-auto flex-1">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
-            return item.live ? (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                onClick={onClose}
-                className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
-              >
-                <Icon /> {item.label}
-              </NavLink>
-            ) : (
-              <button
-                key={item.to}
-                type="button"
-                onClick={() => show(`${item.label} belum dimigrasi ke UI baru.`, "info")}
-                className="nav-link opacity-40 w-full text-left cursor-not-allowed hover:opacity-40 hover:bg-transparent"
-              >
-                <Icon /> {item.label}
-              </button>
+            if (!isGroup(item)) {
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  onClick={onClose}
+                  className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                >
+                  <Icon /> {item.label}
+                </NavLink>
+              );
+            }
+
+            const expanded = !!openGroups[item.label];
+            const groupActive = item.children.some((c) => location.pathname.startsWith(c.to));
+            return (
+              <div key={item.label}>
+                <button
+                  type="button"
+                  onClick={() => setOpenGroups((g) => ({ ...g, [item.label]: !g[item.label] }))}
+                  className={`nav-link w-full text-left ${groupActive && !expanded ? "active" : ""}`}
+                >
+                  <Icon /> {item.label}
+                  <ChevronDownIcon
+                    className={`w-4 h-4 ml-auto transition-transform ${expanded ? "rotate-180" : ""}`}
+                  />
+                </button>
+                {expanded && (
+                  <div className="ml-4 pl-2 border-l border-white/7">
+                    {item.children.map((c) => {
+                      const ChildIcon = c.icon;
+                      return (
+                        <NavLink
+                          key={c.to}
+                          to={c.to}
+                          onClick={onClose}
+                          className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
+                        >
+                          <ChildIcon /> {c.label}
+                        </NavLink>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </nav>
