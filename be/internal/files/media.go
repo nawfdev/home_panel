@@ -27,6 +27,10 @@ func (s *Service) MediaInfo(userPath string) (string, []Subtitle, error) {
 	mt := MediaType(full)
 	var subs []Subtitle
 	if mt == "video" {
+		// Best-effort: files that never went through the movies download
+		// pipeline (uploads, pre-existing files) never had their embedded
+		// subtitle tracks pulled into sidecars — do it lazily on first view.
+		_ = ExtractEmbeddedSubtitles(full)
 		subs = DetectSubtitles(full)
 	}
 	return mt, subs, nil
