@@ -69,6 +69,7 @@ async function searchApibay(query) {
     .map((r) => ({
       title: r.name || "",
       size: formatBytes(r.size),
+      sizeBytes: Number(r.size) || 0,
       seeds: Number(r.seeders) || 0,
       peers: Number(r.leechers) || 0,
       provider: "ThePirateBay",
@@ -92,6 +93,7 @@ async function searchYts(query) {
       results.push({
         title: `${m.title_long} [${t.quality}${t.type ? " " + t.type : ""}]`,
         size: t.size || formatBytes(t.size_bytes),
+        sizeBytes: Number(t.size_bytes) || 0,
         seeds: Number(t.seeds) || 0,
         peers: Number(t.peers) || 0,
         provider: "Yts",

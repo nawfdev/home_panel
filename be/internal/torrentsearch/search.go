@@ -64,13 +64,14 @@ func parseNodeMajor(v string) int {
 
 // Result is one torrent search hit, already carrying a resolved magnet link.
 type Result struct {
-	Title    string `json:"title"`
-	Size     string `json:"size"`
-	Seeds    int    `json:"seeds"`
-	Peers    int    `json:"peers"`
-	Provider string `json:"provider"`
-	Magnet   string `json:"magnet"`
-	Poster   string `json:"poster,omitempty"`
+	Title     string `json:"title"`
+	Size      string `json:"size"`
+	SizeBytes int64  `json:"sizeBytes"`
+	Seeds     int    `json:"seeds"`
+	Peers     int    `json:"peers"`
+	Provider  string `json:"provider"`
+	Magnet    string `json:"magnet"`
+	Poster    string `json:"poster,omitempty"`
 }
 
 // Search runs the sidecar script. Providers are queried concurrently but one
