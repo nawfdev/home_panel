@@ -6,9 +6,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -34,8 +37,28 @@ import (
 	"github.com/nawfdev/home-panel/internal/updater"
 )
 
+// setupLogging makes internal/logs' "Panel Application" source actually show
+// something: log.Printf only ever wrote to stderr, and nothing wrote to the
+// logs/panel.log file that source reads, so it was permanently empty since
+// the Go rewrite. Logs still go to stderr too (so journalctl/pm2 log capture
+// keeps working exactly as before) via io.MultiWriter.
+func setupLogging(root string) {
+	dir := filepath.Join(root, "logs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		log.Printf("couldn't create log dir %s, panel logs won't be persisted: %v", dir, err)
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(dir, "panel.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		log.Printf("couldn't open panel.log, panel logs won't be persisted: %v", err)
+		return
+	}
+	log.SetOutput(io.MultiWriter(os.Stderr, f))
+}
+
 func main() {
 	paths := config.ResolvePaths()
+	setupLogging(paths.Root)
 
 	cfg, err := config.Load(paths.ConfigFile)
 	if err != nil {
@@ -76,7 +99,7 @@ func main() {
 	aigw := aigateway.New(st)
 	aigw.StartUsageFlusher(context.Background(), 30*time.Second)
 
-	mov := movies.New()
+	mov := movies.New(filepath.Join(paths.Root, "data"))
 	ts := torrentsearch.New(paths)
 
 	handler := server.New(server.Deps{

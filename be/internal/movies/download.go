@@ -2,6 +2,7 @@ package movies
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -25,14 +26,28 @@ import (
 // directory is derived from the OS (under the existing SafePath allowlist) so
 // finished files immediately appear in the file manager, player and shares.
 type Service struct {
-	mu    sync.Mutex
-	jobs  map[string]*Job
-	seq   int
-	aria2 *aria2.Manager
+	mu          sync.Mutex
+	jobs        map[string]*Job
+	seq         int
+	aria2       *aria2.Manager
+	persistPath string // where the job list is mirrored to disk; "" disables persistence
 }
 
-func New() *Service {
-	return &Service{jobs: make(map[string]*Job), aria2: aria2.New()}
+// New builds the download queue. dataDir is where the job list is persisted
+// (empty disables persistence, e.g. in tests). Any job that was still
+// queued/downloading/remuxing the last time the process ran is relaunched in
+// the background: aria2's --continue and BitTorrent's own piece-hashing pick
+// up any partial file already on disk instead of starting over, so a panel
+// restart (crash, update, reboot) doesn't silently lose an in-flight
+// download. Finished/failed/canceled jobs are restored as-is so the Stream
+// library and Downloads history survive a restart too.
+func New(dataDir string) *Service {
+	s := &Service{jobs: make(map[string]*Job), aria2: aria2.New()}
+	if dataDir != "" {
+		s.persistPath = filepath.Join(dataDir, "downloads.json")
+		s.loadAndResume()
+	}
+	return s
 }
 
 // Shutdown stops the aria2c child process (if one was ever spawned). Called
@@ -125,6 +140,7 @@ type Job struct {
 	URL         string    `json:"url"`
 	Dest        string    `json:"dest"`
 	Poster      string    `json:"poster,omitempty"`
+	IsTorrent   bool      `json:"-"` // which engine to relaunch through on resume
 	Status      Status    `json:"status"`
 	Downloaded  int64     `json:"downloaded"`
 	Total       int64     `json:"total"`
@@ -230,6 +246,7 @@ func (s *Service) Start(title, rawURL, poster string) (*Job, error) {
 	}
 	s.jobs[job.ID] = job
 	s.mu.Unlock()
+	s.persist()
 
 	// Prefer aria2 (resumable, multi-connection) when it's on PATH. If it's
 	// missing, or fails to start/accept the job, fall back to the built-in
@@ -286,6 +303,7 @@ func (s *Service) StartTorrent(title, magnetURI, poster string) (*Job, error) {
 		Title:     title,
 		URL:       trimmed,
 		Poster:    poster,
+		IsTorrent: true,
 		Status:    StatusQueued,
 		CreatedAt: time.Now(),
 		cancel:    cancel,
@@ -293,6 +311,7 @@ func (s *Service) StartTorrent(title, magnetURI, poster string) (*Job, error) {
 	}
 	s.jobs[job.ID] = job
 	s.mu.Unlock()
+	s.persist()
 
 	go s.pollTorrent(ctx, job, gid)
 	return job.snapshot(), nil
@@ -468,6 +487,7 @@ func (s *Service) finish(job *Job) {
 		log.Printf("movies: subtitle extract skipped for %s: %v", job.Dest, err)
 	}
 	s.set(job, func(j *Job) { j.Status = StatusDone })
+	s.persist()
 }
 
 // pollAria2 tracks a download handed off to aria2, translating its RPC
@@ -628,6 +648,68 @@ func (s *Service) fail(job *Job, err error) {
 		j.Status = StatusError
 		j.Error = err.Error()
 	})
+	s.persist()
+}
+
+// persist mirrors the current job list to disk so it survives a restart.
+// Best-effort: a write failure just means the next restart won't see recent
+// changes, not a reason to fail the download itself.
+func (s *Service) persist() {
+	if s.persistPath == "" {
+		return
+	}
+	jobs := s.List()
+	b, err := json.MarshalIndent(jobs, "", "  ")
+	if err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(s.persistPath), 0o755); err != nil {
+		log.Printf("movies: couldn't create data dir for download list: %v", err)
+		return
+	}
+	if err := os.WriteFile(s.persistPath, b, 0o644); err != nil {
+		log.Printf("movies: couldn't persist download list: %v", err)
+	}
+}
+
+// loadAndResume reads the persisted job list (if any) back in. Jobs that had
+// already reached a terminal state are restored as plain history; anything
+// still in-flight when the process last stopped is relaunched under a new
+// job ID through the same engine it was using — aria2's --continue and
+// BitTorrent's piece-hashing pick up any partial file already on disk rather
+// than starting over. Errors here are non-fatal: a missing/corrupt file just
+// means starting with an empty queue, same as before this feature existed.
+func (s *Service) loadAndResume() {
+	b, err := os.ReadFile(s.persistPath)
+	if err != nil {
+		return
+	}
+	var saved []*Job
+	if err := json.Unmarshal(b, &saved); err != nil {
+		log.Printf("movies: couldn't read persisted download list: %v", err)
+		return
+	}
+	for _, j := range saved {
+		switch j.Status {
+		case StatusDone, StatusError, StatusCanceled:
+			s.mu.Lock()
+			s.jobs[j.ID] = j
+			s.mu.Unlock()
+		case StatusQueued, StatusDownloading, StatusRemuxing:
+			title, url, poster, isTorrent := j.Title, j.URL, j.Poster, j.IsTorrent
+			go func() {
+				var err error
+				if isTorrent {
+					_, err = s.StartTorrent(title, url, poster)
+				} else {
+					_, err = s.Start(title, url, poster)
+				}
+				if err != nil {
+					log.Printf("movies: couldn't resume download %q: %v", title, err)
+				}
+			}()
+		}
+	}
 }
 
 // snapshot copies the job under the assumption the caller holds the lock, or
