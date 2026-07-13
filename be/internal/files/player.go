@@ -172,7 +172,7 @@ func mediaActionsHTML(rawURL, fileName string, size int64, modTime time.Time) st
 }
 
 func videoPlayerHTML(rawURL string) string {
-	return `<div class="np subbg-solid" id="np" tabindex="0">
+	return `<div class="np subbg-solid subsize-md subcolor-white subedge-none" id="np" tabindex="0">
 <video class="np-video" id="npvideo" playsinline><source src="` + htmlEscape(rawURL) + `"></video>
 <div class="np-center"><button class="np-bigplay" id="npbig" aria-label="Play">` + icoPlay + `</button></div>
 <div class="np-scrim"></div>
@@ -187,6 +187,10 @@ func videoPlayerHTML(rawURL string) string {
     <div class="np-pop">
       <button class="np-btn" id="npcc" aria-label="Subtitles">` + icoCC + `</button>
       <div class="np-menu" id="npccmenu"></div>
+    </div>
+    <div class="np-pop">
+      <button class="np-btn" id="npsettings" aria-label="Subtitle settings">` + icoGear + `</button>
+      <div class="np-menu np-menu-wide" id="npsettingsmenu"></div>
     </div>
     <div class="np-pop">
       <button class="np-btn np-speedbtn mono" id="npspeed" aria-label="Speed">1x</button>
@@ -220,6 +224,7 @@ const (
 	icoMute  = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M17 9l4 4m0-4l-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`
 	icoCC    = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M9.5 10.5a2 2 0 1 0 0 3M15.5 10.5a2 2 0 1 0 0 3" stroke-linecap="round"/></svg>`
 	icoFull  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>`
+	icoGear  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
 )
 
 // renderedPlayerJS injects the pause/volume/mute SVG icons (which the script
@@ -290,11 +295,32 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;pad
 .np-item.active::after{content:"✓";float:right;margin-left:16px}
 
 .np-menu-sep{border-top:1px solid rgba(255,255,255,.08);margin:4px 2px}
+.np-menu-wide{min-width:230px}
+.np-setrow{display:flex;flex-direction:column;gap:6px;padding:6px 8px}
+.np-setrow+.np-setrow{border-top:1px solid rgba(255,255,255,.06)}
+.np-setlabel{font-size:11px;color:#a1a1aa;text-transform:uppercase;letter-spacing:.04em}
+.np-chips{display:flex;gap:6px;flex-wrap:wrap}
+.np-chip{padding:5px 10px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid transparent;color:#d4d4d8;font-size:12px;cursor:pointer;font-family:inherit}
+.np-chip:hover{background:rgba(255,255,255,.12)}
+.np-chip.active{background:#fafafa;color:#0e0e10}
+.np-swatch{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;padding:0}
+.np-swatch.active{border-color:#fafafa;box-shadow:0 0 0 2px rgba(0,0,0,.4)}
 
 .np video::cue{font-family:"Plus Jakarta Sans",sans-serif}
-.np.subbg-solid video::cue{background:rgba(0,0,0,.72);color:#fff}
-.np.subbg-semi video::cue{background:rgba(0,0,0,.35);color:#fff}
-.np.subbg-none video::cue{background:transparent;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 2px rgba(0,0,0,.9)}
+.np.subbg-solid video::cue{background:rgba(0,0,0,.72)}
+.np.subbg-semi video::cue{background:rgba(0,0,0,.35)}
+.np.subbg-none video::cue{background:transparent}
+.np.subsize-sm video::cue{font-size:.75em}
+.np.subsize-md video::cue{font-size:1em}
+.np.subsize-lg video::cue{font-size:1.3em}
+.np.subsize-xl video::cue{font-size:1.6em}
+.np.subcolor-white video::cue{color:#fff}
+.np.subcolor-yellow video::cue{color:#ffeb3b}
+.np.subcolor-cyan video::cue{color:#00e5ff}
+.np.subcolor-green video::cue{color:#76ff03}
+.np.subedge-none video::cue{text-shadow:none}
+.np.subedge-drop video::cue{text-shadow:0 2px 3px rgba(0,0,0,.9)}
+.np.subedge-outline video::cue{text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000,0 0 4px rgba(0,0,0,.8)}
 `
 
 const playerJS = `
@@ -306,6 +332,7 @@ const playerJS = `
   var buf=document.getElementById('npbuf'), thumb=document.getElementById('npthumb');
   var timeEl=document.getElementById('nptime'), fullBtn=document.getElementById('npfull');
   var ccBtn=document.getElementById('npcc'), ccMenu=document.getElementById('npccmenu');
+  var settingsBtn=document.getElementById('npsettings'), settingsMenu=document.getElementById('npsettingsmenu');
   var speedBtn=document.getElementById('npspeed'), speedMenu=document.getElementById('npspeedmenu');
   var subFile=document.getElementById('npsubfile');
   var ICON_PLAY=playBtn.innerHTML, ICON_PAUSE='__ICON_PAUSE__';
@@ -353,35 +380,57 @@ const playerJS = `
   // speed menu
   var speeds=[0.5,0.75,1,1.25,1.5,2];
   speeds.forEach(function(s){ var b=document.createElement('button'); b.className='np-item'+(s===1?' active':''); b.textContent=s+'x'; b.onclick=function(){ v.playbackRate=s; speedBtn.textContent=s+'x'; [].forEach.call(speedMenu.children,function(c){c.classList.remove('active');}); b.classList.add('active'); speedMenu.classList.remove('open'); }; speedMenu.appendChild(b); });
-  speedBtn.addEventListener('click',function(e){ e.stopPropagation(); ccMenu.classList.remove('open'); speedMenu.classList.toggle('open'); });
+  speedBtn.addEventListener('click',function(e){ e.stopPropagation(); ccMenu.classList.remove('open'); settingsMenu.classList.remove('open'); speedMenu.classList.toggle('open'); });
 
   // subtitles
   var trackEls=[];
   function addTrack(label,src){ var t=document.createElement('track'); t.kind='subtitles'; t.label=label; t.src=src; v.appendChild(t); trackEls.push(t); return trackEls.length-1; }
   function showTrack(idx){ for(var i=0;i<v.textTracks.length;i++){ v.textTracks[i].mode=(i===idx)?'showing':'disabled'; }
     [].forEach.call(ccMenu.children,function(c){ c.classList.toggle('active', c.dataset.idx===String(idx)); }); }
-  var subBgs=[['solid','Solid background'],['semi','Semi-transparent'],['none','Transparent']];
-  function setSubBg(id){ np.classList.remove('subbg-solid','subbg-semi','subbg-none'); np.classList.add('subbg-'+id); try{localStorage.setItem('np-subbg',id);}catch(e){} }
-  function loadSubBg(){ var v; try{v=localStorage.getItem('np-subbg');}catch(e){} return (v==='semi'||v==='none')?v:'solid'; }
   function rebuildCCMenu(){ ccMenu.innerHTML='';
     var off=document.createElement('button'); off.className='np-item active'; off.textContent='Off'; off.dataset.idx='-1'; off.onclick=function(){ showTrack(-1); ccMenu.classList.remove('open'); }; ccMenu.appendChild(off);
     trackEls.forEach(function(t,i){ var b=document.createElement('button'); b.className='np-item'; b.textContent=t.label; b.dataset.idx=String(i); b.onclick=function(){ showTrack(i); ccMenu.classList.remove('open'); }; ccMenu.appendChild(b); });
     var load=document.createElement('button'); load.className='np-item'; load.textContent='＋ Load subtitle…'; load.onclick=function(){ subFile.click(); ccMenu.classList.remove('open'); }; ccMenu.appendChild(load);
-    var sep=document.createElement('div'); sep.className='np-menu-sep'; ccMenu.appendChild(sep);
-    var cur=loadSubBg();
-    subBgs.forEach(function(pair){ var b=document.createElement('button'); b.className='np-item'+(pair[0]===cur?' active':''); b.textContent=pair[1]; b.onclick=function(){ setSubBg(pair[0]); rebuildCCMenu(); }; ccMenu.appendChild(b); });
   }
   (window.__SUBS__||[]).forEach(function(s){ addTrack(s.label,s.url); });
-  setSubBg(loadSubBg());
   rebuildCCMenu();
-  ccBtn.addEventListener('click',function(e){ e.stopPropagation(); speedMenu.classList.remove('open'); ccMenu.classList.toggle('open'); });
+  ccBtn.addEventListener('click',function(e){ e.stopPropagation(); speedMenu.classList.remove('open'); settingsMenu.classList.remove('open'); ccMenu.classList.toggle('open'); });
+
+  // subtitle style settings (size / color / background / edge)
+  var subDims=[
+    {cls:'subsize',store:'np-subsize',def:'md',opts:[['sm','S'],['md','M'],['lg','L'],['xl','XL']],label:'Size',kind:'chip'},
+    {cls:'subcolor',store:'np-subcolor',def:'white',opts:[['white','White','#fff'],['yellow','Yellow','#ffeb3b'],['cyan','Cyan','#00e5ff'],['green','Green','#76ff03']],label:'Color',kind:'swatch'},
+    {cls:'subbg',store:'np-subbg',def:'solid',opts:[['solid','Solid'],['semi','Semi'],['none','None']],label:'Background',kind:'chip'},
+    {cls:'subedge',store:'np-subedge',def:'none',opts:[['none','None'],['drop','Drop shadow'],['outline','Outline']],label:'Edge style',kind:'chip'}
+  ];
+  function loadDim(d){ var v; try{v=localStorage.getItem(d.store);}catch(e){} return d.opts.some(function(o){return o[0]===v;})?v:d.def; }
+  function setDim(d,id){ d.opts.forEach(function(o){ np.classList.remove(d.cls+'-'+o[0]); }); np.classList.add(d.cls+'-'+id); try{localStorage.setItem(d.store,id);}catch(e){} }
+  function rebuildSettingsMenu(){ settingsMenu.innerHTML='';
+    subDims.forEach(function(d){
+      var row=document.createElement('div'); row.className='np-setrow';
+      var lbl=document.createElement('div'); lbl.className='np-setlabel'; lbl.textContent=d.label; row.appendChild(lbl);
+      var chips=document.createElement('div'); chips.className='np-chips';
+      var cur=loadDim(d);
+      d.opts.forEach(function(o){
+        var b=document.createElement('button');
+        if(d.kind==='swatch'){ b.className='np-swatch'+(o[0]===cur?' active':''); b.style.background=o[2]; b.setAttribute('aria-label',o[1]); }
+        else { b.className='np-chip'+(o[0]===cur?' active':''); b.textContent=o[1]; }
+        b.onclick=function(){ setDim(d,o[0]); rebuildSettingsMenu(); };
+        chips.appendChild(b);
+      });
+      row.appendChild(chips); settingsMenu.appendChild(row);
+    });
+  }
+  subDims.forEach(function(d){ setDim(d,loadDim(d)); });
+  rebuildSettingsMenu();
+  settingsBtn.addEventListener('click',function(e){ e.stopPropagation(); ccMenu.classList.remove('open'); speedMenu.classList.remove('open'); settingsMenu.classList.toggle('open'); });
 
   function srtToVtt(t){ return 'WEBVTT\n\n'+t.replace(/\r\n/g,'\n').replace(/(\d\d:\d\d:\d\d),(\d\d\d)/g,'$1.$2'); }
   subFile.addEventListener('change',function(){ var f=subFile.files&&subFile.files[0]; if(!f)return; var r=new FileReader();
     r.onload=function(){ var txt=String(r.result||''); if(/\.srt$/i.test(f.name)) txt=srtToVtt(txt); var url=URL.createObjectURL(new Blob([txt],{type:'text/vtt'}));
       var idx=addTrack(f.name+' (local)',url); rebuildCCMenu(); setTimeout(function(){ showTrack(idx); },80); }; r.readAsText(f); });
 
-  document.addEventListener('click',function(){ ccMenu.classList.remove('open'); speedMenu.classList.remove('open'); });
+  document.addEventListener('click',function(){ ccMenu.classList.remove('open'); settingsMenu.classList.remove('open'); speedMenu.classList.remove('open'); });
 
   // auto-hide controls
   var hideT;
