@@ -126,6 +126,7 @@ type Status string
 const (
 	StatusQueued      Status = "queued"
 	StatusDownloading Status = "downloading"
+	StatusPaused      Status = "paused"
 	StatusRemuxing    Status = "remuxing"
 	StatusDone        Status = "done"
 	StatusError       Status = "error"
@@ -346,8 +347,15 @@ func (s *Service) pollTorrent(ctx context.Context, job *Job, gid string) {
 			j.SpeedBps = st.DownloadSpeed
 		})
 
-		switch st.State {
-		case "complete":
+		// aria2 keeps a finished torrent's status as "active" while it seeds
+		// rather than flipping to "complete" (that's --seed-time=0 territory,
+		// set when we spawn aria2c) — checked here too as a safety net so a
+		// download never polls forever if seeding wasn't actually disabled
+		// (e.g. an aria2c already running from before that flag existed).
+		done := st.State == "complete" ||
+			(st.State == "active" && st.TotalLength > 0 && st.CompletedLength >= st.TotalLength)
+		switch {
+		case done:
 			if len(st.FollowedBy) > 0 {
 				// That was the metadata-only fetch; switch to tracking the real
 				// download and keep polling — not job completion yet. job.gid is
@@ -364,16 +372,22 @@ func (s *Service) pollTorrent(ctx context.Context, job *Job, gid string) {
 			s.set(job, func(j *Job) { j.Dest = dest })
 			s.finish(job)
 			return
-		case "error":
+		case st.State == "error":
 			msg := st.ErrorMessage
 			if msg == "" {
 				msg = "aria2 torrent download failed"
 			}
 			s.fail(job, errors.New(msg))
 			return
-		case "removed":
+		case st.State == "removed":
 			s.set(job, func(j *Job) { j.Status = StatusCanceled })
 			return
+		case st.State == "paused":
+			s.set(job, func(j *Job) { j.Status = StatusPaused })
+		default:
+			// "active"/"waiting" — also covers coming back from a pause, so the
+			// status flips back to downloading without a separate code path.
+			s.set(job, func(j *Job) { j.Status = StatusDownloading })
 		}
 	}
 }
@@ -539,6 +553,12 @@ func (s *Service) pollAria2(ctx context.Context, job *Job) {
 		case "removed":
 			s.set(job, func(j *Job) { j.Status = StatusCanceled })
 			return
+		case "paused":
+			s.set(job, func(j *Job) { j.Status = StatusPaused })
+		default:
+			// "active"/"waiting" — also covers coming back from a pause, so the
+			// status flips back to downloading without a separate code path.
+			s.set(job, func(j *Job) { j.Status = StatusDownloading })
 		}
 	}
 }
@@ -615,6 +635,46 @@ func (s *Service) Cancel(id string) error {
 	if job.cancel != nil {
 		job.cancel()
 	}
+	return nil
+}
+
+// Pause suspends an in-flight aria2-backed download in place — the partial
+// file and gid stay alive, unlike Cancel. Only downloads handed to aria2 have
+// a gid; the fallback single-connection downloader has no pause primitive.
+func (s *Service) Pause(id string) error {
+	s.mu.Lock()
+	job, ok := s.jobs[id]
+	s.mu.Unlock()
+	if !ok {
+		return errors.New("download not found")
+	}
+	if job.gid == "" {
+		return errors.New("this download can't be paused (not using aria2)")
+	}
+	if err := s.aria2.Pause(job.gid); err != nil {
+		return err
+	}
+	s.set(job, func(j *Job) { j.Status = StatusPaused })
+	s.persist()
+	return nil
+}
+
+// Resume continues a job previously stopped with Pause.
+func (s *Service) Resume(id string) error {
+	s.mu.Lock()
+	job, ok := s.jobs[id]
+	s.mu.Unlock()
+	if !ok {
+		return errors.New("download not found")
+	}
+	if job.gid == "" {
+		return errors.New("this download can't be resumed (not using aria2)")
+	}
+	if err := s.aria2.Unpause(job.gid); err != nil {
+		return err
+	}
+	s.set(job, func(j *Job) { j.Status = StatusDownloading })
+	s.persist()
 	return nil
 }
 
@@ -695,7 +755,7 @@ func (s *Service) loadAndResume() {
 			s.mu.Lock()
 			s.jobs[j.ID] = j
 			s.mu.Unlock()
-		case StatusQueued, StatusDownloading, StatusRemuxing:
+		case StatusQueued, StatusDownloading, StatusRemuxing, StatusPaused:
 			title, url, poster, isTorrent := j.Title, j.URL, j.Poster, j.IsTorrent
 			go func() {
 				var err error

@@ -89,6 +89,24 @@ func (m *Movies) CancelDownload(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Download canceled"})
 }
 
+// PauseDownload suspends an in-flight job in place (aria2-backed jobs only).
+func (m *Movies) PauseDownload(w http.ResponseWriter, r *http.Request) {
+	if err := m.Svc.Pause(chi.URLParam(r, "id")); err != nil {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Download paused"})
+}
+
+// ResumeDownload continues a job previously paused.
+func (m *Movies) ResumeDownload(w http.ResponseWriter, r *http.Request) {
+	if err := m.Svc.Resume(chi.URLParam(r, "id")); err != nil {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Download resumed"})
+}
+
 // TorrentSearch runs a query through the torrent-search-api sidecar (across
 // every provider it has enabled) and returns results with resolved magnets.
 func (m *Movies) TorrentSearch(w http.ResponseWriter, r *http.Request) {

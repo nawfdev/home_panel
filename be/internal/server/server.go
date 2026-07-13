@@ -291,6 +291,8 @@ func New(d Deps) http.Handler {
 			mr.Get("/downloads", moviesH.ListDownloads)
 			mr.Get("/downloads/stream", moviesH.DownloadsStream)
 			mr.Delete("/downloads/{id}", moviesH.CancelDownload)
+			mr.Post("/downloads/{id}/pause", moviesH.PauseDownload)
+			mr.Post("/downloads/{id}/resume", moviesH.ResumeDownload)
 			// Subtitle search/download (subsource.net) — saves sidecars next to a
 			// downloaded movie so the player's existing subtitle detection picks
 			// them up with no extra wiring.
