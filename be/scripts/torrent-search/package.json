@@ -1,0 +1,10 @@
+{
+  "name": "homepanel-torrent-search",
+  "private": true,
+  "version": "1.0.0",
+  "description": "One-shot sidecar the Go backend shells out to: searches torrent-search-api's providers and prints matching results (with resolved magnet links) as JSON.",
+  "main": "search.js",
+  "dependencies": {
+    "torrent-search-api": "^2.1.4"
+  }
+}

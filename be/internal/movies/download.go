@@ -19,24 +19,20 @@ import (
 
 	"github.com/nawfdev/home-panel/internal/aria2"
 	filesvc "github.com/nawfdev/home-panel/internal/files"
-	"github.com/nawfdev/home-panel/internal/qbittorrent"
 )
 
-// Service owns the download queue. It has no store dependency of its own for
-// the HTTP/aria2 engines: the save directory is derived from the OS (under
-// the existing SafePath allowlist) so finished files immediately appear in
-// the file manager, player and shares. The torrent engine's credentials live
-// in qb, which loads/saves its own store-backed config.
+// Service owns the download queue. It has no store dependency: the save
+// directory is derived from the OS (under the existing SafePath allowlist) so
+// finished files immediately appear in the file manager, player and shares.
 type Service struct {
 	mu    sync.Mutex
 	jobs  map[string]*Job
 	seq   int
 	aria2 *aria2.Manager
-	qb    *qbittorrent.Service
 }
 
-func New(qb *qbittorrent.Service) *Service {
-	return &Service{jobs: make(map[string]*Job), aria2: aria2.New(), qb: qb}
+func New() *Service {
+	return &Service{jobs: make(map[string]*Job), aria2: aria2.New()}
 }
 
 // Shutdown stops the aria2c child process (if one was ever spawned). Called
@@ -134,9 +130,8 @@ type Job struct {
 	SpeedBps    int64     `json:"speedBps"`
 	Error       string    `json:"error,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
-	cancel      context.CancelFunc
-	gid         string // aria2 job id; empty unless this job used the aria2 engine
-	torrentHash string // qBittorrent info hash; empty unless this job is a torrent
+	cancel context.CancelFunc
+	gid    string // aria2 job id; empty when using the fallback downloader
 }
 
 // MoviesDir returns the on-disk directory movies are saved to, creating it if
@@ -252,21 +247,21 @@ func (s *Service) Start(title, rawURL string) (*Job, error) {
 	return job.snapshot(), nil
 }
 
-// StartTorrent enqueues a download from a magnet link or .torrent file URL,
-// handing it to qBittorrent (real BitTorrent engine — DHT, resume, seeding)
-// rather than aria2's comparatively weak torrent support. dir is the same
-// SafePath-validated Movies folder the HTTP engines use, so the finished file
-// is served by the existing player/share stack with no extra wiring.
-func (s *Service) StartTorrent(title, torrentURL string) (*Job, error) {
-	trimmed := strings.TrimSpace(torrentURL)
-	isMagnet := strings.HasPrefix(trimmed, "magnet:")
-	isTorrentFile := (strings.HasPrefix(trimmed, "http://") || strings.HasPrefix(trimmed, "https://")) &&
-		strings.HasSuffix(strings.ToLower(trimmed), ".torrent")
-	if !isMagnet && !isTorrentFile {
-		return nil, errors.New("expected a magnet: link or a .torrent file URL")
+// StartTorrent enqueues a download from a magnet link, handed to aria2 —
+// unlike the HTTP path, aria2 is a hard requirement here (there's no
+// fallback torrent engine). dir is the same SafePath-validated Movies folder
+// the HTTP engines use, so the finished file is served by the existing
+// player/share stack with no extra wiring.
+func (s *Service) StartTorrent(title, magnetURI string) (*Job, error) {
+	trimmed := strings.TrimSpace(magnetURI)
+	if !strings.HasPrefix(trimmed, "magnet:") {
+		return nil, errors.New("expected a magnet: link")
 	}
-	if s.qb == nil || !s.qb.Configured() {
-		return nil, errors.New("qBittorrent isn't configured yet — set the WebUI URL in Settings")
+	if !aria2.Available {
+		return nil, errors.New("aria2c isn't installed — it's required for torrent downloads (see README)")
+	}
+	if err := s.aria2.EnsureRunning(); err != nil {
+		return nil, err
 	}
 
 	dir, err := MoviesDir()
@@ -274,7 +269,9 @@ func (s *Service) StartTorrent(title, torrentURL string) (*Job, error) {
 		return nil, err
 	}
 
-	hash, err := s.qb.AddTorrent(trimmed, dir)
+	// No "out" filename: BitTorrent metadata determines the real file name(s),
+	// which aren't known until the metadata-fetch phase below resolves.
+	gid, err := s.aria2.AddURI(trimmed, dir, "")
 	if err != nil {
 		return nil, err
 	}
@@ -283,55 +280,61 @@ func (s *Service) StartTorrent(title, torrentURL string) (*Job, error) {
 	s.mu.Lock()
 	s.seq++
 	job := &Job{
-		ID:          fmt.Sprintf("dl-%d-%d", time.Now().Unix(), s.seq),
-		Title:       title,
-		URL:         trimmed,
-		Status:      StatusQueued,
-		CreatedAt:   time.Now(),
-		cancel:      cancel,
-		torrentHash: hash,
+		ID:        fmt.Sprintf("dl-%d-%d", time.Now().Unix(), s.seq),
+		Title:     title,
+		URL:       trimmed,
+		Status:    StatusQueued,
+		CreatedAt: time.Now(),
+		cancel:    cancel,
+		gid:       gid,
 	}
 	s.jobs[job.ID] = job
 	s.mu.Unlock()
 
-	go s.pollTorrent(ctx, job)
+	go s.pollTorrent(ctx, job, gid)
 	return job.snapshot(), nil
 }
 
-// pollTorrent tracks a job handed off to qBittorrent, translating its state
-// into the same Job fields the other two engines update — DownloadsStream
-// needs no changes to serve any of the three engines.
-func (s *Service) pollTorrent(ctx context.Context, job *Job) {
+// pollTorrent tracks a magnet download through aria2's two-phase BitTorrent
+// flow: the GID returned by AddURI is initially a short-lived "fetch
+// metadata" task. Once that completes, aria2 auto-starts the real download
+// under a *new* GID listed in the status's FollowedBy — this loop follows
+// that hand-off before treating "complete" as the job being done.
+func (s *Service) pollTorrent(ctx context.Context, job *Job, gid string) {
 	s.set(job, func(j *Job) { j.Status = StatusDownloading })
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
-			_ = s.qb.Delete(job.torrentHash, true)
+			_ = s.aria2.Remove(gid)
 			s.set(job, func(j *Job) { j.Status = StatusCanceled })
 			return
 		case <-ticker.C:
 		}
 
-		info, err := s.qb.Info(job.torrentHash)
+		st, err := s.aria2.Status(gid)
 		if err != nil {
 			s.fail(job, err)
 			return
 		}
 		s.set(job, func(j *Job) {
-			j.Downloaded = info.Downloaded
-			j.Total = info.Size
-			j.SpeedBps = info.DlSpeed
+			j.Downloaded = st.CompletedLength
+			j.Total = st.TotalLength
+			j.SpeedBps = st.DownloadSpeed
 		})
 
-		switch info.State {
-		case "error", "missingFiles":
-			s.fail(job, fmt.Errorf("qBittorrent reported: %s", info.State))
-			return
-		}
-		if info.Progress >= 1 && info.ContentPath != "" {
-			dest, err := resolveTorrentFile(info.ContentPath)
+		switch st.State {
+		case "complete":
+			if len(st.FollowedBy) > 0 {
+				// That was the metadata-only fetch; switch to tracking the real
+				// download and keep polling — not job completion yet. job.gid is
+				// updated too so Cancel() targets the live download.
+				gid = st.FollowedBy[0]
+				s.set(job, func(j *Job) { j.gid = gid })
+				continue
+			}
+			dest, err := resolveTorrentFile(st.Files)
 			if err != nil {
 				s.fail(job, err)
 				return
@@ -339,44 +342,49 @@ func (s *Service) pollTorrent(ctx context.Context, job *Job) {
 			s.set(job, func(j *Job) { j.Dest = dest })
 			s.finish(job)
 			return
+		case "error":
+			msg := st.ErrorMessage
+			if msg == "" {
+				msg = "aria2 torrent download failed"
+			}
+			s.fail(job, errors.New(msg))
+			return
+		case "removed":
+			s.set(job, func(j *Job) { j.Status = StatusCanceled })
+			return
 		}
 	}
 }
 
-// resolveTorrentFile turns qBittorrent's content_path into a concrete file
-// path: as-is for a single-file torrent, or the largest video file inside it
-// for a multi-file torrent (a season pack's largest file is virtually always
-// the one the user meant to watch — episode numbering varies too much
-// per-release to guess otherwise).
-func resolveTorrentFile(contentPath string) (string, error) {
-	info, err := os.Stat(contentPath)
-	if err != nil {
-		return "", fmt.Errorf("torrent finished but its file is missing: %w", err)
+// resolveTorrentFile picks the file to treat as "the movie" out of a
+// torrent's downloaded files: the one file for a single-file torrent, or the
+// largest video file for a multi-file one (a season pack's largest file is
+// virtually always the one the user meant to watch — episode numbering
+// varies too much per-release to guess otherwise).
+func resolveTorrentFile(files []string) (string, error) {
+	if len(files) == 0 {
+		return "", errors.New("torrent finished but aria2 reported no files")
 	}
-	if !info.IsDir() {
-		return contentPath, nil
-	}
-	entries, err := os.ReadDir(contentPath)
-	if err != nil {
-		return "", err
+	if len(files) == 1 {
+		return files[0], nil
 	}
 	var largest string
 	var largestSize int64
-	for _, e := range entries {
-		if e.IsDir() || filesvc.MediaType(e.Name()) != "video" {
+	for _, path := range files {
+		if filesvc.MediaType(path) != "video" {
 			continue
 		}
-		fi, err := e.Info()
+		info, err := os.Stat(path)
 		if err != nil {
 			continue
 		}
-		if fi.Size() > largestSize {
-			largest = filepath.Join(contentPath, e.Name())
-			largestSize = fi.Size()
+		if info.Size() > largestSize {
+			largest = path
+			largestSize = info.Size()
 		}
 	}
 	if largest == "" {
-		return "", errors.New("torrent finished but no video file was found inside it")
+		return "", errors.New("torrent finished but no video file was found among its files")
 	}
 	return largest, nil
 }
@@ -574,11 +582,13 @@ func (s *Service) Cancel(id string) error {
 	if !ok {
 		return errors.New("download not found")
 	}
+	// Both aria2 paths (HTTP and torrent) keep job.gid in sync with whichever
+	// GID is currently live, so removing it here is always correct — for a
+	// torrent job pollTorrent's own ctx.Done() branch also calls Remove on
+	// the same (already-current) GID; the second call is a harmless no-op.
 	if job.gid != "" {
 		_ = s.aria2.Remove(job.gid)
 	}
-	// A torrent job's qb.Delete happens inside pollTorrent's ctx.Done() branch,
-	// triggered by job.cancel() below — no separate call needed here.
 	if job.cancel != nil {
 		job.cancel()
 	}

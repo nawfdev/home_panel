@@ -49,12 +49,6 @@ export function Settings() {
   const [tgEnabled, setTgEnabled] = useState(false);
   const [savingTg, setSavingTg] = useState(false);
 
-  const [qbBaseUrl, setQbBaseUrl] = useState("");
-  const [qbUsername, setQbUsername] = useState("");
-  const [qbPasswordPlaceholder, setQbPasswordPlaceholder] = useState("");
-  const [qbPassword, setQbPassword] = useState("");
-  const [savingQb, setSavingQb] = useState(false);
-
   const [subsourceKeyPlaceholder, setSubsourceKeyPlaceholder] = useState("");
   const [subsourceKey, setSubsourceKey] = useState("");
   const [savingSubsource, setSavingSubsource] = useState(false);
@@ -94,15 +88,6 @@ export function Settings() {
           if (res.botToken) setTgTokenPlaceholder("•••••••• (Saved)");
           if (res.chatId) setTgChatId(res.chatId);
           setTgEnabled(!!res.enableNotifications);
-        }
-      })
-      .catch(() => {});
-    api<{ success: boolean; baseUrl?: string; username?: string; password?: string }>("/settings/qbittorrent")
-      .then((res) => {
-        if (res.success) {
-          setQbBaseUrl(res.baseUrl ?? "");
-          setQbUsername(res.username ?? "");
-          if (res.password) setQbPasswordPlaceholder("•••••••• (Saved)");
         }
       })
       .catch(() => {});
@@ -217,29 +202,6 @@ export function Settings() {
       show(err instanceof Error ? err.message : "Failed to save", "error");
     } finally {
       setSavingTg(false);
-    }
-  }
-
-  async function saveQBittorrent() {
-    setSavingQb(true);
-    try {
-      const data = await api<{ success: boolean; message?: string; error?: string }>("/settings/qbittorrent", {
-        method: "POST",
-        body: JSON.stringify({ baseUrl: qbBaseUrl, username: qbUsername, password: qbPassword }),
-      });
-      if (data.success) {
-        show(data.message ?? "Saved", "success");
-        if (qbPassword) {
-          setQbPassword("");
-          setQbPasswordPlaceholder("•••••••• (Saved)");
-        }
-      } else {
-        show(data.error ?? "Failed to save", "error");
-      }
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to save", "error");
-    } finally {
-      setSavingQb(false);
     }
   }
 
@@ -472,41 +434,6 @@ export function Settings() {
               </div>
               <button className="btn-primary w-full mt-4 disabled:opacity-60" onClick={saveTelegram} disabled={savingTg}>
                 {savingTg ? "Testing..." : "Save & test"}
-              </button>
-            </Panel>
-
-            <Panel title="qBittorrent (torrent search & downloads)">
-              <p className="text-xs text-gray-500 mb-3">
-                Connect to a qBittorrent WebUI you already run (Settings &rarr; Web UI in the app). Movies &rarr; Torrent
-                search uses whatever plugins are installed there; downloads are handled by qBittorrent itself.
-              </p>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-gray-500 text-xs mb-1.5">WebUI base URL</label>
-                  <input
-                    value={qbBaseUrl}
-                    onChange={(e) => setQbBaseUrl(e.target.value)}
-                    placeholder="http://127.0.0.1:8080"
-                    className="input-field w-full text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-500 text-xs mb-1.5">Username</label>
-                  <input value={qbUsername} onChange={(e) => setQbUsername(e.target.value)} className="input-field w-full" />
-                </div>
-                <div>
-                  <label className="block text-gray-500 text-xs mb-1.5">Password</label>
-                  <input
-                    type="password"
-                    value={qbPassword}
-                    onChange={(e) => setQbPassword(e.target.value)}
-                    placeholder={qbPasswordPlaceholder}
-                    className="input-field w-full"
-                  />
-                </div>
-              </div>
-              <button className="btn-primary w-full mt-4 disabled:opacity-60" onClick={saveQBittorrent} disabled={savingQb}>
-                {savingQb ? "Verifying..." : "Save & verify connection"}
               </button>
             </Panel>
 
