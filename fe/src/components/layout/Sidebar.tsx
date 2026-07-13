@@ -24,6 +24,7 @@ import {
   ArrowDownTrayIcon,
   PlayIcon,
   ChevronDownIcon,
+  ComputerDesktopIcon,
 } from "@heroicons/react/24/outline";
 import type { ComponentType, SVGProps } from "react";
 
@@ -72,6 +73,7 @@ const NAV_ITEMS: NavEntry[] = [
     children: [
       { to: "/logs", label: "Logs", icon: DocumentTextIcon },
       { to: "/terminal", label: "Terminal", icon: CommandLineIcon },
+      { to: "/remote-desktop", label: "Remote Desktop", icon: ComputerDesktopIcon },
     ],
   },
   {

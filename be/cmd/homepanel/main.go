@@ -26,6 +26,7 @@ import (
 	"github.com/nawfdev/home-panel/internal/movies"
 	"github.com/nawfdev/home-panel/internal/pm2"
 	"github.com/nawfdev/home-panel/internal/projects"
+	"github.com/nawfdev/home-panel/internal/remotedesktop"
 	"github.com/nawfdev/home-panel/internal/server"
 	"github.com/nawfdev/home-panel/internal/session"
 	"github.com/nawfdev/home-panel/internal/store"
@@ -117,6 +118,7 @@ func main() {
 		Logs:          logs.New(paths.Root),
 		PM2:           pm2.New(),
 		Projects:      proj,
+		RemoteDesktop: remotedesktop.New(st),
 		Telegram:      tg,
 		Terminal:      term,
 		Tunnel:        tun,

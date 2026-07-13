@@ -20,6 +20,7 @@ import { Stream } from "./pages/Stream";
 import { Watch } from "./pages/Watch";
 import { Terminal } from "./pages/Terminal";
 import { Projects } from "./pages/Projects";
+import { RemoteDesktop } from "./pages/RemoteDesktop";
 import { Settings } from "./pages/Settings";
 import { AiGateway } from "./pages/AiGateway";
 
@@ -63,6 +64,7 @@ function AppRoutes() {
         <Route path="/stream" element={<Stream />} />
         <Route path="/movies/watch/:id" element={<Watch />} />
         <Route path="/terminal" element={<Terminal />} />
+        <Route path="/remote-desktop" element={<RemoteDesktop />} />
         <Route path="/projects" element={<Projects />} />
         <Route path="/system" element={<Navigate to="/dashboard" replace />} />
         <Route path="/ai-gateway" element={<AiGateway />} />
