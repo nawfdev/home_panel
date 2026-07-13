@@ -33,10 +33,24 @@ type Project struct {
 	Pid       int    `json:"pid,omitempty"`
 }
 
+// RemoteDevice is a saved RustDesk peer (laptop/PC) the panel can hand off
+// control of. No password is stored here — RustDesk's permanent password
+// lives in the client on the target device, entered once by the operator.
+type RemoteDevice struct {
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	RustdeskID string `json:"rustdesk_id"`
+	Server     string `json:"server,omitempty"` // self-hosted hbbs host:port, blank = public relay
+	Key        string `json:"key,omitempty"`    // self-hosted hbbs public key
+	Notes      string `json:"notes,omitempty"`
+	CreatedAt  string `json:"created_at"`
+}
+
 type data struct {
-	Users    []User                 `json:"users"`
-	Projects []Project              `json:"projects"`
-	Settings map[string]interface{} `json:"settings"`
+	Users         []User                 `json:"users"`
+	Projects      []Project              `json:"projects"`
+	RemoteDevices []RemoteDevice         `json:"remote_devices"`
+	Settings      map[string]interface{} `json:"settings"`
 }
 
 // Store guards the in-memory data and syncs it to disk, exactly like the JS
@@ -182,6 +196,59 @@ func (s *Store) DeleteProject(id int) error {
 	for i := range s.d.Projects {
 		if s.d.Projects[i].ID == id {
 			s.d.Projects = append(s.d.Projects[:i], s.d.Projects[i+1:]...)
+			return s.save()
+		}
+	}
+	return nil
+}
+
+func (s *Store) ListRemoteDevices() []RemoteDevice {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]RemoteDevice, len(s.d.RemoteDevices))
+	copy(out, s.d.RemoteDevices)
+	return out
+}
+
+func (s *Store) GetRemoteDevice(id int) (RemoteDevice, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, d := range s.d.RemoteDevices {
+		if d.ID == id {
+			return d, true
+		}
+	}
+	return RemoteDevice{}, false
+}
+
+// InsertRemoteDevice mirrors the InsertProject id scheme (len+1).
+func (s *Store) InsertRemoteDevice(d RemoteDevice) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	d.ID = len(s.d.RemoteDevices) + 1
+	d.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	s.d.RemoteDevices = append(s.d.RemoteDevices, d)
+	return d.ID, s.save()
+}
+
+func (s *Store) UpdateRemoteDevice(id int, mutate func(*RemoteDevice)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.d.RemoteDevices {
+		if s.d.RemoteDevices[i].ID == id {
+			mutate(&s.d.RemoteDevices[i])
+			return s.save()
+		}
+	}
+	return nil
+}
+
+func (s *Store) DeleteRemoteDevice(id int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.d.RemoteDevices {
+		if s.d.RemoteDevices[i].ID == id {
+			s.d.RemoteDevices = append(s.d.RemoteDevices[:i], s.d.RemoteDevices[i+1:]...)
 			return s.save()
 		}
 	}

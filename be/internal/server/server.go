@@ -22,6 +22,7 @@ import (
 	moviesvc "github.com/nawfdev/home-panel/internal/movies"
 	pm2svc "github.com/nawfdev/home-panel/internal/pm2"
 	"github.com/nawfdev/home-panel/internal/projects"
+	"github.com/nawfdev/home-panel/internal/remotedesktop"
 	"github.com/nawfdev/home-panel/internal/session"
 	"github.com/nawfdev/home-panel/internal/store"
 	"github.com/nawfdev/home-panel/internal/telegram"
@@ -47,6 +48,7 @@ type Deps struct {
 	Logs          *logs.Service
 	PM2           *pm2svc.Service
 	Projects      *projects.Manager
+	RemoteDesktop *remotedesktop.Manager
 	Telegram      *telegram.Service
 	Terminal      *termsvc.Service
 	Tunnel        *tunnel.Service
@@ -70,6 +72,7 @@ func New(d Deps) http.Handler {
 	filesH := &handlers.Files{Svc: d.Files}
 	tunnelH := &handlers.Tunnel{Svc: d.Tunnel}
 	projectsH := &handlers.Projects{Mgr: d.Projects}
+	remoteDesktopH := &handlers.RemoteDesktop{Mgr: d.RemoteDesktop}
 	networkH := &handlers.Network{Tunnel: d.Tunnel}
 	dashboardH := &handlers.Dashboard{Cloudflare: d.Cloudflare, Store: d.Store, Tunnel: d.Tunnel, Projects: d.Projects}
 	updateH := &handlers.Update{Updater: d.Updater, Store: d.Store, PM2: d.PM2}
@@ -155,6 +158,14 @@ func New(d Deps) http.Handler {
 			pr.Post("/{id}/stop", projectsH.Stop)
 			pr.Post("/{id}/restart", projectsH.Restart)
 			pr.Get("/{id}/logs", projectsH.Logs)
+		})
+
+		api.Route("/remote-desktop", func(rr chi.Router) {
+			rr.Use(auth.RequireAuth)
+			rr.Get("/", remoteDesktopH.List)
+			rr.Post("/", remoteDesktopH.Create)
+			rr.Put("/{id}", remoteDesktopH.Update)
+			rr.Delete("/{id}", remoteDesktopH.Delete)
 		})
 
 		api.Route("/network", func(nr chi.Router) {
