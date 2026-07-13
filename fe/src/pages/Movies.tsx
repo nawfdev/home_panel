@@ -29,6 +29,7 @@ interface DownloadOption {
 interface TorrentResult {
   title: string;
   size: string;
+  sizeBytes: number;
   seeds: number;
   peers: number;
   provider: string;
@@ -45,6 +46,16 @@ function torrentQuality(seeds: number): { label: string; className: string } {
   return { label: "Risky", className: "bg-red-500/15 text-red-400" };
 }
 
+const GB = 1024 * 1024 * 1024;
+const SIZE_FILTERS: { label: string; min: number; max: number }[] = [
+  { label: "Any size", min: 0, max: Infinity },
+  { label: "< 1 GB", min: 0, max: GB },
+  { label: "1–3 GB", min: GB, max: 3 * GB },
+  { label: "3–6 GB", min: 3 * GB, max: 6 * GB },
+  { label: "6–10 GB", min: 6 * GB, max: 10 * GB },
+  { label: "> 10 GB", min: 10 * GB, max: Infinity },
+];
+
 // Search & browse only — active downloads and the finished-movie library now
 // live on their own page (Downloads.tsx) reached via the nav, so starting a
 // download here just hands off there instead of tracking job state locally.
@@ -59,6 +70,7 @@ export function Movies() {
   const [torrents, setTorrents] = useState<TorrentResult[] | null>(null);
   const [searchingTorrents, setSearchingTorrents] = useState(false);
   const [startingTorrent, setStartingTorrent] = useState<string | null>(null);
+  const [sizeFilter, setSizeFilter] = useState(0);
   const [page, setPage] = useState(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -255,13 +267,35 @@ export function Movies() {
 
       {mode === "torrent" && (
         <Panel>
+          {torrents !== null && torrents.length > 0 && (
+            <div className="flex items-center justify-end gap-2 mb-3">
+              <label className="text-xs text-gray-500">Size</label>
+              <select
+                value={sizeFilter}
+                onChange={(e) => setSizeFilter(Number(e.target.value))}
+                className="input-field text-xs py-1.5"
+              >
+                {SIZE_FILTERS.map((f, i) => (
+                  <option key={f.label} value={i}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {torrents === null ? (
             <p className="text-sm text-gray-500">Search to see torrent results.</p>
           ) : torrents.length === 0 ? (
             <p className="text-sm text-gray-500">No results.</p>
+          ) : torrents.filter(
+              (t) => t.sizeBytes >= SIZE_FILTERS[sizeFilter].min && t.sizeBytes < SIZE_FILTERS[sizeFilter].max
+            ).length === 0 ? (
+            <p className="text-sm text-gray-500">No torrents in that size range.</p>
           ) : (
             <div className="space-y-2">
-              {torrents.map((t) => {
+              {torrents
+                .filter((t) => t.sizeBytes >= SIZE_FILTERS[sizeFilter].min && t.sizeBytes < SIZE_FILTERS[sizeFilter].max)
+                .map((t) => {
                 const quality = torrentQuality(t.seeds);
                 return (
                 <div key={t.magnet} className="bg-white/5 rounded-lg p-3 flex items-center justify-between gap-3">
