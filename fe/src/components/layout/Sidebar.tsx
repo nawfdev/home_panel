@@ -22,6 +22,7 @@ import {
   XMarkIcon,
   FilmIcon,
   ArrowDownTrayIcon,
+  PlayIcon,
   ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import type { ComponentType, SVGProps } from "react";
@@ -89,6 +90,7 @@ const NAV_ITEMS: NavEntry[] = [
     children: [
       { to: "/movies", label: "Movies", icon: FilmIcon },
       { to: "/downloads", label: "Downloads", icon: ArrowDownTrayIcon },
+      { to: "/stream", label: "Stream", icon: PlayIcon },
     ],
   },
   { to: "/settings", label: "Settings", icon: Cog6ToothIcon },

@@ -16,6 +16,7 @@ import { Services } from "./pages/Services";
 import { Files } from "./pages/Files";
 import { Movies } from "./pages/Movies";
 import { Downloads } from "./pages/Downloads";
+import { Stream } from "./pages/Stream";
 import { Watch } from "./pages/Watch";
 import { Terminal } from "./pages/Terminal";
 import { Projects } from "./pages/Projects";
@@ -59,6 +60,7 @@ function AppRoutes() {
         <Route path="/files" element={<Files />} />
         <Route path="/movies" element={<Movies />} />
         <Route path="/downloads" element={<Downloads />} />
+        <Route path="/stream" element={<Stream />} />
         <Route path="/movies/watch/:id" element={<Watch />} />
         <Route path="/terminal" element={<Terminal />} />
         <Route path="/projects" element={<Projects />} />

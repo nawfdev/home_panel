@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { Panel } from "../components/ui/Panel";
 import { formatBytes, formatDuration } from "../lib/format";
-import { ArrowPathIcon, XMarkIcon, FilmIcon, PlayIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, XMarkIcon } from "@heroicons/react/24/outline";
 
 interface Job {
   id: string;
@@ -24,6 +23,10 @@ function eta(job: Job): string | null {
   return formatDuration((job.total - job.downloaded) / job.speedBps);
 }
 
+// The download manager: what's queued/in-flight right now. Finished
+// downloads move over to the Stream page's library instead of piling up
+// here, so this stays a clean, proper "downloads panel" — not a growing
+// list mixed with a media library.
 export function Downloads() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const esRef = useRef<EventSource | null>(null);
@@ -64,22 +67,23 @@ export function Downloads() {
     }
   }
 
+  // "done" jobs live in the Stream library, not here — this list is purely
+  // the active queue plus recent failures/cancellations worth seeing once.
   const activeJobs = jobs.filter((j) => j.status !== "done");
-  const doneJobs = jobs.filter((j) => j.status === "done");
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-100">Downloads</h2>
-          <p className="text-gray-500 text-sm mt-1">In-progress downloads, then your finished library below.</p>
+          <p className="text-gray-500 text-sm mt-1">Queued and in-progress downloads.</p>
         </div>
         <button className="btn-secondary" onClick={loadJobs}>
           <ArrowPathIcon className="w-4 h-4 inline mr-1.5" />Refresh
         </button>
       </div>
 
-      <Panel title="Active" className="mb-6">
+      <Panel>
         {activeJobs.length === 0 ? (
           <p className="text-sm text-gray-500">Nothing downloading right now.</p>
         ) : (
@@ -121,42 +125,6 @@ export function Downloads() {
                 </div>
               );
             })}
-          </div>
-        )}
-      </Panel>
-
-      <Panel title="Library">
-        {doneJobs.length === 0 ? (
-          <p className="text-sm text-gray-500">Finished downloads show up here, ready to stream.</p>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {doneJobs.map((job) => (
-              <Link
-                key={job.id}
-                to={`/movies/watch/${job.id}`}
-                className="group text-left bg-white/5 rounded-lg overflow-hidden hover:ring-2 hover:ring-blue-500/60 transition"
-              >
-                <div className="aspect-[2/3] bg-white/5 flex items-center justify-center overflow-hidden relative">
-                  {job.poster ? (
-                    <img
-                      src={job.poster}
-                      alt={job.title}
-                      loading="lazy"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    />
-                  ) : (
-                    <FilmIcon className="w-10 h-10 text-gray-600" />
-                  )}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center">
-                    <PlayIcon className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition" />
-                  </div>
-                </div>
-                <div className="p-2">
-                  <p className="text-xs text-gray-200 line-clamp-2">{job.title}</p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">{formatBytes(job.downloaded)}</p>
-                </div>
-              </Link>
-            ))}
           </div>
         )}
       </Panel>
