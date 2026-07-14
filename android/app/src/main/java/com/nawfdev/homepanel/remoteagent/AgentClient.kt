@@ -15,6 +15,7 @@ import java.util.concurrent.TimeUnit
 
 private const val FRAME_TAG: Byte = 0x01
 private const val FILE_CHUNK_TAG: Byte = 0x02
+private const val AUDIO_TAG: Byte = 0x03
 
 /**
  * Talks the remoteagent WebSocket protocol directly (same wire format the
@@ -27,6 +28,7 @@ class AgentClient(
     private val onStatus: (String) -> Unit,
     private val onFrame: (Bitmap) -> Unit,
     private val onClipboard: (String) -> Unit,
+    private val onAudio: (ByteArray) -> Unit,
 ) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val client = OkHttpClient.Builder()
@@ -52,10 +54,15 @@ class AgentClient(
             }
 
             override fun onMessage(webSocket: WebSocket, bytes: ByteString) {
-                if (bytes.size < 1 || bytes[0] != FRAME_TAG) return
-                val jpeg = bytes.substring(1).toByteArray()
-                val bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) ?: return
-                mainHandler.post { onFrame(bmp) }
+                if (bytes.size < 1) return
+                when (bytes[0]) {
+                    FRAME_TAG -> {
+                        val jpeg = bytes.substring(1).toByteArray()
+                        val bmp = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.size) ?: return
+                        mainHandler.post { onFrame(bmp) }
+                    }
+                    AUDIO_TAG -> onAudio(bytes.substring(1).toByteArray())
+                }
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -100,6 +107,10 @@ class AgentClient(
 
     fun keyCode(code: String, down: Boolean) {
         sendJson(JSONObject().put("type", if (down) "key_down" else "key_up").put("code", code))
+    }
+
+    fun setAudio(enabled: Boolean) {
+        sendJson(JSONObject().put("type", if (enabled) "audio_on" else "audio_off"))
     }
 
     fun sendClipboard(text: String) {

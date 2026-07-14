@@ -135,6 +135,21 @@ internal sealed class WsServer
         var frameTask = StreamScreen(socket, sendLock, cts.Token);
         var clipTask = ClipboardWatcher(socket, sendLock, cts.Token, () => lastClipboardFromViewer);
 
+        using var audio = new AudioCaptureService();
+        audio.AudioAvailable += async pcm =>
+        {
+            if (cts.IsCancellationRequested || socket.State != WebSocketState.Open) return;
+            var framed = new byte[pcm.Length + 1];
+            framed[0] = 0x03;
+            Buffer.BlockCopy(pcm, 0, framed, 1, pcm.Length);
+            // Best-effort: if another send is in flight, drop this chunk
+            // rather than block the audio capture thread.
+            if (!await sendLock.WaitAsync(0)) return;
+            try { await socket.SendAsync(framed, WebSocketMessageType.Binary, true, CancellationToken.None); }
+            catch { /* connection dropped mid-send */ }
+            finally { sendLock.Release(); }
+        };
+
         var buffer = new byte[64 * 1024];
         try
         {
@@ -160,7 +175,7 @@ internal sealed class WsServer
                 }
 
                 var text = Encoding.UTF8.GetString(ms.ToArray());
-                HandleControlMessage(text, ref receiving, ref lastClipboardFromViewer);
+                HandleControlMessage(text, ref receiving, ref lastClipboardFromViewer, audio);
             }
         }
         catch
@@ -176,7 +191,7 @@ internal sealed class WsServer
         }
     }
 
-    void HandleControlMessage(string json, ref FileReceiver? receiving, ref string lastClipboardFromViewer)
+    void HandleControlMessage(string json, ref FileReceiver? receiving, ref string lastClipboardFromViewer, AudioCaptureService audio)
     {
         JsonElement msg;
         try { msg = JsonDocument.Parse(json).RootElement; }
@@ -205,6 +220,12 @@ internal sealed class WsServer
                 break;
             case "type_text":
                 InputInjector.TypeText(GetString(msg, "text") ?? "");
+                break;
+            case "audio_on":
+                audio.Start();
+                break;
+            case "audio_off":
+                audio.Stop();
                 break;
             case "clipboard":
                 var clipText = GetString(msg, "text") ?? "";
