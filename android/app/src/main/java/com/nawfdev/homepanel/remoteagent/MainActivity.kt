@@ -119,32 +119,39 @@ class MainActivity : AppCompatActivity() {
         imm.showSoftInput(binding.imeCapture, InputMethodManager.SHOW_IMPLICIT)
     }
 
-    // The IME field is a relay, not a real text buffer: every change is
-    // forwarded to the agent (typed text via Unicode injection, deletions
-    // via Backspace key events) and then the field is cleared back to "" so
-    // it never accumulates and can't leak what was typed if the app is
-    // backgrounded mid-session.
-    private fun setupImeCapture() {
-        var previousLength = 0
-        binding.imeCapture.addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {
-                previousLength = s?.length ?: 0
-            }
+    // The IME field is a relay, not a real text buffer. It always holds a
+    // single zero-width placeholder character so backspace on an otherwise
+    // "empty" field still has something to delete — an EditText that's
+    // truly empty never fires a change event on backspace, which is why
+    // deleting used to silently do nothing after typing.
+    private val imePlaceholder = "​"
+    private var imeGuard = false
 
+    private fun setupImeCapture() {
+        binding.imeCapture.setText(imePlaceholder)
+        binding.imeCapture.setSelection(imePlaceholder.length)
+
+        binding.imeCapture.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
 
             override fun afterTextChanged(s: Editable?) {
+                if (imeGuard) return
                 val text = s?.toString().orEmpty()
-                if (text.isEmpty()) return
-                if (text.length >= previousLength) {
-                    client?.typeText(text)
-                } else {
-                    repeat(previousLength - text.length) {
+
+                when {
+                    text.length > imePlaceholder.length && text.startsWith(imePlaceholder) ->
+                        client?.typeText(text.substring(imePlaceholder.length))
+                    text.length < imePlaceholder.length || !text.startsWith(imePlaceholder) -> {
                         client?.keyCode("Backspace", true)
                         client?.keyCode("Backspace", false)
                     }
                 }
-                s?.clear()
+
+                imeGuard = true
+                s?.replace(0, s.length, imePlaceholder)
+                binding.imeCapture.setSelection(imePlaceholder.length)
+                imeGuard = false
             }
         })
     }
