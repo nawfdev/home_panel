@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
 import { Modal } from "../components/ui/Modal";
+import { ShareQr } from "../components/ui/ShareQr";
 import { MediaPlayer } from "./MediaPlayer";
 import { formatBytes } from "../lib/format";
 import { copyText } from "../lib/clipboard";
@@ -472,6 +473,7 @@ export function Files() {
                       >
                         <ClipboardIcon className="w-4 h-4" />
                       </button>
+                      <ShareQr url={shareUrl(s.token)} />
                       <button className="btn-danger shrink-0" title="Revoke" onClick={() => revokeShare(s.token)}>
                         <TrashIcon className="w-4 h-4" />
                       </button>
