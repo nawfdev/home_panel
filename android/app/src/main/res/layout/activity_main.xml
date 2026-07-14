@@ -30,10 +30,75 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
-                android:layout_marginBottom="24dp"
+                android:layout_marginBottom="20dp"
                 android:text="Connect directly to a remoteagent instance on your LAN"
                 android:textColor="@color/text_faint"
                 android:textSize="13sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="20dp">
+
+                <Button
+                    android:id="@+id/tabNewButton"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="4dp"
+                    android:background="@drawable/bg_button_primary"
+                    android:text="New Connection"
+                    android:textAllCaps="false"
+                    android:textSize="12sp"
+                    android:textColor="@color/btn_primary_text" />
+
+                <Button
+                    android:id="@+id/tabHistoryButton"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:background="@drawable/bg_button_secondary"
+                    android:text="History"
+                    android:textAllCaps="false"
+                    android:textSize="12sp"
+                    android:textColor="@color/btn_secondary_text" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/historySection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/newConnectionSection"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Name (optional)"
+                android:textColor="@color/text_muted"
+                android:textSize="12sp"
+                android:layout_marginBottom="6dp" />
+
+            <EditText
+                android:id="@+id/nameInput"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:background="@drawable/bg_input"
+                android:paddingHorizontal="14dp"
+                android:textColor="@color/text_primary"
+                android:textColorHint="@color/text_faint"
+                android:hint="Living room laptop"
+                android:inputType="textNoSuggestions"
+                android:singleLine="true"
+                android:layout_marginBottom="16dp" />
 
             <TextView
                 android:layout_width="wrap_content"
@@ -117,6 +182,8 @@
                 android:textColor="@color/text_faint"
                 android:textSize="12sp" />
 
+            </LinearLayout>
+
         </LinearLayout>
     </ScrollView>
 
@@ -194,6 +261,9 @@
             android:background="@null"
             android:textColor="@android:color/transparent"
             android:cursorVisible="false"
+            android:inputType="textMultiLine|textNoSuggestions"
+            android:imeOptions="actionNone"
+            android:maxLines="1000"
             app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintStart_toStartOf="parent" />
 
