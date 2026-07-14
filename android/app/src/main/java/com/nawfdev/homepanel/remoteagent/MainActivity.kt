@@ -35,6 +35,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var gestureDetector: GestureDetector
     private var audioTrack: AudioTrack? = null
     private var audioEnabled = false
+    private var cursorEnabled = true
     private val hideTopBarHandler = Handler(Looper.getMainLooper())
     private val hideTopBarRunnable = Runnable { binding.topBar.visibility = View.GONE }
 
@@ -56,6 +57,7 @@ class MainActivity : AppCompatActivity() {
         binding.tabNewButton.setOnClickListener { showTab(showHistory = false) }
         binding.tabHistoryButton.setOnClickListener { showTab(showHistory = true) }
         binding.audioToggleButton.setOnClickListener { toggleAudio() }
+        binding.cursorToggleButton.setOnClickListener { toggleCursor() }
         binding.topBarToggleZone.setOnClickListener { showTopBarTemporarily() }
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -211,6 +213,7 @@ class MainActivity : AppCompatActivity() {
         binding.viewerContainer.visibility = View.VISIBLE
         binding.deviceNameText.text = displayName
         binding.topBar.visibility = View.GONE
+        binding.cursorOverlay.visibility = View.GONE
         audioEnabled = false
         binding.audioToggleButton.setImageResource(android.R.drawable.ic_lock_silent_mode)
         enterFullscreen()
@@ -277,6 +280,7 @@ class MainActivity : AppCompatActivity() {
             if (view.width == 0 || view.height == 0) return@setOnTouchListener true
             lastNormX = (event.x / view.width).coerceIn(0f, 1f)
             lastNormY = (event.y / view.height).coerceIn(0f, 1f)
+            updateCursorPosition(view)
             gestureDetector.onTouchEvent(event)
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -289,6 +293,24 @@ class MainActivity : AppCompatActivity() {
             }
             true
         }
+    }
+
+    // The streamed frame doesn't include the real Windows cursor (GDI screen
+    // capture excludes it), so this synthetic marker is the only feedback
+    // for where a tap/drag will actually land. Toggleable in case it gets
+    // in the way.
+    private fun toggleCursor() {
+        cursorEnabled = !cursorEnabled
+        binding.cursorToggleButton.background =
+            getDrawable(if (cursorEnabled) R.drawable.bg_button_primary else R.drawable.bg_button_secondary)
+        if (!cursorEnabled) binding.cursorOverlay.visibility = View.GONE
+    }
+
+    private fun updateCursorPosition(view: View) {
+        if (!cursorEnabled) return
+        binding.cursorOverlay.visibility = View.VISIBLE
+        binding.cursorOverlay.translationX = lastNormX * view.width
+        binding.cursorOverlay.translationY = lastNormY * view.height
     }
 
     private fun showKeyboard() {

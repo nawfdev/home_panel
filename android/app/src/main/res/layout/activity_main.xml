@@ -206,6 +206,23 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 
+        <!-- Synthetic cursor drawn where the last touch landed — the
+             streamed frame doesn't include the real Windows cursor, so
+             without this there's no visual feedback for where a click/drag
+             will land. Positioned via translationX/Y in code, top-left
+             aligned with the pointer tip. Toggleable, GONE by default. -->
+        <ImageView
+            android:id="@+id/cursorOverlay"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_cursor"
+            android:clickable="false"
+            android:focusable="false"
+            android:contentDescription="@null"
+            android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent" />
+
         <!-- Transparent strip pinned to the very top: tapping it reveals the
              overlaid top bar without stealing taps from the rest of the
              screen, which is the mouse-click surface. -->
@@ -275,6 +292,17 @@
                 android:contentDescription="Toggle audio"
                 android:scaleType="centerInside"
                 android:padding="8dp" />
+
+            <ImageButton
+                android:id="@+id/cursorToggleButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_button_primary"
+                android:src="@drawable/ic_cursor"
+                android:contentDescription="Toggle cursor"
+                android:scaleType="centerInside"
+                android:padding="9dp" />
         </LinearLayout>
 
         <!-- 1x1 offscreen-ish EditText purely to drive the IME; text is
