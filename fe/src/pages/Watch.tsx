@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
+import { ShareQr } from "../components/ui/ShareQr";
 import { NestVideo } from "./NestVideo";
 import { copyText } from "../lib/clipboard";
 import {
@@ -219,6 +220,7 @@ export function Watch() {
               >
                 <ClipboardIcon className="w-4 h-4" />
               </button>
+              <ShareQr url={shareUrl} />
             </div>
           )}
         </Panel>
