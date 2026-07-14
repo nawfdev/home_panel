@@ -36,6 +36,8 @@ class MainActivity : AppCompatActivity() {
     private var audioTrack: AudioTrack? = null
     private var audioEnabled = false
     private var cursorEnabled = true
+    private var frameWidth = 0
+    private var frameHeight = 0
     private val hideTopBarHandler = Handler(Looper.getMainLooper())
     private val hideTopBarRunnable = Runnable { binding.topBar.visibility = View.GONE }
 
@@ -265,7 +267,40 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFrame(bmp: Bitmap) {
+        frameWidth = bmp.width
+        frameHeight = bmp.height
         binding.screenImage.setImageBitmap(bmp)
+    }
+
+    // screenImage uses fitCenter, so the displayed image is letterboxed
+    // inside the view whenever the laptop's aspect ratio doesn't match the
+    // phone's — e.g. a 16:9 desktop inside a tall portrait view leaves black
+    // bars top and bottom. Mapping touches against the raw view bounds (as
+    // this used to) put clicks increasingly off-target near the edges,
+    // which is exactly why things like a maximized window's minimize button
+    // were unreachable. This maps against the actual displayed image rect,
+    // and returns null for a touch that landed in a letterbox bar.
+    private fun mapToImageNormalized(view: View, x: Float, y: Float): Pair<Float, Float>? {
+        if (frameWidth == 0 || frameHeight == 0 || view.width == 0 || view.height == 0) return null
+        val scale = minOf(view.width.toFloat() / frameWidth, view.height.toFloat() / frameHeight)
+        val displayedWidth = frameWidth * scale
+        val displayedHeight = frameHeight * scale
+        val offsetX = (view.width - displayedWidth) / 2f
+        val offsetY = (view.height - displayedHeight) / 2f
+        val nx = (x - offsetX) / displayedWidth
+        val ny = (y - offsetY) / displayedHeight
+        if (nx < 0f || nx > 1f || ny < 0f || ny > 1f) return null
+        return nx to ny
+    }
+
+    private fun imageRectIn(view: View): Triple<Float, Float, Float> {
+        // Returns (offsetX, offsetY, scale) for the same fitCenter mapping,
+        // used to place the cursor overlay at the correct visual spot.
+        if (frameWidth == 0 || frameHeight == 0 || view.width == 0 || view.height == 0) return Triple(0f, 0f, 1f)
+        val scale = minOf(view.width.toFloat() / frameWidth, view.height.toFloat() / frameHeight)
+        val offsetX = (view.width - frameWidth * scale) / 2f
+        val offsetY = (view.height - frameHeight * scale) / 2f
+        return Triple(offsetX, offsetY, scale)
     }
 
     private fun setupTouch() {
@@ -277,17 +312,23 @@ class MainActivity : AppCompatActivity() {
         })
 
         binding.screenImage.setOnTouchListener { view, event ->
-            if (view.width == 0 || view.height == 0) return@setOnTouchListener true
-            lastNormX = (event.x / view.width).coerceIn(0f, 1f)
-            lastNormY = (event.y / view.height).coerceIn(0f, 1f)
-            updateCursorPosition(view)
             gestureDetector.onTouchEvent(event)
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
+                    val mapped = mapToImageNormalized(view, event.x, event.y) ?: return@setOnTouchListener true
+                    lastNormX = mapped.first
+                    lastNormY = mapped.second
+                    updateCursorPosition(view)
                     client?.mouseMove(lastNormX, lastNormY)
                     client?.mouseDown("left", lastNormX, lastNormY)
                 }
-                MotionEvent.ACTION_MOVE -> client?.mouseMove(lastNormX, lastNormY)
+                MotionEvent.ACTION_MOVE -> {
+                    val mapped = mapToImageNormalized(view, event.x, event.y) ?: return@setOnTouchListener true
+                    lastNormX = mapped.first
+                    lastNormY = mapped.second
+                    updateCursorPosition(view)
+                    client?.mouseMove(lastNormX, lastNormY)
+                }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL ->
                     client?.mouseUp("left", lastNormX, lastNormY)
             }
@@ -308,9 +349,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateCursorPosition(view: View) {
         if (!cursorEnabled) return
+        val (offsetX, offsetY, scale) = imageRectIn(view)
         binding.cursorOverlay.visibility = View.VISIBLE
-        binding.cursorOverlay.translationX = lastNormX * view.width
-        binding.cursorOverlay.translationY = lastNormY * view.height
+        binding.cursorOverlay.translationX = offsetX + lastNormX * frameWidth * scale
+        binding.cursorOverlay.translationY = offsetY + lastNormY * frameHeight * scale
     }
 
     private fun showKeyboard() {
