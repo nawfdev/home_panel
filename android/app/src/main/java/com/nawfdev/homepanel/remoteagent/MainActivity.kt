@@ -2,7 +2,12 @@ package com.nawfdev.homepanel.remoteagent
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.view.GestureDetector
@@ -12,6 +17,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -27,6 +33,10 @@ class MainActivity : AppCompatActivity() {
     private var lastNormX = 0.5f
     private var lastNormY = 0.5f
     private lateinit var gestureDetector: GestureDetector
+    private var audioTrack: AudioTrack? = null
+    private var audioEnabled = false
+    private val hideTopBarHandler = Handler(Looper.getMainLooper())
+    private val hideTopBarRunnable = Runnable { binding.topBar.visibility = View.GONE }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,9 +55,76 @@ class MainActivity : AppCompatActivity() {
         binding.keyboardButton.setOnClickListener { showKeyboard() }
         binding.tabNewButton.setOnClickListener { showTab(showHistory = false) }
         binding.tabHistoryButton.setOnClickListener { showTab(showHistory = true) }
+        binding.audioToggleButton.setOnClickListener { toggleAudio() }
+        binding.topBarToggleZone.setOnClickListener { showTopBarTemporarily() }
+
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (binding.viewerContainer.visibility == View.VISIBLE) {
+                    disconnect()
+                } else {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                    isEnabled = true
+                }
+            }
+        })
 
         setupTouch()
         setupImeCapture()
+    }
+
+    private fun showTopBarTemporarily() {
+        binding.topBar.visibility = View.VISIBLE
+        hideTopBarHandler.removeCallbacks(hideTopBarRunnable)
+        hideTopBarHandler.postDelayed(hideTopBarRunnable, 3000)
+    }
+
+    private fun toggleAudio() {
+        audioEnabled = !audioEnabled
+        client?.setAudio(audioEnabled)
+        if (audioEnabled) {
+            audioTrack = buildAudioTrack().apply { play() }
+            binding.audioToggleButton.setImageResource(android.R.drawable.ic_lock_silent_mode_off)
+        } else {
+            releaseAudioTrack()
+            binding.audioToggleButton.setImageResource(android.R.drawable.ic_lock_silent_mode)
+        }
+    }
+
+    private fun buildAudioTrack(): AudioTrack {
+        // Fixed 48kHz/16-bit/stereo PCM to match AudioCaptureService.TargetFormat
+        // on the agent side — no format negotiation needed since both ends are
+        // controlled by this project.
+        val sampleRate = 48000
+        val channelConfig = AudioFormat.CHANNEL_OUT_STEREO
+        val encoding = AudioFormat.ENCODING_PCM_16BIT
+        val minBufSize = AudioTrack.getMinBufferSize(sampleRate, channelConfig, encoding)
+        return AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(channelConfig)
+                    .setEncoding(encoding)
+                    .build()
+            )
+            .setBufferSizeInBytes(minBufSize * 2)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+    }
+
+    private fun releaseAudioTrack() {
+        audioTrack?.let {
+            it.stop()
+            it.release()
+        }
+        audioTrack = null
     }
 
     private fun showTab(showHistory: Boolean) {
@@ -133,6 +210,9 @@ class MainActivity : AppCompatActivity() {
         binding.connectForm.visibility = View.GONE
         binding.viewerContainer.visibility = View.VISIBLE
         binding.deviceNameText.text = displayName
+        binding.topBar.visibility = View.GONE
+        audioEnabled = false
+        binding.audioToggleButton.setImageResource(android.R.drawable.ic_lock_silent_mode)
         enterFullscreen()
 
         client = AgentClient(
@@ -142,6 +222,7 @@ class MainActivity : AppCompatActivity() {
             onStatus = ::updateStatus,
             onFrame = ::showFrame,
             onClipboard = { /* v1: clipboard from remote is shown nowhere yet; extend if needed */ },
+            onAudio = { pcm -> audioTrack?.write(pcm, 0, pcm.size) },
         )
         client?.connect()
     }
@@ -149,6 +230,8 @@ class MainActivity : AppCompatActivity() {
     private fun disconnect() {
         client?.close()
         client = null
+        hideTopBarHandler.removeCallbacks(hideTopBarRunnable)
+        releaseAudioTrack()
         binding.viewerContainer.visibility = View.GONE
         binding.connectForm.visibility = View.VISIBLE
         binding.screenImage.setImageBitmap(null)
@@ -276,5 +359,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         client?.close()
+        hideTopBarHandler.removeCallbacks(hideTopBarRunnable)
+        releaseAudioTrack()
     }
 }

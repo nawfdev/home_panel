@@ -194,13 +194,39 @@
         android:layout_height="match_parent"
         android:visibility="gone">
 
+        <ImageView
+            android:id="@+id/screenImage"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:background="#000000"
+            android:scaleType="fitCenter"
+            android:contentDescription="@null"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
+        <!-- Transparent strip pinned to the very top: tapping it reveals the
+             overlaid top bar without stealing taps from the rest of the
+             screen, which is the mouse-click surface. -->
+        <View
+            android:id="@+id/topBarToggleZone"
+            android:layout_width="0dp"
+            android:layout_height="40dp"
+            android:background="@android:color/transparent"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent" />
+
         <LinearLayout
             android:id="@+id/topBar"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
+            android:background="#CC000000"
             android:padding="12dp"
+            android:visibility="gone"
             app:layout_constraintTop_toTopOf="parent"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
@@ -238,19 +264,18 @@
                 android:text="connecting"
                 android:textColor="@color/status_yellow_text"
                 android:textSize="11sp" />
-        </LinearLayout>
 
-        <ImageView
-            android:id="@+id/screenImage"
-            android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:background="#000000"
-            android:scaleType="fitCenter"
-            android:contentDescription="@null"
-            app:layout_constraintTop_toBottomOf="@id/topBar"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent" />
+            <ImageButton
+                android:id="@+id/audioToggleButton"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/bg_button_secondary"
+                android:src="@android:drawable/ic_lock_silent_mode"
+                android:contentDescription="Toggle audio"
+                android:scaleType="centerInside"
+                android:padding="8dp" />
+        </LinearLayout>
 
         <!-- 1x1 offscreen-ish EditText purely to drive the IME; text is
              relayed to the agent as it's typed then cleared (see MainActivity). -->

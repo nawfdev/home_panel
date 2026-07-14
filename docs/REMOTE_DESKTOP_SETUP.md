@@ -51,6 +51,7 @@ Klik **Connect** → langsung kebuka viewer di dalam panel (gak ada app terpisah
 - Keyboard (huruf, angka, F1-F12, arrow, modifier, dll)
 - Clipboard sync dua arah (lewat textarea, bukan otomatis — browser gak izinin baca clipboard langsung di koneksi non-HTTPS)
 - Kirim file dari panel ke laptop target (masuk ke folder `Downloads\RemoteAgentReceived`)
+- Audio: di app Android ada tombol toggle 🔊 di viewer — nyala/mati sesuai kebutuhan, gak auto-jalan (hemat baterai/bandwidth). Belum ada di web viewer.
 
 ---
 
