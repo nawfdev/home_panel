@@ -19,8 +19,9 @@ internal sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 7,
+            RowCount = 8,
         };
+        layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         layout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
@@ -31,6 +32,19 @@ internal sealed class MainForm : Form
         Controls.Add(layout);
 
         layout.Controls.Add(new Label { Text = $"Port: {cfg.Port}", AutoSize = true, Font = new Font(Font, FontStyle.Bold) });
+
+        layout.Controls.Add(new Label { Text = "LAN IP (enter this in the panel):", AutoSize = true, Margin = new Padding(0, 8, 0, 2) });
+        var lanIp = NetworkInfo.GetLikelyLanIp();
+        var ipRow = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, Height = 28 };
+        ipRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        ipRow.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        var ipBox = new TextBox { Text = lanIp, ReadOnly = true, Dock = DockStyle.Fill, Font = new Font("Consolas", 9F) };
+        var copyIpButton = new Button { Text = "Copy", AutoSize = true };
+        copyIpButton.Click += (_, _) => Clipboard.SetText(lanIp);
+        ipRow.Controls.Add(ipBox, 0, 0);
+        ipRow.Controls.Add(copyIpButton, 1, 0);
+        layout.Controls.Add(ipRow);
+
         layout.Controls.Add(new Label { Text = "Token (enter this in the panel):", AutoSize = true, Margin = new Padding(0, 8, 0, 2) });
 
         var tokenRow = new TableLayoutPanel { Dock = DockStyle.Top, ColumnCount = 2, AutoSize = true, Height = 28 };
