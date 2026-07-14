@@ -46,6 +46,10 @@ internal sealed class WsServer
     async Task HandleClient(TcpClient client)
     {
         using var _ = client;
+        // Nagle's algorithm batches small writes to reduce packet count, but
+        // for a live screen/input stream it just adds latency waiting to
+        // coalesce — each JPEG frame/input event should go out immediately.
+        client.NoDelay = true;
         var stream = client.GetStream();
         var (path, query, secWebSocketKey) = await ReadHandshake(stream);
         if (path is null) return;
