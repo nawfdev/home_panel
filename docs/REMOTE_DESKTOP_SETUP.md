@@ -1,78 +1,81 @@
 # 🖥️ Quick Start - Remote Desktop Setup
 
-Kontrol mouse+keyboard laptop lain dari panel, selama masih satu jaringan/router. Pakai RustDesk self-hosted (gratis, open source) — panel cuma nyimpen daftar device dan buka RustDesk-nya, bukan proses remote control-nya sendiri.
+Kontrol mouse+keyboard laptop lain dari panel, selama masih satu jaringan/router. Ini custom-built, bukan RustDesk — dua bagian:
+
+- **`remoteagent.exe`** — jalan di laptop yang MAU dikontrol. Streaming layarnya, terima perintah mouse/keyboard.
+- **Panel (Remote Desktop page)** — browser kamu connect langsung ke `remoteagent.exe` itu lewat WebSocket, no relay, no cloud, satu LAN doang.
 
 ## ⚡ Langkah Cepat
 
-### 1️⃣ Jalanin RustDesk Server di host panel ini (5 menit)
+### 1️⃣ Build/dapatkan `remoteagent.exe`
 
-1. Download `rustdesk-server` dari [github.com/rustdesk/rustdesk-server/releases](https://github.com/rustdesk/rustdesk-server/releases) — pilih file untuk Windows (`x86_64-pc-windows-msvc`)
-2. Extract, dapet 2 file: `hbbs.exe` (rendezvous/ID server) dan `hbbr.exe` (relay server)
-3. Jalanin dua-duanya (bisa di folder yang sama dengan panel, atau folder terpisah):
+Dari folder project, di komputer manapun yang ada Go toolchain-nya:
+
+```bash
+cd be
+GOOS=windows GOARCH=amd64 go build -o remoteagent.exe ./cmd/remoteagent
+```
+
+Copy `remoteagent.exe` itu ke laptop yang mau dikontrol.
+
+### 2️⃣ Jalanin di laptop target
+
+1. Double-click `remoteagent.exe` (atau run dari terminal)
+2. Pertama kali jalan, muncul di console:
    ```
-   hbbs.exe
-   hbbr.exe
+   =================================================
+    Remote Desktop Agent
+   =================================================
+    Port:  8791
+    Token: a1b2c3d4e5f6...
    ```
-4. Pertama kali jalan, `hbbs` generate key pair dan nunjukin **public key** di console — **SIMPAN KEY INI**:
-   ```
-   Key: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx=
-   ```
-5. Buka port di firewall Windows (kalau laptop lain gagal connect): `21115-21119` (TCP+UDP)
+3. **SIMPAN Port + Token** ini — kesave otomatis di `remoteagent.json` sebelah exe-nya, jadi gak berubah tiap restart
+4. Biarin window-nya tetep kebuka (atau jadiin Windows service/scheduled task biar jalan terus di background)
+5. Cek firewall Windows kalau gagal connect — buka port `8791` (TCP) buat inbound
 
-**Biar jalan terus:** daftarin `hbbs.exe`/`hbbr.exe` sebagai Windows service (pakai NSSM) atau tambahin ke Task Scheduler run-at-startup — kalau host reboot dan server ini mati, semua device jadi gak bisa connect.
+### 3️⃣ Cari IP laptop target
 
-### 2️⃣ Install RustDesk di laptop yang mau di-remote (2 menit)
+Di laptop target, buka cmd: `ipconfig` → catat IPv4 Address (misal `192.168.1.20`)
 
-1. Download RustDesk client dari [rustdesk.com](https://rustdesk.com/) → install di laptop target
-2. Buka RustDesk → **ID/Relay Server** (icon titik tiga → Network) → isi:
-   ```
-   ID Server:    <IP host panel>:21116
-   Relay Server: <IP host panel>:21117
-   Key:          <public key dari langkah 1>
-   ```
-3. Apply, tunggu status jadi "Ready"
-4. Set **Permanent Password**: Settings → Security → Set permanent password (biar gak perlu buka layar laptop tiap connect — ini yang bikin "unattended access" jalan)
-5. Catat **ID** RustDesk yang muncul di layar utama (9 digit angka)
-
-### 3️⃣ Install RustDesk juga di device kamu buat connect (2 menit)
-
-Device yang dipakai buat mengontrol (HP/PC/laptop kamu) juga perlu RustDesk client terinstall — panel cuma memicu link `rustdesk://`, appnya sendiri yang harus sudah ada di device kamu.
-
-1. Install RustDesk di device kamu juga
-2. Set ID/Relay Server + Key sama seperti langkah 2 (biar satu jaringan RustDesk)
-
-### 4️⃣ Tambah device di Panel (1 menit)
+### 4️⃣ Tambah device di Panel
 
 1. Buka panel → **Diagnostics → Remote Desktop**
 2. Klik **Add device**, isi:
-   - **Name**: nama bebas, misal "Laptop Kerja"
-   - **RustDesk ID**: ID 9 digit dari langkah 2
-   - **Self-hosted server**: `<IP host panel>:21116`
-   - **Server key**: public key dari langkah 1
+   - **Name**: nama bebas
+   - **Host**: IP laptop target (langkah 3)
+   - **Port**: `8791` (atau sesuai yang muncul di console)
+   - **Token**: dari console langkah 2
 3. Save
 
 ### 5️⃣ Connect!
 
-Klik tombol **Connect** di device tersebut → browser minta izin buka RustDesk → RustDesk kebuka dengan ID sudah keisi → masukin permanent password (sekali aja, biasanya RustDesk inget setelahnya) → langsung bisa kontrol mouse+keyboard laptop itu.
+Klik **Connect** → langsung kebuka viewer di dalam panel (gak ada app terpisah kebuka). Klik layarnya buat fokus, terus mouse/keyboard langsung jalan ke laptop target.
+
+**Fitur yang ada:**
+- Live screen view (~8fps, JPEG)
+- Mouse (gerak, klik kiri/kanan/tengah, scroll)
+- Keyboard (huruf, angka, F1-F12, arrow, modifier, dll)
+- Clipboard sync dua arah (lewat textarea, bukan otomatis — browser gak izinin baca clipboard langsung di koneksi non-HTTPS)
+- Kirim file dari panel ke laptop target (masuk ke folder `Downloads\RemoteAgentReceived`)
 
 ---
 
 ## ⚠️ Troubleshooting Cepat
 
-### Klik Connect tapi gak kejadian apa-apa / browser bilang "unknown protocol"?
-RustDesk belum terinstall di device yang kamu pakai buat connect, atau protocol handler `rustdesk://` belum kedaftar. Install ulang RustDesk client-nya.
+### Status "connecting" terus, gak pernah "connected"?
+1. Cek `remoteagent.exe` masih jalan di laptop target
+2. Cek IP di form device masih benar (kalau DHCP, IP bisa berubah)
+3. Cek firewall Windows di laptop target — buka port `8791` (TCP) inbound
+4. Kedua device harus satu jaringan/router yang sama
 
-### RustDesk kebuka tapi "Connection Error" / gagal connect ke ID?
-1. Cek `hbbs.exe` dan `hbbr.exe` masih jalan di host panel
-2. Cek laptop target statusnya "Ready" (bukan "Not ready") di RustDesk-nya
-3. Cek firewall — port `21115-21119` (TCP+UDP) harus kebuka di host panel
-4. Cek IP host panel di form device masih benar (kalau pakai DHCP dan IP berubah, update lagi)
+### Layar item aja, "No signal"?
+Cek console `remoteagent.exe` ada error capture atau enggak. Kalau laptop lagi di-lock screen, capture tetep jalan tapi biasanya nunjukin lock screen.
 
-### Permanent password diminta tiap kali connect?
-Normal untuk koneksi pertama kali dari device baru. Setelahnya biasanya RustDesk simpen kredensial per-peer di device kamu.
+### Klik/ketik gak ngaruh ke laptop target?
+Klik dulu area layarnya biar fokus (border-nya harus keliatan aktif) sebelum ngetik — browser butuh elemen di-fokus dulu buat nangkep keyboard event.
 
-### Kenapa gak disimpen password-nya di panel aja biar sekali klik langsung connect?
-Sengaja tidak — RustDesk `rustdesk://` URI belum reliable buat prefill password (masih dalam diskusi upstream), dan nyimpen password remote-control di JSON store itu resiko keamanan kalau file store bocor. Password tetap di RustDesk client masing-masing device.
+### Kenapa clipboard gak otomatis sync pas copy di browser?
+`navigator.clipboard` API browser butuh HTTPS/localhost buat baca clipboard langsung — panel ini jalan di LAN HTTP biasa. Makanya dibikin manual lewat textarea (paste manual → klik "Send to remote"), tetep jalan tanpa syarat itu.
 
 ---
 

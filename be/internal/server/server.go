@@ -164,6 +164,7 @@ func New(d Deps) http.Handler {
 			rr.Use(auth.RequireAuth)
 			rr.Get("/", remoteDesktopH.List)
 			rr.Post("/", remoteDesktopH.Create)
+			rr.Get("/{id}", remoteDesktopH.Get)
 			rr.Put("/{id}", remoteDesktopH.Update)
 			rr.Delete("/{id}", remoteDesktopH.Delete)
 		})

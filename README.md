@@ -39,7 +39,7 @@ Nestcore is an all-in-one web dashboard for managing homelab infrastructure — 
 - **Telegram** — status/error notifications and test messages
 - **Files** — browser-based file manager (view, edit, upload, download, delete)
 - **Terminal** — WebSocket shell with ANSI color output
-- **Remote Desktop** — control another LAN device's mouse/keyboard via self-hosted RustDesk
+- **Remote Desktop** — control another LAN device's mouse/keyboard/clipboard in-browser via the bundled `remoteagent` binary
 - **Projects** — manage arbitrary Node/script projects (start/stop/restart, ports, domains)
 - **Settings** — password change, integration tokens, service path overrides, self-update check
 

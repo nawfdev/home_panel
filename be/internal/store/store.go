@@ -33,17 +33,18 @@ type Project struct {
 	Pid       int    `json:"pid,omitempty"`
 }
 
-// RemoteDevice is a saved RustDesk peer (laptop/PC) the panel can hand off
-// control of. No password is stored here — RustDesk's permanent password
-// lives in the client on the target device, entered once by the operator.
+// RemoteDevice is a saved peer (laptop/PC) running the remoteagent binary
+// that the panel can hand off keyboard/mouse control of over the LAN. The
+// token authenticates the browser's WebSocket connection directly to the
+// agent — the panel backend never proxies the video/input stream.
 type RemoteDevice struct {
-	ID         int    `json:"id"`
-	Name       string `json:"name"`
-	RustdeskID string `json:"rustdesk_id"`
-	Server     string `json:"server,omitempty"` // self-hosted hbbs host:port, blank = public relay
-	Key        string `json:"key,omitempty"`    // self-hosted hbbs public key
-	Notes      string `json:"notes,omitempty"`
-	CreatedAt  string `json:"created_at"`
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	Token     string `json:"token"`
+	Notes     string `json:"notes,omitempty"`
+	CreatedAt string `json:"created_at"`
 }
 
 type data struct {

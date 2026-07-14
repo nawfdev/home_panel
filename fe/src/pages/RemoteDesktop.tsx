@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
@@ -8,16 +9,17 @@ import { PlusIcon, TrashIcon, PencilIcon, ComputerDesktopIcon } from "@heroicons
 interface Device {
   id: number;
   name: string;
-  rustdesk_id: string;
-  server?: string;
-  key?: string;
+  host: string;
+  port: number;
+  token: string;
   notes?: string;
 }
 
-const emptyForm = { name: "", rustdesk_id: "", server: "", key: "", notes: "" };
+const emptyForm = { name: "", host: "", port: "8791", token: "", notes: "" };
 
 export function RemoteDesktop() {
   const { show } = useToast();
+  const navigate = useNavigate();
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Device | null>(null);
@@ -47,22 +49,23 @@ export function RemoteDesktop() {
 
   function openEdit(d: Device) {
     setEditing(d);
-    setForm({ name: d.name, rustdesk_id: d.rustdesk_id, server: d.server ?? "", key: d.key ?? "", notes: d.notes ?? "" });
+    setForm({ name: d.name, host: d.host, port: String(d.port), token: d.token, notes: d.notes ?? "" });
     setFormOpen(true);
   }
 
   async function save() {
-    if (!form.name || !form.rustdesk_id) {
-      show("Name and RustDesk ID are required", "warning");
+    if (!form.name || !form.host || !form.port || !form.token) {
+      show("Name, host, port, and token are required", "warning");
       return;
     }
     setSaving(true);
     try {
+      const body = { ...form, port: parseInt(form.port, 10) };
       if (editing) {
-        await api(`/remote-desktop/${editing.id}`, { method: "PUT", body: JSON.stringify(form) });
+        await api(`/remote-desktop/${editing.id}`, { method: "PUT", body: JSON.stringify(body) });
         show("Device updated", "success");
       } else {
-        await api("/remote-desktop", { method: "POST", body: JSON.stringify(form) });
+        await api("/remote-desktop", { method: "POST", body: JSON.stringify(body) });
         show("Device added", "success");
       }
       setFormOpen(false);
@@ -86,20 +89,13 @@ export function RemoteDesktop() {
     }
   }
 
-  function connectUri(d: Device) {
-    if (!d.server) return `rustdesk://${d.rustdesk_id}`;
-    const params = new URLSearchParams({ server: d.server });
-    if (d.key) params.set("key", d.key);
-    return `rustdesk://${d.rustdesk_id}?${params.toString()}`;
-  }
-
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-100">Remote Desktop</h2>
           <p className="text-gray-500 text-sm mt-1">
-            Control a LAN device's mouse and keyboard via a self-hosted RustDesk relay
+            Control a LAN device's mouse and keyboard via the remoteagent binary
           </p>
         </div>
         <button className="btn-primary" onClick={openAdd}>
@@ -112,7 +108,7 @@ export function RemoteDesktop() {
           <p className="text-sm text-gray-500">Loading...</p>
         ) : devices.length === 0 ? (
           <p className="text-sm text-gray-500">
-            No devices yet. Install RustDesk on the target machine, set a permanent password, then add it here.
+            No devices yet. Run remoteagent.exe on the target machine, then add it here with its LAN IP, port and token.
           </p>
         ) : (
           <div className="space-y-3">
@@ -123,16 +119,13 @@ export function RemoteDesktop() {
                     <ComputerDesktopIcon className="w-4 h-4 text-gray-500 shrink-0" />
                     <p className="font-semibold text-sm text-gray-100 truncate">{d.name}</p>
                   </div>
-                  <span className="status-badge shrink-0 bg-white/10 text-gray-400 font-mono">{d.rustdesk_id}</span>
+                  <span className="status-badge shrink-0 bg-white/10 text-gray-400 font-mono">
+                    {d.host}:{d.port}
+                  </span>
                 </div>
-                {(d.server || d.notes) && (
-                  <div className="flex gap-3 text-xs text-gray-500 mb-3">
-                    {d.server && <span className="font-mono">{d.server}</span>}
-                    {d.notes && <span className="truncate">{d.notes}</span>}
-                  </div>
-                )}
+                {d.notes && <p className="text-xs text-gray-500 mb-3 truncate">{d.notes}</p>}
                 <div className="flex gap-2 flex-wrap">
-                  <button className="btn-primary" onClick={() => { window.location.href = connectUri(d); }}>
+                  <button className="btn-primary" onClick={() => navigate(`/remote-desktop/${d.id}/view`)}>
                     <ComputerDesktopIcon className="w-4 h-4 inline mr-1.5" />Connect
                   </button>
                   <button className="btn-secondary" onClick={() => openEdit(d)}>
@@ -161,30 +154,30 @@ export function RemoteDesktop() {
               />
             </div>
             <div>
-              <label className="block text-gray-500 text-xs mb-1.5">RustDesk ID</label>
+              <label className="block text-gray-500 text-xs mb-1.5">Host (LAN IP)</label>
               <input
-                value={form.rustdesk_id}
-                onChange={(e) => setForm((f) => ({ ...f, rustdesk_id: e.target.value }))}
+                value={form.host}
+                onChange={(e) => setForm((f) => ({ ...f, host: e.target.value }))}
                 className="input-field w-full font-mono"
-                placeholder="123456789"
+                placeholder="192.168.1.20"
               />
             </div>
             <div>
-              <label className="block text-gray-500 text-xs mb-1.5">Self-hosted server (optional)</label>
+              <label className="block text-gray-500 text-xs mb-1.5">Port</label>
               <input
-                value={form.server}
-                onChange={(e) => setForm((f) => ({ ...f, server: e.target.value }))}
+                value={form.port}
+                onChange={(e) => setForm((f) => ({ ...f, port: e.target.value }))}
                 className="input-field w-full font-mono"
-                placeholder="192.168.1.10:21116"
+                placeholder="8791"
               />
             </div>
             <div>
-              <label className="block text-gray-500 text-xs mb-1.5">Server key (optional)</label>
+              <label className="block text-gray-500 text-xs mb-1.5">Token</label>
               <input
-                value={form.key}
-                onChange={(e) => setForm((f) => ({ ...f, key: e.target.value }))}
+                value={form.token}
+                onChange={(e) => setForm((f) => ({ ...f, token: e.target.value }))}
                 className="input-field w-full font-mono"
-                placeholder="hbbs public key"
+                placeholder="printed by remoteagent.exe on first run"
               />
             </div>
             <div>
@@ -193,7 +186,7 @@ export function RemoteDesktop() {
                 value={form.notes}
                 onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
                 className="input-field w-full"
-                placeholder="Password stays in RustDesk, not stored here"
+                placeholder="e.g. living room laptop"
               />
             </div>
           </div>
