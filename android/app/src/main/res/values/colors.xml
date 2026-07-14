@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Mirrors fe/src/index.css's neutral/zinc dark theme so the app and web panel match. -->
+    <color name="bg">#0A0A0B</color>
+    <color name="panel">#131316</color>
+    <color name="panel_border">#1AFFFFFF</color>
+
+    <color name="input_bg">#08FFFFFF</color>
+    <color name="input_border">#27272A</color>
+
+    <color name="text_primary">#FAFAFA</color>
+    <color name="text_secondary">#D4D4D8</color>
+    <color name="text_muted">#A1A1AA</color>
+    <color name="text_faint">#71717A</color>
+
+    <color name="btn_primary_bg">#FAFAFA</color>
+    <color name="btn_primary_text">#0E0E10</color>
+    <color name="btn_secondary_bg">#0FFFFFFF</color>
+    <color name="btn_secondary_text">#F4F4F5</color>
+    <color name="btn_danger_bg">#1FEF4444</color>
+    <color name="btn_danger_text">#F87171</color>
+
+    <color name="status_green_bg">#2622C55E</color>
+    <color name="status_green_text">#4ADE80</color>
+    <color name="status_yellow_bg">#26EAB308</color>
+    <color name="status_yellow_text">#FACC15</color>
+    <color name="status_red_bg">#26EF4444</color>
+    <color name="status_red_text">#F87171</color>
+</resources>
