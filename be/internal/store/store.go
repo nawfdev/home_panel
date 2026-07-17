@@ -16,11 +16,37 @@ import (
 )
 
 type User struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Role     string `json:"role"`
+	ID        int    `json:"id"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+	Role      string `json:"role"`
+	TokenHash string `json:"token_hash,omitempty"`
+	CreatedAt string `json:"created_at,omitempty"`
 }
+
+// Role is an admin-configurable preset of which feature keys its members may
+// access. "admin" is seeded Locked and is also treated as a superuser
+// independent of its Features list (see RequireFeature), so it stays fully
+// capable even if its row is ever edited or deleted.
+type Role struct {
+	ID       string   `json:"id"`
+	Label    string   `json:"label"`
+	Features []string `json:"features"`
+	Locked   bool     `json:"locked"`
+}
+
+// FeatureKeys are the panel modules a role can be granted. "dashboard" is
+// intentionally absent — every authenticated user always sees it. Settings'
+// advanced tabs and user/role management are hardcoded admin-only and never
+// appear here, so they can never be handed out via a role checkbox.
+var FeatureKeys = []string{
+	"tunnel", "cloudflare", "network", "docker", "pm2", "services", "logs",
+	"terminal", "remote-desktop", "files", "projects", "ai-gateway", "telegram", "movies",
+}
+
+// DefaultMemberFeatures is the conservative starting grant for the built-in
+// "member" role; admins can widen or narrow it later from Settings.
+var DefaultMemberFeatures = []string{"movies", "files", "network", "remote-desktop"}
 
 type Project struct {
 	ID        int    `json:"id"`
@@ -49,6 +75,7 @@ type RemoteDevice struct {
 
 type data struct {
 	Users         []User                 `json:"users"`
+	Roles         []Role                 `json:"roles"`
 	Projects      []Project              `json:"projects"`
 	RemoteDevices []RemoteDevice         `json:"remote_devices"`
 	Settings      map[string]interface{} `json:"settings"`
@@ -77,6 +104,15 @@ func Open(file string) (*Store, error) {
 			s.d.Settings = map[string]interface{}{}
 		}
 		_ = os.Chmod(file, 0o600) // tighten perms on files created before this was enforced
+	}
+	if len(s.d.Roles) == 0 {
+		s.d.Roles = []Role{
+			{ID: "admin", Label: "Admin", Features: append([]string{}, FeatureKeys...), Locked: true},
+			{ID: "member", Label: "Member", Features: append([]string{}, DefaultMemberFeatures...), Locked: false},
+		}
+		if err := s.save(); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }
@@ -109,7 +145,7 @@ func (s *Store) InitDefaultAdmin(username, password string) error {
 	if username == "" {
 		username = "admin"
 	}
-	s.d.Users = []User{{ID: 1, Username: username, Password: hashed, Role: "admin"}}
+	s.d.Users = []User{{ID: 1, Username: username, Password: hashed, Role: "admin", CreatedAt: time.Now().UTC().Format(time.RFC3339)}}
 	return s.save()
 }
 

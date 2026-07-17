@@ -84,6 +84,8 @@ func New(d Deps) http.Handler {
 	gatewayAuth := &handlers.GatewayAuth{Svc: d.AiGateway}
 	moviesH := &handlers.Movies{Svc: d.Movies, Torrents: d.TorrentSearch}
 	subtitlesH := &handlers.Subtitles{}
+	usersH := &handlers.Users{Store: d.Store}
+	rolesH := &handlers.Roles{Store: d.Store}
 
 	// Rate limiters mirror express-rate-limit windows from server.js.
 	apiLimiter := httpx.NewRateLimiter(15*time.Minute, 500, false,
@@ -91,7 +93,7 @@ func New(d Deps) http.Handler {
 	loginLimiter := httpx.NewRateLimiter(15*time.Minute, 10, true,
 		"Too many login attempts, please try again later.")
 
-	r.Get("/terminal", d.Terminal.Handler)
+	r.With(auth.RequireAuth, auth.RequireFeature("terminal")).Get("/terminal", d.Terminal.Handler)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Use(apiLimiter.Middleware)
@@ -112,7 +114,7 @@ func New(d Deps) http.Handler {
 		})
 
 		api.Route("/services", func(sr chi.Router) {
-			sr.Use(auth.RequireAuth)
+			sr.Use(auth.RequireAuth, auth.RequireFeature("services"))
 			sr.Get("/", services.List)
 			sr.Post("/{name}/start", services.Start)
 			sr.Post("/{name}/stop", services.Stop)
@@ -128,8 +130,24 @@ func New(d Deps) http.Handler {
 
 		api.With(auth.RequireAuth).Get("/dashboard", dashboardH.Index)
 
+		api.Route("/users", func(ur chi.Router) {
+			ur.Use(auth.RequireAuth, auth.RequireRole("admin"))
+			ur.Get("/", usersH.List)
+			ur.Post("/", usersH.Create)
+			ur.Put("/{id}", usersH.Update)
+			ur.Delete("/{id}", usersH.Delete)
+		})
+
+		api.Route("/roles", func(rr chi.Router) {
+			rr.Use(auth.RequireAuth, auth.RequireRole("admin"))
+			rr.Get("/", rolesH.List)
+			rr.Post("/", rolesH.Create)
+			rr.Put("/{id}", rolesH.Update)
+			rr.Delete("/{id}", rolesH.Delete)
+		})
+
 		api.Route("/tunnel", func(tr chi.Router) {
-			tr.Use(auth.RequireAuth)
+			tr.Use(auth.RequireAuth, auth.RequireFeature("tunnel"))
 			tr.Get("/status", tunnelH.Status)
 			tr.Get("/list", tunnelH.List)
 			tr.Post("/create", tunnelH.Create)
@@ -148,7 +166,7 @@ func New(d Deps) http.Handler {
 		})
 
 		api.Route("/projects", func(pr chi.Router) {
-			pr.Use(auth.RequireAuth)
+			pr.Use(auth.RequireAuth, auth.RequireFeature("projects"))
 			pr.Get("/", projectsH.List)
 			pr.Post("/", projectsH.Create)
 			pr.Get("/{id}", projectsH.Get)
@@ -161,7 +179,7 @@ func New(d Deps) http.Handler {
 		})
 
 		api.Route("/remote-desktop", func(rr chi.Router) {
-			rr.Use(auth.RequireAuth)
+			rr.Use(auth.RequireAuth, auth.RequireFeature("remote-desktop"))
 			rr.Get("/", remoteDesktopH.List)
 			rr.Post("/", remoteDesktopH.Create)
 			rr.Get("/{id}", remoteDesktopH.Get)
@@ -170,7 +188,7 @@ func New(d Deps) http.Handler {
 		})
 
 		api.Route("/network", func(nr chi.Router) {
-			nr.Use(auth.RequireAuth)
+			nr.Use(auth.RequireAuth, auth.RequireFeature("network"))
 			nr.Get("/info", networkH.Info)
 			nr.Get("/public-ip", networkH.PublicIP)
 			nr.Get("/interfaces", networkH.Interfaces)
@@ -178,14 +196,14 @@ func New(d Deps) http.Handler {
 		})
 
 		api.Route("/update", func(ur chi.Router) {
-			ur.Use(auth.RequireAuth)
+			ur.Use(auth.RequireAuth, auth.RequireRole("admin"))
 			ur.Get("/check", updateH.Check)
 			ur.Get("/info", updateH.Info)
 			ur.Post("/apply", updateH.Apply)
 		})
 
 		api.Route("/settings", func(sr chi.Router) {
-			sr.Use(auth.RequireAuth)
+			sr.Use(auth.RequireAuth, auth.RequireRole("admin"))
 			sr.Get("/cloudflare", settingsH.GetCloudflare)
 			sr.Post("/cloudflare", settingsH.SaveCloudflare)
 			sr.Get("/telegram", settingsH.GetTelegram)
@@ -202,14 +220,14 @@ func New(d Deps) http.Handler {
 		})
 
 		api.Route("/telegram", func(tr chi.Router) {
-			tr.Use(auth.RequireAuth)
+			tr.Use(auth.RequireAuth, auth.RequireFeature("telegram"))
 			tr.Get("/status", telegramH.Status)
 			tr.Post("/test", telegramH.Test)
 			tr.Post("/send", telegramH.Send)
 		})
 
 		api.Route("/cloudflare", func(cr chi.Router) {
-			cr.Use(auth.RequireAuth)
+			cr.Use(auth.RequireAuth, auth.RequireFeature("cloudflare"))
 			cr.Get("/status", cloudflareH.Status)
 			cr.Get("/tunnels", cloudflareH.ListTunnels)
 			cr.Get("/zones", cloudflareH.ListZones)
@@ -220,7 +238,7 @@ func New(d Deps) http.Handler {
 		})
 
 		api.Route("/ai-gateway", func(gr chi.Router) {
-			gr.Use(auth.RequireAuth)
+			gr.Use(auth.RequireAuth, auth.RequireFeature("ai-gateway"))
 			gr.Get("/providers", aigatewayH.ListProviders)
 			gr.Post("/providers", aigatewayH.CreateProvider)
 			gr.Put("/providers/{id}", aigatewayH.UpdateProvider)
@@ -238,20 +256,20 @@ func New(d Deps) http.Handler {
 		})
 
 		api.Route("/export", func(er chi.Router) {
-			er.Use(auth.RequireAuth)
+			er.Use(auth.RequireAuth, auth.RequireRole("admin"))
 			er.Get("/pm2/{name}", exportH.PM2)
 			er.Get("/docker/{id}", exportH.Docker)
 		})
 
 		api.Route("/logs", func(lr chi.Router) {
-			lr.Use(auth.RequireAuth)
+			lr.Use(auth.RequireAuth, auth.RequireFeature("logs"))
 			lr.Get("/sources", logsH.Sources)
 			lr.Get("/sources/{sourceId}/targets", logsH.Targets)
 			lr.Get("/sources/{sourceId}", logsH.Source)
 		})
 
 		api.Route("/pm2", func(pr chi.Router) {
-			pr.Use(auth.RequireAuth)
+			pr.Use(auth.RequireAuth, auth.RequireFeature("pm2"))
 			pr.Get("/processes", pm2H.Processes)
 			pr.Post("/start", pm2H.StartNew)
 			pr.Get("/processes/{name}", pm2H.Get)
@@ -264,7 +282,7 @@ func New(d Deps) http.Handler {
 		})
 
 		api.Route("/docker", func(dr chi.Router) {
-			dr.Use(auth.RequireAuth)
+			dr.Use(auth.RequireAuth, auth.RequireFeature("docker"))
 			dr.Get("/containers", dockerH.Containers)
 			dr.Post("/run", dockerH.Run)
 			dr.Delete("/containers/{id}", dockerH.Remove)
@@ -278,7 +296,7 @@ func New(d Deps) http.Handler {
 		})
 
 		api.Route("/files", func(fr chi.Router) {
-			fr.Use(auth.RequireAuth)
+			fr.Use(auth.RequireAuth, auth.RequireFeature("files"))
 			fr.Post("/list", filesH.List)
 			fr.Post("/read", filesH.Read)
 			fr.Post("/write", filesH.Write)
@@ -296,7 +314,7 @@ func New(d Deps) http.Handler {
 		// files land under the SafePath allowlist, so they reuse the /files
 		// player, streaming and share endpoints above with no extra wiring.
 		api.Route("/movies", func(mr chi.Router) {
-			mr.Use(auth.RequireAuth)
+			mr.Use(auth.RequireAuth, auth.RequireFeature("movies"))
 			mr.Post("/search", moviesH.Search)
 			mr.Post("/detail", moviesH.Detail)
 			mr.Post("/download", moviesH.StartDownload)

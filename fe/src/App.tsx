@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { canAccessPath } from "./lib/features";
 import { ToastProvider } from "./context/ToastContext";
 import { AppLayout } from "./components/layout/AppLayout";
 import { Login } from "./pages/Login";
@@ -37,6 +38,19 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+// Client-side defense in depth for the RBAC feature grant — real enforcement
+// is server-side (RequireFeature middleware). Routes with no gating entry in
+// featureForPath (dashboard, settings) always pass through.
+function RequireFeature({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const location = useLocation();
+  if (!user) return null; // RequireAuth wraps this and handles the redirect
+  if (!canAccessPath(user.features, user.role, location.pathname)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+  return <>{children}</>;
+}
+
 function AppRoutes() {
   const { user, isLoading } = useAuth();
 
@@ -51,25 +65,25 @@ function AppRoutes() {
         }
       >
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/tunnel" element={<Tunnel />} />
-        <Route path="/cloudflare" element={<Cloudflare />} />
-        <Route path="/telegram" element={<Telegram />} />
-        <Route path="/network" element={<Network />} />
-        <Route path="/docker" element={<Docker />} />
-        <Route path="/pm2" element={<PM2 />} />
-        <Route path="/logs" element={<Logs />} />
-        <Route path="/services" element={<Services />} />
-        <Route path="/files" element={<Files />} />
-        <Route path="/movies" element={<Movies />} />
-        <Route path="/downloads" element={<Downloads />} />
-        <Route path="/stream" element={<Stream />} />
-        <Route path="/movies/watch/:id" element={<Watch />} />
-        <Route path="/terminal" element={<Terminal />} />
-        <Route path="/remote-desktop" element={<RemoteDesktop />} />
-        <Route path="/remote-desktop/:id/view" element={<RemoteDesktopView />} />
-        <Route path="/projects" element={<Projects />} />
+        <Route path="/tunnel" element={<RequireFeature><Tunnel /></RequireFeature>} />
+        <Route path="/cloudflare" element={<RequireFeature><Cloudflare /></RequireFeature>} />
+        <Route path="/telegram" element={<RequireFeature><Telegram /></RequireFeature>} />
+        <Route path="/network" element={<RequireFeature><Network /></RequireFeature>} />
+        <Route path="/docker" element={<RequireFeature><Docker /></RequireFeature>} />
+        <Route path="/pm2" element={<RequireFeature><PM2 /></RequireFeature>} />
+        <Route path="/logs" element={<RequireFeature><Logs /></RequireFeature>} />
+        <Route path="/services" element={<RequireFeature><Services /></RequireFeature>} />
+        <Route path="/files" element={<RequireFeature><Files /></RequireFeature>} />
+        <Route path="/movies" element={<RequireFeature><Movies /></RequireFeature>} />
+        <Route path="/downloads" element={<RequireFeature><Downloads /></RequireFeature>} />
+        <Route path="/stream" element={<RequireFeature><Stream /></RequireFeature>} />
+        <Route path="/movies/watch/:id" element={<RequireFeature><Watch /></RequireFeature>} />
+        <Route path="/terminal" element={<RequireFeature><Terminal /></RequireFeature>} />
+        <Route path="/remote-desktop" element={<RequireFeature><RemoteDesktop /></RequireFeature>} />
+        <Route path="/remote-desktop/:id/view" element={<RequireFeature><RemoteDesktopView /></RequireFeature>} />
+        <Route path="/projects" element={<RequireFeature><Projects /></RequireFeature>} />
         <Route path="/system" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/ai-gateway" element={<AiGateway />} />
+        <Route path="/ai-gateway" element={<RequireFeature><AiGateway /></RequireFeature>} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>
