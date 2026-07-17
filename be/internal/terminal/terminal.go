@@ -44,7 +44,11 @@ func New(sessions *session.Manager) *Service {
 }
 
 func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
-	user, ok := s.sessions.Current(r)
+	// RequireAuth (see server.go's route wiring) already resolved the caller
+	// via cookie OR bearer token and stashed it on the request context —
+	// checking the cookie again here would reject bearer-token clients
+	// (Android) even though the middleware already authorized them.
+	user, ok := session.FromContext(r.Context())
 	if !ok {
 		conn, err := s.upgrader.Upgrade(w, r, nil)
 		if err == nil {
