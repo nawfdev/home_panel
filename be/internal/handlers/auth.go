@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"slices"
+	"strings"
 
 	"github.com/nawfdev/home-panel/internal/httpx"
 	"github.com/nawfdev/home-panel/internal/session"
@@ -18,18 +20,75 @@ type Auth struct {
 	Sessions *session.Manager
 }
 
-// RequireAuth is the middleware equivalent of isAuthenticated in auth.js.
+// RequireAuth accepts either the browser's session cookie or a native
+// client's `Authorization: Bearer <token>` header (issued at login — see
+// Login below), and stashes the resolved user on the request context so
+// every downstream handler/middleware uses session.FromContext regardless of
+// which auth method was used.
 func (a *Auth) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		u, ok := a.Sessions.Current(r)
-		if !ok {
-			log.Println("[Auth] Unauthorized - no session or user")
-			httpx.Error(w, http.StatusUnauthorized, "Unauthorized")
+		if u, ok := a.Sessions.Current(r); ok {
+			next.ServeHTTP(w, r.WithContext(session.WithUser(r.Context(), u)))
 			return
 		}
-		log.Printf("[Auth] Authenticated: userId=%d username=%s", u.ID, u.Username)
-		next.ServeHTTP(w, r)
+		if token, ok := bearerToken(r); ok {
+			if user, ok := a.Store.GetUserByToken(token); ok {
+				su := session.SessionUser{ID: user.ID, Username: user.Username, Role: user.Role}
+				next.ServeHTTP(w, r.WithContext(session.WithUser(r.Context(), su)))
+				return
+			}
+		}
+		log.Println("[Auth] Unauthorized - no session, cookie, or bearer token")
+		httpx.Error(w, http.StatusUnauthorized, "Unauthorized")
 	})
+}
+
+func bearerToken(r *http.Request) (string, bool) {
+	h := r.Header.Get("Authorization")
+	const prefix = "Bearer "
+	if !strings.HasPrefix(h, prefix) {
+		return "", false
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(h, prefix))
+	return token, token != ""
+}
+
+// RequireRole must run after RequireAuth. It rejects any caller whose role
+// doesn't exactly match, for admin-only surfaces like user/role management.
+func (a *Auth) RequireRole(role string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, ok := session.FromContext(r.Context())
+			if !ok || u.Role != role {
+				httpx.Error(w, http.StatusForbidden, "Forbidden")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireFeature must run after RequireAuth. The "admin" role always passes;
+// every other role is checked against its stored Role.Features.
+func (a *Auth) RequireFeature(key string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			u, ok := session.FromContext(r.Context())
+			if !ok {
+				httpx.Error(w, http.StatusUnauthorized, "Unauthorized")
+				return
+			}
+			if u.Role == "admin" {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if slices.Contains(a.Store.ResolveFeatures(u.Role), key) {
+				next.ServeHTTP(w, r)
+				return
+			}
+			httpx.Error(w, http.StatusForbidden, "Forbidden")
+		})
+	}
 }
 
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
@@ -55,10 +114,32 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusInternalServerError, "Login failed")
 		return
 	}
-	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "user": su})
+
+	// Also issue a bearer token so native clients (Android) can authenticate
+	// without a cookie jar. Browsers ignore this field.
+	token, err := a.Store.IssueUserToken(user.ID)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "Login failed")
+		return
+	}
+
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{
+		"success": true,
+		"user":    meResponse(a.Store, su),
+		"token":   token,
+	})
 }
 
 func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
+	// Not behind RequireAuth (logout is a no-op success even with a stale/no
+	// session), so resolve the caller directly instead of via request context.
+	if u, ok := a.Sessions.Current(r); ok {
+		_ = a.Store.ClearUserToken(u.ID)
+	} else if token, ok := bearerToken(r); ok {
+		if user, ok := a.Store.GetUserByToken(token); ok {
+			_ = a.Store.ClearUserToken(user.ID)
+		}
+	}
 	if err := a.Sessions.Logout(w, r); err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "Logout failed")
 		return
@@ -67,8 +148,20 @@ func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *Auth) Me(w http.ResponseWriter, r *http.Request) {
-	u, _ := a.Sessions.Current(r) // RequireAuth guarantees presence
-	httpx.JSON(w, http.StatusOK, map[string]interface{}{"user": u})
+	u, _ := session.FromContext(r.Context()) // RequireAuth guarantees presence
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{"user": meResponse(a.Store, u)})
+}
+
+// meResponse resolves the current feature grant alongside the user payload
+// so clients (browser + Android) know what to show without re-deriving role
+// logic themselves.
+func meResponse(s *store.Store, u session.SessionUser) map[string]interface{} {
+	return map[string]interface{}{
+		"id":       u.ID,
+		"username": u.Username,
+		"role":     u.Role,
+		"features": s.ResolveFeatures(u.Role),
+	}
 }
 
 func (a *Auth) ChangePassword(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +176,7 @@ func (a *Auth) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cur, _ := a.Sessions.Current(r)
+	cur, _ := session.FromContext(r.Context())
 	user, ok := a.Store.GetUserByID(cur.ID)
 	if !ok || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.CurrentPassword)) != nil {
 		httpx.Error(w, http.StatusUnauthorized, "Current password is incorrect")

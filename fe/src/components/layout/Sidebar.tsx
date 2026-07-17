@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { api } from "../../lib/api";
+import { canAccessPath } from "../../lib/features";
 import {
   HomeIcon,
   ArrowsRightLeftIcon,
@@ -103,9 +104,19 @@ function isGroup(item: NavEntry): item is NavGroup {
 }
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const location = useLocation();
   const [gitInfo, setGitInfo] = useState<{ branch?: string; commit?: string } | null>(null);
+
+  // Drop nav leaves the current user's role can't access; drop groups left
+  // with no visible children. Dashboard/Settings are always visible.
+  const visibleItems: NavEntry[] = user
+    ? NAV_ITEMS.map((item) => {
+        if (!isGroup(item)) return item;
+        const children = item.children.filter((c) => canAccessPath(user.features, user.role, c.to));
+        return { ...item, children };
+      }).filter((item) => isGroup(item) ? item.children.length > 0 : canAccessPath(user.features, user.role, item.to))
+    : NAV_ITEMS;
   // Group whose children contain the active route auto-expands; the rest
   // start collapsed. Keyed by group label since groups have no route of
   // their own.
@@ -161,7 +172,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </div>
         </div>
         <nav className="p-3 overflow-y-auto flex-1">
-          {NAV_ITEMS.map((item) => {
+          {visibleItems.map((item) => {
             const Icon = item.icon;
             if (!isGroup(item)) {
               return (

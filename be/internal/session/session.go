@@ -5,6 +5,7 @@
 package session
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gorilla/sessions"
@@ -70,4 +71,19 @@ func (m *Manager) Current(r *http.Request) (SessionUser, bool) {
 	username, _ := s.Values["username"].(string)
 	role, _ := s.Values["role"].(string)
 	return SessionUser{ID: id, Username: username, Role: role}, true
+}
+
+// ctxKey holds the resolved SessionUser on the request context. RequireAuth
+// resolves the caller once (cookie session or bearer token, either path) and
+// stashes the result here so downstream handlers don't care which auth
+// method was used.
+type ctxKey struct{}
+
+func WithUser(ctx context.Context, u SessionUser) context.Context {
+	return context.WithValue(ctx, ctxKey{}, u)
+}
+
+func FromContext(ctx context.Context) (SessionUser, bool) {
+	u, ok := ctx.Value(ctxKey{}).(SessionUser)
+	return u, ok
 }

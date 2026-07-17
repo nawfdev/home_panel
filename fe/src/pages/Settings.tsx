@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
+import { useAuth } from "../context/AuthContext";
+import { FEATURE_KEYS, FEATURE_LABELS, type FeatureKey } from "../lib/features";
 import { Panel } from "../components/ui/Panel";
 import { Modal } from "../components/ui/Modal";
 import {
@@ -9,16 +11,33 @@ import {
   PuzzlePieceIcon,
   FolderIcon,
   ArrowPathIcon,
+  UsersIcon,
+  TrashIcon,
 } from "@heroicons/react/24/outline";
 
-type Tab = "account" | "integrations" | "paths" | "updates";
+type Tab = "account" | "users" | "integrations" | "paths" | "updates";
 
-const TABS: { id: Tab; label: string; icon: typeof LockClosedIcon }[] = [
+const TABS: { id: Tab; label: string; icon: typeof LockClosedIcon; adminOnly?: boolean }[] = [
   { id: "account", label: "Account", icon: LockClosedIcon },
-  { id: "integrations", label: "Integrations", icon: PuzzlePieceIcon },
-  { id: "paths", label: "Service paths", icon: FolderIcon },
-  { id: "updates", label: "Updates", icon: ArrowPathIcon },
+  { id: "users", label: "Users", icon: UsersIcon, adminOnly: true },
+  { id: "integrations", label: "Integrations", icon: PuzzlePieceIcon, adminOnly: true },
+  { id: "paths", label: "Service paths", icon: FolderIcon, adminOnly: true },
+  { id: "updates", label: "Updates", icon: ArrowPathIcon, adminOnly: true },
 ];
+
+interface UserDTO {
+  id: number;
+  username: string;
+  role: string;
+  created_at?: string;
+}
+
+interface RoleDTO {
+  id: string;
+  label: string;
+  features: string[];
+  locked: boolean;
+}
 
 interface UpdateCheck {
   error?: string;
@@ -32,7 +51,159 @@ interface UpdateCheck {
 
 export function Settings() {
   const { show } = useToast();
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === "admin";
   const [tab, setTab] = useState<Tab>("account");
+
+  const [familyUsers, setFamilyUsers] = useState<UserDTO[]>([]);
+  const [roles, setRoles] = useState<RoleDTO[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(false);
+
+  const [newUsername, setNewUsername] = useState("");
+  const [newUserPassword, setNewUserPassword] = useState("");
+  const [newUserRole, setNewUserRole] = useState("member");
+  const [creatingUser, setCreatingUser] = useState(false);
+
+  const [resetPasswordUser, setResetPasswordUser] = useState<UserDTO | null>(null);
+  const [resetPasswordValue, setResetPasswordValue] = useState("");
+  const [resettingPassword, setResettingPassword] = useState(false);
+
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState<UserDTO | null>(null);
+  const [confirmDeleteRole, setConfirmDeleteRole] = useState<RoleDTO | null>(null);
+
+  const [newRoleId, setNewRoleId] = useState("");
+  const [newRoleLabel, setNewRoleLabel] = useState("");
+  const [creatingRole, setCreatingRole] = useState(false);
+  const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isAdmin || tab !== "users") return;
+    setLoadingUsers(true);
+    Promise.all([
+      api<UserDTO[]>("/users"),
+      api<{ roles: RoleDTO[]; featureKeys: string[] }>("/roles"),
+    ])
+      .then(([u, r]) => {
+        setFamilyUsers(u);
+        setRoles(r.roles);
+      })
+      .catch((err) => show(err instanceof Error ? err.message : "Failed to load users", "error"))
+      .finally(() => setLoadingUsers(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, tab]);
+
+  async function createUser() {
+    if (!newUsername || !newUserPassword) {
+      show("Username and password required", "warning");
+      return;
+    }
+    setCreatingUser(true);
+    try {
+      const created = await api<UserDTO>("/users", {
+        method: "POST",
+        body: JSON.stringify({ username: newUsername, password: newUserPassword, role: newUserRole }),
+      });
+      setFamilyUsers((prev) => [...prev, created]);
+      setNewUsername("");
+      setNewUserPassword("");
+      show(`${created.username} created`, "success");
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to create user", "error");
+    } finally {
+      setCreatingUser(false);
+    }
+  }
+
+  async function changeUserRole(u: UserDTO, role: string) {
+    try {
+      const updated = await api<UserDTO>(`/users/${u.id}`, { method: "PUT", body: JSON.stringify({ role }) });
+      setFamilyUsers((prev) => prev.map((x) => (x.id === u.id ? updated : x)));
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to change role", "error");
+    }
+  }
+
+  async function submitResetPassword() {
+    if (!resetPasswordUser || !resetPasswordValue) return;
+    setResettingPassword(true);
+    try {
+      await api(`/users/${resetPasswordUser.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ newPassword: resetPasswordValue }),
+      });
+      show(`Password reset for ${resetPasswordUser.username}`, "success");
+      setResetPasswordUser(null);
+      setResetPasswordValue("");
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to reset password", "error");
+    } finally {
+      setResettingPassword(false);
+    }
+  }
+
+  async function submitDeleteUser() {
+    if (!confirmDeleteUser) return;
+    try {
+      await api(`/users/${confirmDeleteUser.id}`, { method: "DELETE" });
+      setFamilyUsers((prev) => prev.filter((x) => x.id !== confirmDeleteUser.id));
+      show(`${confirmDeleteUser.username} removed`, "success");
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to delete user", "error");
+    } finally {
+      setConfirmDeleteUser(null);
+    }
+  }
+
+  async function createRole() {
+    if (!newRoleId || !newRoleLabel) {
+      show("Role id and label required", "warning");
+      return;
+    }
+    setCreatingRole(true);
+    try {
+      const created = await api<RoleDTO>("/roles", {
+        method: "POST",
+        body: JSON.stringify({ id: newRoleId, label: newRoleLabel, features: [] }),
+      });
+      setRoles((prev) => [...prev, created]);
+      setNewRoleId("");
+      setNewRoleLabel("");
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to create role", "error");
+    } finally {
+      setCreatingRole(false);
+    }
+  }
+
+  async function toggleRoleFeature(role: RoleDTO, key: FeatureKey) {
+    const features = role.features.includes(key)
+      ? role.features.filter((f) => f !== key)
+      : [...role.features, key];
+    setSavingRoleId(role.id);
+    try {
+      const updated = await api<RoleDTO>(`/roles/${role.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ features }),
+      });
+      setRoles((prev) => prev.map((r) => (r.id === role.id ? updated : r)));
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to update role", "error");
+    } finally {
+      setSavingRoleId(null);
+    }
+  }
+
+  async function submitDeleteRole() {
+    if (!confirmDeleteRole) return;
+    try {
+      await api(`/roles/${confirmDeleteRole.id}`, { method: "DELETE" });
+      setRoles((prev) => prev.filter((r) => r.id !== confirmDeleteRole.id));
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to delete role", "error");
+    } finally {
+      setConfirmDeleteRole(null);
+    }
+  }
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -371,7 +542,7 @@ export function Settings() {
       </div>
 
       <div className="tab-bar">
-        {TABS.map((t) => {
+        {TABS.filter((t) => !t.adminOnly || isAdmin).map((t) => {
           const Icon = t.icon;
           return (
             <button key={t.id} className={`tab-btn ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>
@@ -408,6 +579,146 @@ export function Settings() {
               {changingPassword ? "Changing..." : "Change password"}
             </button>
           </Panel>
+        )}
+
+        {tab === "users" && isAdmin && (
+          <div className="space-y-4">
+            <Panel title="Family accounts">
+              <p className="text-xs text-gray-500 mb-3">
+                Each account signs in on its own — on the web panel and, later, the Android app — and only sees the
+                features its role grants.
+              </p>
+              {loadingUsers ? (
+                <p className="text-sm text-gray-500">Loading...</p>
+              ) : (
+                <div className="space-y-2 mb-4">
+                  {familyUsers.map((u) => (
+                    <div key={u.id} className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
+                      <span className="text-sm text-gray-200 flex-1 truncate">{u.username}</span>
+                      <select
+                        value={u.role}
+                        onChange={(e) => changeUserRole(u, e.target.value)}
+                        className="input-field !py-1 text-xs"
+                        disabled={u.id === currentUser?.id}
+                      >
+                        {roles.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        className="btn-secondary !py-1 !px-2 text-xs"
+                        onClick={() => {
+                          setResetPasswordUser(u);
+                          setResetPasswordValue("");
+                        }}
+                      >
+                        Reset password
+                      </button>
+                      <button
+                        className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition disabled:opacity-30"
+                        onClick={() => setConfirmDeleteUser(u)}
+                        disabled={u.id === currentUser?.id}
+                        title={u.id === currentUser?.id ? "Can't delete your own account" : "Delete account"}
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                <input
+                  value={newUsername}
+                  onChange={(e) => setNewUsername(e.target.value)}
+                  placeholder="Username"
+                  className="input-field flex-1 text-sm"
+                />
+                <input
+                  type="password"
+                  value={newUserPassword}
+                  onChange={(e) => setNewUserPassword(e.target.value)}
+                  placeholder="Password"
+                  className="input-field flex-1 text-sm"
+                />
+                <select
+                  value={newUserRole}
+                  onChange={(e) => setNewUserRole(e.target.value)}
+                  className="input-field text-sm"
+                >
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+                <button className="btn-primary text-sm disabled:opacity-60" onClick={createUser} disabled={creatingUser}>
+                  {creatingUser ? "Adding..." : "Add"}
+                </button>
+              </div>
+            </Panel>
+
+            <Panel title="Roles">
+              <p className="text-xs text-gray-500 mb-3">
+                What each role can see. Admin always has full access, regardless of this list.
+              </p>
+              <div className="space-y-3">
+                {roles.map((r) => (
+                  <div key={r.id} className="bg-white/5 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium text-gray-200">
+                        {r.label} {r.locked && <span className="text-xs text-gray-500">(full access, locked)</span>}
+                      </span>
+                      {!r.locked && (
+                        <button
+                          className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
+                          onClick={() => setConfirmDeleteRole(r)}
+                        >
+                          <TrashIcon className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                    {!r.locked && (
+                      <div className="flex flex-wrap gap-2">
+                        {FEATURE_KEYS.map((key) => (
+                          <label
+                            key={key}
+                            className="flex items-center gap-1.5 text-xs text-gray-400 bg-black/20 rounded-md px-2 py-1"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={r.features.includes(key)}
+                              disabled={savingRoleId === r.id}
+                              onChange={() => toggleRoleFeature(r, key)}
+                            />
+                            {FEATURE_LABELS[key]}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 mt-4">
+                <input
+                  value={newRoleId}
+                  onChange={(e) => setNewRoleId(e.target.value.trim().toLowerCase().replace(/\s+/g, "-"))}
+                  placeholder="role-id (e.g. kids)"
+                  className="input-field flex-1 text-sm font-mono"
+                />
+                <input
+                  value={newRoleLabel}
+                  onChange={(e) => setNewRoleLabel(e.target.value)}
+                  placeholder="Label (e.g. Kids)"
+                  className="input-field flex-1 text-sm"
+                />
+                <button className="btn-secondary text-sm disabled:opacity-60" onClick={createRole} disabled={creatingRole}>
+                  {creatingRole ? "Adding..." : "Add role"}
+                </button>
+              </div>
+            </Panel>
+          </div>
         )}
 
         {tab === "integrations" && (
@@ -679,6 +990,65 @@ export function Settings() {
           </div>
         )}
       </div>
+
+      {resetPasswordUser && (
+        <Modal title={`Reset password for ${resetPasswordUser.username}`} onClose={() => setResetPasswordUser(null)}>
+          <input
+            type="password"
+            value={resetPasswordValue}
+            onChange={(e) => setResetPasswordValue(e.target.value)}
+            placeholder="New password"
+            className="input-field w-full"
+            autoFocus
+          />
+          <div className="flex gap-2 mt-5">
+            <button
+              className="btn-primary flex-1 disabled:opacity-60"
+              onClick={submitResetPassword}
+              disabled={resettingPassword || !resetPasswordValue}
+            >
+              {resettingPassword ? "Saving..." : "Reset password"}
+            </button>
+            <button className="btn-secondary flex-1" onClick={() => setResetPasswordUser(null)}>
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {confirmDeleteUser && (
+        <Modal title="Remove account" onClose={() => setConfirmDeleteUser(null)}>
+          <p className="text-sm text-gray-300">
+            Remove <span className="font-semibold text-gray-100">{confirmDeleteUser.username}</span>? They'll be
+            signed out everywhere immediately.
+          </p>
+          <div className="flex gap-2 mt-5">
+            <button className="btn-danger flex-1" onClick={submitDeleteUser}>
+              Remove
+            </button>
+            <button className="btn-secondary flex-1" onClick={() => setConfirmDeleteUser(null)}>
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {confirmDeleteRole && (
+        <Modal title="Delete role" onClose={() => setConfirmDeleteRole(null)}>
+          <p className="text-sm text-gray-300">
+            Delete role <span className="font-semibold text-gray-100">{confirmDeleteRole.label}</span>? Any user
+            still assigned to it must be moved to a different role first.
+          </p>
+          <div className="flex gap-2 mt-5">
+            <button className="btn-danger flex-1" onClick={submitDeleteRole}>
+              Delete
+            </button>
+            <button className="btn-secondary flex-1" onClick={() => setConfirmDeleteRole(null)}>
+              Cancel
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {confirmRestart && (
         <Modal title="Restart panel" onClose={() => setConfirmRestart(false)}>
