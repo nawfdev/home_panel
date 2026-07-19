@@ -638,6 +638,123 @@ func (s *Service) Cancel(id string) error {
 	return nil
 }
 
+// Delete permanently removes a job: cancels it first if still in-flight,
+// then deletes its file(s) from disk and drops it from the job list. Unlike
+// Cancel (which is a no-op on a finished job), this is what the Stream
+// library's delete button uses to remove a finished movie for good.
+func (s *Service) Delete(id string) error {
+	s.mu.Lock()
+	job, ok := s.jobs[id]
+	s.mu.Unlock()
+	if !ok {
+		return errors.New("download not found")
+	}
+	if job.gid != "" {
+		_ = s.aria2.Remove(job.gid)
+	}
+	if job.cancel != nil {
+		job.cancel()
+	}
+	if job.Dest != "" {
+		_ = os.Remove(job.Dest)
+		_ = os.Remove(job.Dest + ".part")
+	}
+	removeLocalPoster(job.Poster)
+	s.mu.Lock()
+	delete(s.jobs, id)
+	s.mu.Unlock()
+	s.persist()
+	return nil
+}
+
+// removeLocalPoster deletes the on-disk file behind a poster URL previously
+// issued by ManualAdd/UploadThumbnail (an "/api/files/download?path=..."
+// link into MoviesDir()/.thumbs), so replacing or deleting a thumbnail
+// doesn't leave the old image orphaned on disk forever. Posters scraped from
+// pahe.ink are plain external image URLs, not this shape, so they're left
+// alone — the "path=" query check plus the .thumbs containment check below
+// both have to match before anything is removed.
+func removeLocalPoster(poster string) {
+	if poster == "" {
+		return
+	}
+	u, err := url.Parse(poster)
+	if err != nil {
+		return
+	}
+	p := u.Query().Get("path")
+	if p == "" {
+		return
+	}
+	dir, err := MoviesDir()
+	if err != nil {
+		return
+	}
+	thumbsDir := filepath.Join(dir, ".thumbs") + string(filepath.Separator)
+	if !strings.HasPrefix(filepath.Clean(p)+string(filepath.Separator), thumbsDir) {
+		return
+	}
+	_ = os.Remove(p)
+}
+
+// Update edits a job's title and/or poster in place, leaving nil fields
+// unchanged; when poster changes, the previous local thumbnail file (if any)
+// is deleted so repeated edits don't accumulate orphaned images. It never
+// touches the underlying video file.
+func (s *Service) Update(id string, title, poster *string) (*Job, error) {
+	s.mu.Lock()
+	job, ok := s.jobs[id]
+	s.mu.Unlock()
+	if !ok {
+		return nil, errors.New("download not found")
+	}
+	var oldPoster string
+	s.set(job, func(j *Job) {
+		if title != nil {
+			j.Title = *title
+		}
+		if poster != nil {
+			oldPoster = j.Poster
+			j.Poster = *poster
+		}
+	})
+	if poster != nil && oldPoster != *poster {
+		removeLocalPoster(oldPoster)
+	}
+	s.persist()
+	return job.snapshot(), nil
+}
+
+// AddManual registers an existing file already on disk (e.g. one just
+// uploaded, or dropped into the Movies folder by another tool) as a
+// finished library entry, so it shows up in Stream without going through
+// the download queue.
+func (s *Service) AddManual(title, dest, poster string) (*Job, error) {
+	info, err := os.Stat(dest)
+	if err != nil {
+		return nil, fmt.Errorf("file not found: %w", err)
+	}
+	if info.IsDir() {
+		return nil, errors.New("expected a file, not a directory")
+	}
+	s.mu.Lock()
+	s.seq++
+	job := &Job{
+		ID:         fmt.Sprintf("dl-%d-%d", time.Now().Unix(), s.seq),
+		Title:      title,
+		Dest:       dest,
+		Poster:     poster,
+		Status:     StatusDone,
+		Downloaded: info.Size(),
+		Total:      info.Size(),
+		CreatedAt:  time.Now(),
+	}
+	s.jobs[job.ID] = job
+	s.mu.Unlock()
+	s.persist()
+	return job.snapshot(), nil
+}
+
 // Pause suspends an in-flight aria2-backed download in place — the partial
 // file and gid stay alive, unlike Cancel. Only downloads handed to aria2 have
 // a gid; the fallback single-connection downloader has no pause primitive.

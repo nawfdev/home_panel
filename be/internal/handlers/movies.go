@@ -4,9 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	filesvc "github.com/nawfdev/home-panel/internal/files"
 	"github.com/nawfdev/home-panel/internal/httpx"
 	moviesvc "github.com/nawfdev/home-panel/internal/movies"
 	"github.com/nawfdev/home-panel/internal/torrentsearch"
@@ -19,6 +24,7 @@ import (
 type Movies struct {
 	Svc      *moviesvc.Service
 	Torrents *torrentsearch.Service
+	Files    *filesvc.Service
 }
 
 // Search browses/searches pahe.ink. Empty query => homepage.
@@ -105,6 +111,147 @@ func (m *Movies) ResumeDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Download resumed"})
+}
+
+// uniqueFilename prefixes a filename with a nanosecond timestamp so uploads
+// into the shared Movies/.thumbs directories never clobber an existing file
+// of the same name (e.g. two movies both shipping a "poster.jpg").
+func uniqueFilename(name string) string {
+	return fmt.Sprintf("%d-%s", time.Now().UnixNano(), filepath.Base(name))
+}
+
+// posterURLFor builds the authenticated download URL for a file the panel
+// just saved under the SafePath allowlist, reusing /files/download instead
+// of wiring up a second static file server.
+func posterURLFor(path string) string {
+	return "/api/files/download?path=" + url.QueryEscape(path)
+}
+
+// ManualAdd uploads a video file (and optional poster image) directly into
+// the Movies library and registers it as a finished job, without going
+// through the download queue — for files obtained outside the panel (USB
+// transfer, another download tool, etc).
+func (m *Movies) ManualAdd(w http.ResponseWriter, r *http.Request) {
+	maxBytes := m.Files.MaxUploadBytes()
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes+1024*1024)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "Upload failed or exceeds the size limit"})
+		return
+	}
+	title := strings.TrimSpace(r.FormValue("title"))
+	if title == "" {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "Title is required"})
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "No file uploaded"})
+		return
+	}
+	_ = file.Close()
+
+	dir, err := moviesvc.MoviesDir()
+	if err != nil {
+		httpx.JSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	header.Filename = uniqueFilename(header.Filename)
+	if err := m.Files.Upload(dir, header); err != nil {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	dest := filepath.Join(dir, header.Filename)
+
+	poster := ""
+	if pfile, pheader, perr := r.FormFile("poster"); perr == nil {
+		_ = pfile.Close()
+		thumbsDir := filepath.Join(dir, ".thumbs")
+		if mkErr := os.MkdirAll(thumbsDir, 0o755); mkErr == nil {
+			pheader.Filename = uniqueFilename(pheader.Filename)
+			if upErr := m.Files.Upload(thumbsDir, pheader); upErr == nil {
+				poster = posterURLFor(filepath.Join(thumbsDir, pheader.Filename))
+			}
+		}
+	}
+
+	job, err := m.Svc.AddManual(title, dest, poster)
+	if err != nil {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "job": job})
+}
+
+// DeleteLibraryItem permanently removes a job and its file. Unlike
+// CancelDownload (a no-op on a finished job), this works on any job and
+// deletes it from disk — what the Stream library's delete button uses.
+func (m *Movies) DeleteLibraryItem(w http.ResponseWriter, r *http.Request) {
+	if err := m.Svc.Delete(chi.URLParam(r, "id")); err != nil {
+		httpx.JSON(w, http.StatusNotFound, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Deleted"})
+}
+
+// UpdateLibraryItem renames a job's title. Used by Stream's edit dialog.
+func (m *Movies) UpdateLibraryItem(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Title string `json:"title"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "Title is required"})
+		return
+	}
+	job, err := m.Svc.Update(chi.URLParam(r, "id"), &title, nil)
+	if err != nil {
+		httpx.JSON(w, http.StatusNotFound, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "job": job})
+}
+
+// UploadThumbnail replaces a job's poster image. Used by Stream's edit
+// dialog.
+func (m *Movies) UploadThumbnail(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	maxBytes := m.Files.MaxUploadBytes()
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes+1024*1024)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "Upload failed or exceeds the size limit"})
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": "No file uploaded"})
+		return
+	}
+	_ = file.Close()
+
+	dir, err := moviesvc.MoviesDir()
+	if err != nil {
+		httpx.JSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	thumbsDir := filepath.Join(dir, ".thumbs")
+	if err := os.MkdirAll(thumbsDir, 0o755); err != nil {
+		httpx.JSON(w, http.StatusInternalServerError, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	header.Filename = uniqueFilename(id + "-" + header.Filename)
+	if err := m.Files.Upload(thumbsDir, header); err != nil {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	poster := posterURLFor(filepath.Join(thumbsDir, header.Filename))
+
+	job, err := m.Svc.Update(id, nil, &poster)
+	if err != nil {
+		httpx.JSON(w, http.StatusNotFound, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "job": job})
 }
 
 // TorrentSearch runs a query through the torrent-search-api sidecar (across
