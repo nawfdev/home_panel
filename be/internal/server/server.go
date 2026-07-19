@@ -82,7 +82,7 @@ func New(d Deps) http.Handler {
 	exportH := handlers.Export{}
 	aigatewayH := &handlers.AiGateway{Svc: d.AiGateway}
 	gatewayAuth := &handlers.GatewayAuth{Svc: d.AiGateway}
-	moviesH := &handlers.Movies{Svc: d.Movies, Torrents: d.TorrentSearch}
+	moviesH := &handlers.Movies{Svc: d.Movies, Torrents: d.TorrentSearch, Files: d.Files}
 	subtitlesH := &handlers.Subtitles{}
 	usersH := &handlers.Users{Store: d.Store}
 	rolesH := &handlers.Roles{Store: d.Store}
@@ -323,6 +323,13 @@ func New(d Deps) http.Handler {
 			mr.Delete("/downloads/{id}", moviesH.CancelDownload)
 			mr.Post("/downloads/{id}/pause", moviesH.PauseDownload)
 			mr.Post("/downloads/{id}/resume", moviesH.ResumeDownload)
+			// Stream library management: add a file manually, rename, re-thumbnail,
+			// or delete a finished movie outright (unlike CancelDownload above,
+			// which only stops an in-flight download).
+			mr.Post("/manual", moviesH.ManualAdd)
+			mr.Patch("/library/{id}", moviesH.UpdateLibraryItem)
+			mr.Post("/library/{id}/thumbnail", moviesH.UploadThumbnail)
+			mr.Delete("/library/{id}", moviesH.DeleteLibraryItem)
 			// Subtitle search/download (subsource.net) — saves sidecars next to a
 			// downloaded movie so the player's existing subtitle detection picks
 			// them up with no extra wiring.
