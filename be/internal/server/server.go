@@ -28,6 +28,7 @@ import (
 	"github.com/nawfdev/home-panel/internal/telegram"
 	termsvc "github.com/nawfdev/home-panel/internal/terminal"
 	"github.com/nawfdev/home-panel/internal/torrentsearch"
+	tvsvc "github.com/nawfdev/home-panel/internal/tv"
 	"github.com/nawfdev/home-panel/internal/tunnel"
 	"github.com/nawfdev/home-panel/internal/updater"
 )
@@ -51,6 +52,7 @@ type Deps struct {
 	RemoteDesktop *remotedesktop.Manager
 	Telegram      *telegram.Service
 	Terminal      *termsvc.Service
+	TV            *tvsvc.Service
 	Tunnel        *tunnel.Service
 	Updater       *updater.Updater
 }
@@ -84,6 +86,7 @@ func New(d Deps) http.Handler {
 	gatewayAuth := &handlers.GatewayAuth{Svc: d.AiGateway}
 	moviesH := &handlers.Movies{Svc: d.Movies, Torrents: d.TorrentSearch, Files: d.Files}
 	subtitlesH := &handlers.Subtitles{}
+	tvH := &handlers.TV{Svc: d.TV}
 	usersH := &handlers.Users{Store: d.Store}
 	rolesH := &handlers.Roles{Store: d.Store}
 
@@ -94,6 +97,13 @@ func New(d Deps) http.Handler {
 		"Too many login attempts, please try again later.")
 
 	r.With(auth.RequireAuth, auth.RequireFeature("terminal")).Get("/terminal", d.Terminal.Handler)
+	// Segment/manifest/license proxy for the Live TV player — high-frequency,
+	// non-JSON traffic, so it's mounted outside /api's apiLimiter like /terminal
+	// above and /share below. POST is needed too: Widevine license requests
+	// carry a binary challenge in the body.
+	tvProxy := r.With(auth.RequireAuth, auth.RequireFeature("tv"))
+	tvProxy.Get("/tv-proxy", tvH.Proxy)
+	tvProxy.Post("/tv-proxy", tvH.Proxy)
 
 	r.Route("/api", func(api chi.Router) {
 		api.Use(apiLimiter.Middleware)
@@ -339,6 +349,15 @@ func New(d Deps) http.Handler {
 			// aria2, tracked through the same Job list/SSE stream as above.
 			mr.Post("/torrents/search", moviesH.TorrentSearch)
 			mr.Post("/torrents/download", moviesH.StartTorrentDownload)
+		})
+
+		// Live TV: channel list parsed from dhanytv's public M3U playlists.
+		// Playback itself goes through /tv-proxy (mounted below, outside this
+		// group) since it needs to be exempt from apiLimiter — a single HLS/DASH
+		// stream alone can burn through the JSON-API request budget in minutes.
+		api.Route("/tv", func(tr chi.Router) {
+			tr.Use(auth.RequireAuth, auth.RequireFeature("tv"))
+			tr.Get("/channels", tvH.Channels)
 		})
 	})
 

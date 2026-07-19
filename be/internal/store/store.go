@@ -41,7 +41,7 @@ type Role struct {
 // appear here, so they can never be handed out via a role checkbox.
 var FeatureKeys = []string{
 	"tunnel", "cloudflare", "network", "docker", "pm2", "services", "logs",
-	"terminal", "remote-desktop", "files", "projects", "ai-gateway", "telegram", "movies",
+	"terminal", "remote-desktop", "files", "projects", "ai-gateway", "telegram", "movies", "tv",
 }
 
 // DefaultMemberFeatures is the conservative starting grant for the built-in

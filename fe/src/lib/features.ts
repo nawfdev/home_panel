@@ -15,6 +15,7 @@ export const FEATURE_KEYS = [
   "ai-gateway",
   "telegram",
   "movies",
+  "tv",
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -34,6 +35,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   "ai-gateway": "AI Gateway",
   telegram: "Telegram",
   movies: "Movies (incl. Downloads & Stream)",
+  tv: "Live TV",
 };
 
 // Route path -> gating feature key. Routes absent from this map (dashboard,
@@ -53,6 +55,7 @@ const ROUTE_FEATURE: Record<string, FeatureKey> = {
   "/downloads": "movies",
   "/stream": "movies",
   "/movies/watch": "movies",
+  "/tv": "tv",
   "/terminal": "terminal",
   "/remote-desktop": "remote-desktop",
   "/projects": "projects",

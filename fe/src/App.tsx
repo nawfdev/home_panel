@@ -19,6 +19,7 @@ import { Movies } from "./pages/Movies";
 import { Downloads } from "./pages/Downloads";
 import { Stream } from "./pages/Stream";
 import { Watch } from "./pages/Watch";
+import { TV } from "./pages/TV";
 import { Terminal } from "./pages/Terminal";
 import { Projects } from "./pages/Projects";
 import { RemoteDesktop } from "./pages/RemoteDesktop";
@@ -78,6 +79,7 @@ function AppRoutes() {
         <Route path="/downloads" element={<RequireFeature><Downloads /></RequireFeature>} />
         <Route path="/stream" element={<RequireFeature><Stream /></RequireFeature>} />
         <Route path="/movies/watch/:id" element={<RequireFeature><Watch /></RequireFeature>} />
+        <Route path="/tv" element={<RequireFeature><TV /></RequireFeature>} />
         <Route path="/terminal" element={<RequireFeature><Terminal /></RequireFeature>} />
         <Route path="/remote-desktop" element={<RequireFeature><RemoteDesktop /></RequireFeature>} />
         <Route path="/remote-desktop/:id/view" element={<RequireFeature><RemoteDesktopView /></RequireFeature>} />
