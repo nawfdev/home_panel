@@ -34,6 +34,7 @@ import (
 	"github.com/nawfdev/home-panel/internal/telegram"
 	"github.com/nawfdev/home-panel/internal/terminal"
 	"github.com/nawfdev/home-panel/internal/torrentsearch"
+	"github.com/nawfdev/home-panel/internal/tv"
 	"github.com/nawfdev/home-panel/internal/tunnel"
 	"github.com/nawfdev/home-panel/internal/updater"
 )
@@ -102,6 +103,7 @@ func main() {
 
 	mov := movies.New(filepath.Join(paths.Root, "data"))
 	ts := torrentsearch.New(paths)
+	tvSvc := tv.NewService()
 
 	handler := server.New(server.Deps{
 		AiGateway:     aigw,
@@ -111,6 +113,7 @@ func main() {
 		Files:         files.New(st),
 		Movies:        mov,
 		TorrentSearch: ts,
+		TV:            tvSvc,
 		Paths:         paths,
 		Store:         st,
 		Sessions:      sess,
