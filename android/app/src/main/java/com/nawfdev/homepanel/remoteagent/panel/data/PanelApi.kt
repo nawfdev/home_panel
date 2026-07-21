@@ -344,6 +344,17 @@ data class MovieStartDownloadResponse(val success: Boolean = false, val job: Job
 @Serializable
 data class MoviesListResponse(val success: Boolean = false, val jobs: List<Job> = emptyList())
 
+// --- Media info / subtitles (be/internal/handlers/files.go) ---
+
+@Serializable
+data class MediaInfoRequest(val path: String)
+
+@Serializable
+data class SubtitleTrack(val name: String = "", val label: String = "")
+
+@Serializable
+data class MediaInfoResponse(val success: Boolean = false, val type: String = "", val subtitles: List<SubtitleTrack> = emptyList())
+
 // --- Stream library (manual add + rename/re-thumbnail/delete of finished
 // downloads; see be/internal/handlers/movies.go) ---
 
@@ -529,4 +540,7 @@ interface PanelApi {
 
     @GET("tv/channels")
     suspend fun tvChannels(): ChannelsResponse
+
+    @POST("files/media-info")
+    suspend fun mediaInfo(@Body body: MediaInfoRequest): MediaInfoResponse
 }

@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LiveTv
@@ -74,7 +74,15 @@ fun TvScreen(apiClient: ApiClient, onUnauthorized: () -> Unit, onOpenChannel: (S
                     EmptyState("No channels match \"$query\"")
                 } else {
                     LazyColumn(modifier = Modifier.padding(top = 12.dp)) {
-                        items(filtered, key = { it.id }) { channel ->
+                        // Channel ids can collide — they're derived from
+                        // tvg-id/name slugs in aggregated M3U playlists that
+                        // often contain duplicate/backup entries (see
+                        // be/internal/tv/m3u.go). A bare `it.id` key made
+                        // Compose throw "Key ... was already used" as soon as
+                        // a colliding item scrolled into composition, which
+                        // crashed the whole screen. Index+id together are
+                        // always unique.
+                        itemsIndexed(filtered, key = { index, channel -> "$index:${channel.id}" }) { _, channel ->
                             Panel(
                                 modifier = Modifier
                                     .fillMaxWidth()
