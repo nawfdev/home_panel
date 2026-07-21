@@ -2,12 +2,8 @@ package com.nawfdev.homepanel.remoteagent.panel.ui.dashboard
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,6 +15,13 @@ import androidx.compose.ui.unit.dp
 import com.nawfdev.homepanel.remoteagent.panel.data.ApiClient
 import com.nawfdev.homepanel.remoteagent.panel.data.DashboardResponse
 import com.nawfdev.homepanel.remoteagent.panel.data.isUnauthorized
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ErrorText
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.InfoRow
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.LoadingState
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.MetricStrip
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.Panel
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ScreenHeader
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.SectionLabel
 import kotlin.math.roundToInt
 
 @Composable
@@ -34,39 +37,58 @@ fun DashboardScreen(apiClient: ApiClient, onUnauthorized: () -> Unit) {
         }
     }
 
-    Column(modifier = Modifier
-        .fillMaxSize()
-        .padding(16.dp)) {
-        Text("Dashboard", style = MaterialTheme.typography.headlineSmall)
+    val current = data
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+    ) {
+        item { ScreenHeader("Dashboard", "Live status of this machine") }
 
-        val current = data
         when {
-            error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 16.dp))
-            current == null -> CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
+            error != null -> item { ErrorText(error!!) }
+            current == null -> item { LoadingState() }
             else -> {
-                StatCard("Host", current.system.os.hostname.ifBlank { "-" })
-                StatCard("CPU", "${current.system.cpu.usage.roundToInt()}% (${current.system.cpu.cores} cores)")
-                StatCard(
-                    "Memory",
-                    "${current.system.memory.usagePercent.roundToInt()}% used " +
-                        "(${bytesToGb(current.system.memory.used)} / ${bytesToGb(current.system.memory.total)} GB)",
-                )
-                StatCard("Uptime", formatUptime(current.system.uptime))
-                StatCard("Tunnel", if (current.tunnel.processRunning) "Running" else if (current.tunnel.configured) "Stopped" else "Not configured")
-                StatCard("Projects", "${current.projects.running} running / ${current.projects.total} total")
+                item {
+                    MetricStrip(
+                        items = listOf(
+                            "CPU" to "${current.system.cpu.usage.roundToInt()}%",
+                            "Memory" to "${current.system.memory.usagePercent.roundToInt()}%",
+                            "Uptime" to formatUptime(current.system.uptime),
+                        ),
+                        modifier = Modifier.padding(top = 16.dp),
+                    )
+                }
+                item {
+                    Column(modifier = Modifier.padding(top = 20.dp)) {
+                        SectionLabel("System")
+                        Panel {
+                            InfoRow("Host", current.system.os.hostname.ifBlank { "-" })
+                            InfoRow(
+                                "CPU",
+                                "${current.system.cpu.usage.roundToInt()}% · ${current.system.cpu.cores} cores",
+                            )
+                            InfoRow(
+                                "Memory",
+                                "${bytesToGb(current.system.memory.used)} / ${bytesToGb(current.system.memory.total)} GB",
+                            )
+                            InfoRow("Uptime", formatUptime(current.system.uptime), showDivider = false)
+                        }
+                    }
+                }
+                item {
+                    Column(modifier = Modifier.padding(top = 20.dp)) {
+                        SectionLabel("Services")
+                        Panel {
+                            InfoRow(
+                                "Tunnel",
+                                if (current.tunnel.processRunning) "Running" else if (current.tunnel.configured) "Stopped" else "Not configured",
+                            )
+                            InfoRow("Projects", "${current.projects.running} running / ${current.projects.total} total", showDivider = false)
+                        }
+                    }
+                }
             }
-        }
-    }
-}
-
-@Composable
-private fun StatCard(label: String, value: String) {
-    Card(modifier = Modifier
-        .fillMaxWidth()
-        .padding(top = 12.dp)) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.secondary)
-            Text(value, style = MaterialTheme.typography.titleMedium)
         }
     }
 }

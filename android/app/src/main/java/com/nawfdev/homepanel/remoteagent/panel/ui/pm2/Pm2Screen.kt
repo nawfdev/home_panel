@@ -1,5 +1,6 @@
 package com.nawfdev.homepanel.remoteagent.panel.ui.pm2
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -7,10 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +23,15 @@ import androidx.compose.ui.unit.dp
 import com.nawfdev.homepanel.remoteagent.panel.data.ApiClient
 import com.nawfdev.homepanel.remoteagent.panel.data.Pm2Process
 import com.nawfdev.homepanel.remoteagent.panel.data.isUnauthorized
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.EmptyState
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ErrorText
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.LoadingState
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.Panel
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.PillTone
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ScreenHeader
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.SecondaryButton
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.StatusPill
+import com.nawfdev.homepanel.remoteagent.panel.ui.theme.PanelTextMuted
 import kotlinx.coroutines.launch
 
 @Composable
@@ -62,47 +69,48 @@ fun Pm2Screen(apiClient: ApiClient, onUnauthorized: () -> Unit) {
     Column(modifier = Modifier
         .fillMaxSize()
         .padding(16.dp)) {
-        Text("PM2", style = MaterialTheme.typography.headlineSmall)
+        ScreenHeader("PM2")
 
         val current = processes
         when {
-            error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 16.dp))
-            current == null -> CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
-            current.isEmpty() -> Text("No PM2 processes", color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(top = 16.dp))
-            else -> LazyColumn(modifier = Modifier.padding(top = 12.dp)) {
+            error != null -> ErrorText(error!!)
+            current == null -> LoadingState()
+            current.isEmpty() -> EmptyState("No PM2 processes")
+            else -> LazyColumn(modifier = Modifier.padding(top = 16.dp)) {
                 items(current, key = { it.name }) { proc ->
-                    Card(modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp)) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(proc.name, style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "${proc.status} · ${proc.restarts} restarts · up ${proc.uptime}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (proc.status == "online") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                            )
-                            Row(
-                                modifier = Modifier.padding(top = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                val busy = busyName == proc.name
-                                if (proc.status == "online") {
-                                    OutlinedButton(onClick = { act(proc.name) { apiClient.api().pm2Stop(proc.name) } }, enabled = !busy) {
-                                        Text("Stop")
-                                    }
-                                } else {
-                                    OutlinedButton(onClick = { act(proc.name) { apiClient.api().pm2Start(proc.name) } }, enabled = !busy) {
-                                        Text("Start")
-                                    }
-                                }
-                                OutlinedButton(
-                                    onClick = { act(proc.name) { apiClient.api().pm2Restart(proc.name) } },
-                                    enabled = !busy,
-                                    modifier = Modifier.padding(start = 8.dp),
-                                ) {
-                                    Text("Restart")
-                                }
+                    val busy = busyName == proc.name
+                    Panel(modifier = Modifier.padding(bottom = 10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text(proc.name, style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "${proc.restarts} restarts · up ${proc.uptime}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = PanelTextMuted,
+                                    modifier = Modifier.padding(top = 2.dp),
+                                )
                             }
+                            StatusPill(
+                                proc.status,
+                                if (proc.status == "online") PillTone.Success else PillTone.Neutral,
+                            )
+                        }
+                        Row(modifier = Modifier.padding(top = 12.dp)) {
+                            if (proc.status == "online") {
+                                SecondaryButton(text = "Stop", onClick = { act(proc.name) { apiClient.api().pm2Stop(proc.name) } }, enabled = !busy)
+                            } else {
+                                SecondaryButton(text = "Start", onClick = { act(proc.name) { apiClient.api().pm2Start(proc.name) } }, enabled = !busy)
+                            }
+                            SecondaryButton(
+                                text = "Restart",
+                                onClick = { act(proc.name) { apiClient.api().pm2Restart(proc.name) } },
+                                enabled = !busy,
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
                         }
                     }
                 }

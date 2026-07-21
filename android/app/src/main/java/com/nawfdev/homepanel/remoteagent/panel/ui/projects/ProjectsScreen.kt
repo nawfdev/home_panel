@@ -1,5 +1,6 @@
 package com.nawfdev.homepanel.remoteagent.panel.ui.projects
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -7,10 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +23,15 @@ import androidx.compose.ui.unit.dp
 import com.nawfdev.homepanel.remoteagent.panel.data.ApiClient
 import com.nawfdev.homepanel.remoteagent.panel.data.Project
 import com.nawfdev.homepanel.remoteagent.panel.data.isUnauthorized
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.EmptyState
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ErrorText
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.LoadingState
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.Panel
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.PillTone
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ScreenHeader
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.SecondaryButton
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.StatusPill
+import com.nawfdev.homepanel.remoteagent.panel.ui.theme.PanelTextMuted
 import kotlinx.coroutines.launch
 
 @Composable
@@ -61,47 +68,48 @@ fun ProjectsScreen(apiClient: ApiClient, onUnauthorized: () -> Unit) {
     Column(modifier = Modifier
         .fillMaxSize()
         .padding(16.dp)) {
-        Text("Projects", style = MaterialTheme.typography.headlineSmall)
+        ScreenHeader("Projects")
 
         val current = projects
         when {
-            error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 16.dp))
-            current == null -> CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
-            current.isEmpty() -> Text("No projects", color = MaterialTheme.colorScheme.secondary, modifier = Modifier.padding(top = 16.dp))
-            else -> LazyColumn(modifier = Modifier.padding(top = 12.dp)) {
+            error != null -> ErrorText(error!!)
+            current == null -> LoadingState()
+            current.isEmpty() -> EmptyState("No projects")
+            else -> LazyColumn(modifier = Modifier.padding(top = 16.dp)) {
                 items(current, key = { it.id }) { project ->
-                    Card(modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp)) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(project.name, style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "${project.status} · port ${project.port}${if (project.domain.isNotBlank()) " · ${project.domain}" else ""}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (project.status == "running") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
-                            )
-                            Row(
-                                modifier = Modifier.padding(top = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                            ) {
-                                val busy = busyId == project.id
-                                if (project.status == "running") {
-                                    OutlinedButton(onClick = { act(project.id) { apiClient.api().stopProject(project.id) } }, enabled = !busy) {
-                                        Text("Stop")
-                                    }
-                                } else {
-                                    OutlinedButton(onClick = { act(project.id) { apiClient.api().startProject(project.id) } }, enabled = !busy) {
-                                        Text("Start")
-                                    }
-                                }
-                                OutlinedButton(
-                                    onClick = { act(project.id) { apiClient.api().restartProject(project.id) } },
-                                    enabled = !busy,
-                                    modifier = Modifier.padding(start = 8.dp),
-                                ) {
-                                    Text("Restart")
-                                }
+                    val busy = busyId == project.id
+                    Panel(modifier = Modifier.padding(bottom = 10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text(project.name, style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    "port ${project.port}${if (project.domain.isNotBlank()) " · ${project.domain}" else ""}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = PanelTextMuted,
+                                    modifier = Modifier.padding(top = 2.dp),
+                                )
                             }
+                            StatusPill(
+                                project.status,
+                                if (project.status == "running") PillTone.Success else PillTone.Neutral,
+                            )
+                        }
+                        Row(modifier = Modifier.padding(top = 12.dp)) {
+                            if (project.status == "running") {
+                                SecondaryButton(text = "Stop", onClick = { act(project.id) { apiClient.api().stopProject(project.id) } }, enabled = !busy)
+                            } else {
+                                SecondaryButton(text = "Start", onClick = { act(project.id) { apiClient.api().startProject(project.id) } }, enabled = !busy)
+                            }
+                            SecondaryButton(
+                                text = "Restart",
+                                onClick = { act(project.id) { apiClient.api().restartProject(project.id) } },
+                                enabled = !busy,
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
                         }
                     }
                 }

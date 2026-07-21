@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -28,6 +27,11 @@ import androidx.compose.ui.unit.dp
 import com.nawfdev.homepanel.remoteagent.panel.data.ApiClient
 import com.nawfdev.homepanel.remoteagent.panel.data.LogSource
 import com.nawfdev.homepanel.remoteagent.panel.data.isUnauthorized
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ErrorText
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.Panel
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ScreenHeader
+import com.nawfdev.homepanel.remoteagent.panel.ui.theme.PanelTextMuted
+import com.nawfdev.homepanel.remoteagent.panel.ui.theme.PanelTextPrimary
 
 @Composable
 fun LogsScreen(apiClient: ApiClient, onUnauthorized: () -> Unit) {
@@ -70,15 +74,15 @@ fun LogsScreen(apiClient: ApiClient, onUnauthorized: () -> Unit) {
     Column(modifier = Modifier
         .fillMaxSize()
         .padding(16.dp)) {
-        Text("Logs", style = MaterialTheme.typography.headlineSmall)
+        ScreenHeader("Logs")
 
-        Box(modifier = Modifier.padding(top = 12.dp)) {
-            Card(modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = true }) {
+        Box(modifier = Modifier.padding(top = 16.dp)) {
+            Panel(padding = 0.dp, modifier = Modifier.clickable { expanded = true }) {
                 Text(
                     selected?.name ?: "Select a source",
-                    modifier = Modifier.padding(12.dp),
+                    color = PanelTextPrimary,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(14.dp),
                 )
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -96,15 +100,15 @@ fun LogsScreen(apiClient: ApiClient, onUnauthorized: () -> Unit) {
         }
 
         Row(modifier = Modifier.padding(top = 12.dp)) {
-            if (loading) CircularProgressIndicator()
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (loading) CircularProgressIndicator(color = PanelTextPrimary, modifier = Modifier.padding(end = 8.dp))
+            error?.let { ErrorText(it, modifier = Modifier.padding(top = 0.dp)) }
         }
 
         SelectionContainer {
             Column(modifier = Modifier
                 .padding(top = 12.dp)
                 .verticalScroll(rememberScrollState())) {
-                Text(content, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                Text(content, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, color = PanelTextMuted)
             }
         }
     }

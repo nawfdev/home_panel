@@ -1,9 +1,14 @@
 package com.nawfdev.homepanel.remoteagent.panel.data
 
 import kotlinx.serialization.Serializable
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Multipart
+import retrofit2.http.PATCH
 import retrofit2.http.POST
+import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -324,6 +329,8 @@ data class MovieStartDownloadRequest(val title: String, val url: String, val pos
 data class Job(
     val id: String = "",
     val title: String = "",
+    val dest: String = "",
+    val poster: String? = null,
     val status: String = "",
     val downloaded: Long = 0,
     val total: Long = 0,
@@ -336,6 +343,42 @@ data class MovieStartDownloadResponse(val success: Boolean = false, val job: Job
 
 @Serializable
 data class MoviesListResponse(val success: Boolean = false, val jobs: List<Job> = emptyList())
+
+// --- Stream library (manual add + rename/re-thumbnail/delete of finished
+// downloads; see be/internal/handlers/movies.go) ---
+
+@Serializable
+data class MovieRenameRequest(val title: String)
+
+@Serializable
+data class MovieLibraryResponse(val success: Boolean = false, val job: Job? = null, val error: String? = null)
+
+// --- Live TV (be/internal/tv/tv.go — channels parsed from public M3U
+// playlists, some DASH/HLS with ClearKey or Widevine DRM) ---
+
+@Serializable
+data class DrmInfo(
+    val system: String = "unknown", // "clearkey" | "widevine" | "unknown"
+    val clearKeys: Map<String, String>? = null,
+    val serverUrl: String? = null,
+)
+
+@Serializable
+data class Channel(
+    val id: String = "",
+    val name: String = "",
+    val tvgId: String? = null,
+    val logo: String? = null,
+    val group: String? = null,
+    val source: String? = null,
+    val url: String = "",
+    val type: String = "hls", // "hls" | "dash" | "ts"
+    val headers: Map<String, String>? = null,
+    val drm: DrmInfo? = null,
+)
+
+@Serializable
+data class ChannelsResponse(val success: Boolean = false, val channels: List<Channel> = emptyList())
 
 interface PanelApi {
     @POST("auth/login")
@@ -465,4 +508,25 @@ interface PanelApi {
 
     @POST("movies/downloads/{id}/resume")
     suspend fun resumeDownload(@Path("id") id: String): SuccessResponse
+
+    @Multipart
+    @POST("movies/manual")
+    suspend fun addMovieManual(
+        @Part("title") title: RequestBody,
+        @Part file: MultipartBody.Part,
+        @Part poster: MultipartBody.Part?,
+    ): MovieLibraryResponse
+
+    @PATCH("movies/library/{id}")
+    suspend fun renameMovie(@Path("id") id: String, @Body body: MovieRenameRequest): MovieLibraryResponse
+
+    @Multipart
+    @POST("movies/library/{id}/thumbnail")
+    suspend fun updateMovieThumbnail(@Path("id") id: String, @Part file: MultipartBody.Part): MovieLibraryResponse
+
+    @retrofit2.http.DELETE("movies/library/{id}")
+    suspend fun deleteMovie(@Path("id") id: String): SuccessResponse
+
+    @GET("tv/channels")
+    suspend fun tvChannels(): ChannelsResponse
 }
