@@ -1,15 +1,13 @@
 package com.nawfdev.homepanel.remoteagent.panel.ui.login
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,6 +22,11 @@ import androidx.compose.ui.unit.dp
 import com.nawfdev.homepanel.remoteagent.panel.data.ApiClient
 import com.nawfdev.homepanel.remoteagent.panel.data.LoginRequest
 import com.nawfdev.homepanel.remoteagent.panel.data.PanelPrefs
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ErrorText
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.PanelTextField
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.PrimaryButton
+import com.nawfdev.homepanel.remoteagent.panel.ui.theme.PanelBg
+import com.nawfdev.homepanel.remoteagent.panel.ui.theme.PanelTextMuted
 import kotlinx.coroutines.launch
 
 @Composable
@@ -66,62 +69,50 @@ fun LoginScreen(prefs: PanelPrefs, apiClient: ApiClient, onLoggedIn: () -> Unit)
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(PanelBg)
             .padding(24.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("Home Panel", style = MaterialTheme.typography.headlineMedium)
+        Text("Home Panel", style = MaterialTheme.typography.headlineSmall)
         Text(
             "Sign in with your family account",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.secondary,
+            color = PanelTextMuted,
+            modifier = Modifier.padding(top = 4.dp),
         )
 
-        OutlinedTextField(
+        PanelTextField(
             value = baseUrl,
             onValueChange = { baseUrl = it },
-            label = { Text("Panel address (e.g. 192.168.1.10:9689)") },
-            singleLine = true,
+            label = "Panel address (e.g. 192.168.1.10:9689)",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 24.dp),
+            modifier = Modifier.padding(top = 28.dp),
         )
-        OutlinedTextField(
+        PanelTextField(
             value = username,
             onValueChange = { username = it },
-            label = { Text("Username") },
-            singleLine = true,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp),
+            label = "Username",
+            modifier = Modifier.padding(top = 12.dp),
         )
-        OutlinedTextField(
+        PanelTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password") },
-            singleLine = true,
+            label = "Password",
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp),
+            modifier = Modifier.padding(top = 12.dp),
         )
 
-        error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp))
-        }
+        error?.let { ErrorText(it) }
 
-        Button(
+        PrimaryButton(
+            text = if (loading) "Signing in…" else "Sign in",
             onClick = ::submit,
             enabled = !loading,
+            loading = loading,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(top = 20.dp),
-        ) {
-            if (loading) {
-                CircularProgressIndicator(modifier = Modifier.padding(end = 8.dp))
-            }
-            Text(if (loading) "Signing in..." else "Sign in")
-        }
+        )
     }
 }

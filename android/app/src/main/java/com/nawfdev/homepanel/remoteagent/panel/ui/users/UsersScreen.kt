@@ -9,13 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,6 +31,16 @@ import com.nawfdev.homepanel.remoteagent.panel.data.Role
 import com.nawfdev.homepanel.remoteagent.panel.data.UpdateRoleRequest
 import com.nawfdev.homepanel.remoteagent.panel.data.UpdateUserRequest
 import com.nawfdev.homepanel.remoteagent.panel.data.isUnauthorized
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ErrorText
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.LoadingState
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.Panel
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.PanelTextField
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.PrimaryButton
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ScreenHeader
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.SecondaryButton
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.SectionLabel
+import com.nawfdev.homepanel.remoteagent.panel.ui.theme.PanelTextMuted
+import com.nawfdev.homepanel.remoteagent.panel.ui.theme.PanelTextPrimary
 import kotlinx.coroutines.launch
 
 /** Admin-only: manage family accounts and role feature grants (mirrors the FE Settings > Users tab). */
@@ -81,108 +87,95 @@ fun UsersScreen(apiClient: ApiClient, onUnauthorized: () -> Unit) {
     Column(modifier = Modifier
         .fillMaxSize()
         .padding(16.dp)) {
-        Text("Family accounts", style = MaterialTheme.typography.headlineSmall)
-        error?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp)) }
+        ScreenHeader("Family accounts")
+        error?.let { ErrorText(it) }
 
         if (loading) {
-            CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
+            LoadingState()
         } else {
             LazyColumn(modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 12.dp)) {
+                .padding(top = 16.dp)) {
                 items(users, key = { it.id }) { user ->
-                    Card(modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp)) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(user.username, style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "Role: ${user.role}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.secondary,
-                            )
-                            FlowRow(modifier = Modifier.padding(top = 8.dp)) {
-                                roles.filter { it.id != user.role }.forEach { role ->
-                                    OutlinedButton(
-                                        onClick = { runAction { apiClient.api().updateUser(user.id, UpdateUserRequest(role = role.id)) } },
-                                        modifier = Modifier.padding(end = 8.dp),
-                                    ) { Text("→ ${role.label}") }
-                                }
-                                OutlinedButton(onClick = { runAction { apiClient.api().deleteUser(user.id) } }) {
-                                    Text("Remove")
-                                }
+                    Panel(modifier = Modifier.padding(bottom = 10.dp)) {
+                        Text(user.username, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "Role: ${user.role}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PanelTextMuted,
+                            modifier = Modifier.padding(top = 2.dp),
+                        )
+                        FlowRow(modifier = Modifier.padding(top = 10.dp)) {
+                            roles.filter { it.id != user.role }.forEach { role ->
+                                SecondaryButton(
+                                    text = "→ ${role.label}",
+                                    onClick = { runAction { apiClient.api().updateUser(user.id, UpdateUserRequest(role = role.id)) } },
+                                    modifier = Modifier.padding(end = 8.dp, bottom = 8.dp),
+                                )
                             }
+                            SecondaryButton(text = "Remove", onClick = { runAction { apiClient.api().deleteUser(user.id) } })
                         }
                     }
                 }
             }
 
-            Card(modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 8.dp)) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text("Add family member", style = MaterialTheme.typography.titleSmall)
-                    OutlinedTextField(
-                        value = newUsername,
-                        onValueChange = { newUsername = it },
-                        label = { Text("Username") },
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                    )
-                    OutlinedTextField(
-                        value = newPassword,
-                        onValueChange = { newPassword = it },
-                        label = { Text("Password") },
-                        singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                    )
-                    Button(
-                        onClick = {
-                            val defaultRole = roles.firstOrNull { !it.locked }?.id ?: return@Button
-                            runAction {
-                                apiClient.api().createUser(CreateUserRequest(newUsername.trim(), newPassword, defaultRole))
-                                newUsername = ""
-                                newPassword = ""
-                            }
-                        },
-                        enabled = newUsername.isNotBlank() && newPassword.isNotEmpty(),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                    ) { Text("Add") }
-                }
+            Panel(modifier = Modifier.padding(top = 6.dp)) {
+                Text("Add family member", style = MaterialTheme.typography.titleMedium)
+                PanelTextField(
+                    value = newUsername,
+                    onValueChange = { newUsername = it },
+                    label = "Username",
+                    modifier = Modifier.padding(top = 12.dp),
+                )
+                PanelTextField(
+                    value = newPassword,
+                    onValueChange = { newPassword = it },
+                    label = "Password",
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+                PrimaryButton(
+                    text = "Add",
+                    onClick = {
+                        val defaultRole = roles.firstOrNull { !it.locked }?.id ?: return@PrimaryButton
+                        runAction {
+                            apiClient.api().createUser(CreateUserRequest(newUsername.trim(), newPassword, defaultRole))
+                            newUsername = ""
+                            newPassword = ""
+                        }
+                    },
+                    enabled = newUsername.isNotBlank() && newPassword.isNotEmpty(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                )
             }
 
-            Text("Roles", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(top = 20.dp))
+            SectionLabel("Roles", modifier = Modifier.padding(top = 24.dp))
             roles.forEach { role ->
-                Card(modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(
-                            if (role.locked) "${role.label} (full access, locked)" else role.label,
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        if (!role.locked) {
-                            FlowRow(modifier = Modifier.padding(top = 8.dp)) {
-                                featureKeys.forEach { key ->
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Checkbox(
-                                            checked = role.features.contains(key),
-                                            onCheckedChange = { checked ->
-                                                val updated = if (checked) role.features + key else role.features - key
-                                                runAction {
-                                                    apiClient.api().updateRole(role.id, UpdateRoleRequest(updated))
-                                                }
-                                            },
-                                        )
-                                        Text(key, style = MaterialTheme.typography.bodySmall)
-                                    }
+                Panel(modifier = Modifier.padding(bottom = 10.dp)) {
+                    Text(
+                        if (role.locked) "${role.label} (full access, locked)" else role.label,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    if (!role.locked) {
+                        FlowRow(modifier = Modifier.padding(top = 10.dp)) {
+                            featureKeys.forEach { key ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(end = 12.dp),
+                                ) {
+                                    Checkbox(
+                                        checked = role.features.contains(key),
+                                        onCheckedChange = { checked ->
+                                            val updated = if (checked) role.features + key else role.features - key
+                                            runAction {
+                                                apiClient.api().updateRole(role.id, UpdateRoleRequest(updated))
+                                            }
+                                        },
+                                        colors = CheckboxDefaults.colors(checkedColor = PanelTextPrimary, uncheckedColor = PanelTextMuted),
+                                    )
+                                    Text(key, style = MaterialTheme.typography.bodySmall, color = PanelTextMuted)
                                 }
                             }
                         }

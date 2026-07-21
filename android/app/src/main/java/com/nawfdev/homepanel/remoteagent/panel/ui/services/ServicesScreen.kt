@@ -1,5 +1,6 @@
 package com.nawfdev.homepanel.remoteagent.panel.ui.services
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -7,10 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -25,6 +23,14 @@ import androidx.compose.ui.unit.dp
 import com.nawfdev.homepanel.remoteagent.panel.data.ApiClient
 import com.nawfdev.homepanel.remoteagent.panel.data.ServiceInfo
 import com.nawfdev.homepanel.remoteagent.panel.data.isUnauthorized
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.EmptyState
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ErrorText
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.LoadingState
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.Panel
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.PillTone
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ScreenHeader
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.SecondaryButton
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.StatusPill
 import kotlinx.coroutines.launch
 
 @Composable
@@ -62,34 +68,35 @@ fun ServicesScreen(apiClient: ApiClient, onUnauthorized: () -> Unit) {
     Column(modifier = Modifier
         .fillMaxSize()
         .padding(16.dp)) {
-        Text("Services", style = MaterialTheme.typography.headlineSmall)
+        ScreenHeader("Services")
 
         val current = services
         when {
-            error != null -> Text(error!!, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 16.dp))
-            current == null -> CircularProgressIndicator(modifier = Modifier.padding(top = 24.dp))
-            else -> LazyColumn(modifier = Modifier.padding(top = 12.dp)) {
+            error != null -> ErrorText(error!!)
+            current == null -> LoadingState()
+            current.isEmpty() -> EmptyState("No services found")
+            else -> LazyColumn(modifier = Modifier.padding(top = 16.dp)) {
                 items(current, key = { it.name }) { service ->
-                    Card(modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp)) {
+                    Panel(modifier = Modifier.padding(bottom = 10.dp)) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(service.name, style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    service.status,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (service.status == "running") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondary,
+                            Column {
+                                Text(service.name, style = MaterialTheme.typography.titleMedium)
+                                StatusPill(
+                                    if (service.status == "running") "Running" else service.status,
+                                    if (service.status == "running") PillTone.Success else PillTone.Neutral,
+                                    modifier = Modifier.padding(top = 6.dp),
                                 )
                             }
-                            OutlinedButton(onClick = { toggle(service) }, enabled = busyName != service.name) {
-                                Text(if (service.status == "running") "Stop" else "Start")
-                            }
+                            SecondaryButton(
+                                text = if (service.status == "running") "Stop" else "Start",
+                                onClick = { toggle(service) },
+                                enabled = busyName != service.name,
+                                loading = busyName == service.name,
+                            )
                         }
                     }
                 }

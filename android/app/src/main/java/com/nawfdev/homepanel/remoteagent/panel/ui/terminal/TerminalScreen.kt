@@ -3,14 +3,11 @@ package com.nawfdev.homepanel.remoteagent.panel.ui.terminal
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -23,6 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.nawfdev.homepanel.remoteagent.panel.data.PanelPrefs
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.PanelTextField
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.PrimaryButton
+import com.nawfdev.homepanel.remoteagent.panel.ui.components.ScreenHeader
+import com.nawfdev.homepanel.remoteagent.panel.ui.theme.PanelTextMuted
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -34,7 +35,7 @@ import okhttp3.WebSocketListener
 // combined stdout/stderr, so this renders as a scrolling log rather than an
 // interactive shell. Server output is ANSI-colored; we strip escape codes
 // for plain monospace text rather than implementing a color-aware renderer.
-private val ansiRegex = Regex("\\[[0-9;]*[A-Za-z]")
+private val ansiRegex = Regex("\\[[0-9;]*[A-Za-z]")
 
 @Composable
 fun TerminalScreen(prefs: PanelPrefs) {
@@ -57,7 +58,7 @@ fun TerminalScreen(prefs: PanelPrefs) {
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
-                    if (text.contains("[2J")) {
+                    if (text.contains("[2J")) {
                         log = ""
                     } else {
                         log += ansiRegex.replace(text, "")
@@ -77,36 +78,36 @@ fun TerminalScreen(prefs: PanelPrefs) {
     Column(modifier = Modifier
         .fillMaxSize()
         .padding(16.dp)) {
-        Text("Terminal", style = MaterialTheme.typography.headlineSmall)
-        Text(
-            "Each command runs once, no interactive shell (30s timeout, dangerous commands blocked server-side).",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.secondary,
-        )
+        ScreenHeader("Terminal", "Each command runs once — no interactive shell, 30s timeout")
 
         SelectionContainer(modifier = Modifier
             .weight(1f)
-            .padding(top = 12.dp)) {
+            .padding(top = 16.dp)) {
             Column(modifier = Modifier.verticalScroll(scrollState)) {
-                Text(log.ifEmpty { "Connecting..." }, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                Text(
+                    log.ifEmpty { "Connecting…" },
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PanelTextMuted,
+                )
             }
         }
 
         Row(modifier = Modifier.padding(top = 8.dp)) {
-            OutlinedTextField(
+            PanelTextField(
                 value = command,
                 onValueChange = { command = it },
+                label = "Command",
                 modifier = Modifier.weight(1f),
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
             )
-            Button(
+            PrimaryButton(
+                text = "Run",
                 onClick = {
                     socket?.send(command)
                     command = ""
                 },
                 modifier = Modifier.padding(start = 8.dp),
-            ) { Text("Run") }
+            )
         }
     }
 }

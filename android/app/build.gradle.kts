@@ -70,4 +70,20 @@ dependencies {
 
     // Encrypted storage for the panel base URL + bearer token
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Stream library (progressive MP4/MKV playback) + Live TV (DASH manifests,
+    // Widevine/ClearKey DRM via MediaDrm) — see panel/ui/stream and
+    // panel/ui/tv. media3-datasource-okhttp lets ExoPlayer attach the same
+    // bearer-token Authorization header ApiClient uses, on every manifest,
+    // segment, and license request.
+    val media3Version = "1.5.1"
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-dash:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-ui:$media3Version")
+    implementation("androidx.media3:media3-datasource-okhttp:$media3Version")
+
+    // Poster/thumbnail loading — also needs the bearer token header, wired via
+    // a Coil ImageLoader built from the same OkHttpClient pattern as ApiClient.
+    implementation("io.coil-kt:coil-compose:2.7.0")
 }
