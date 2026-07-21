@@ -38,3 +38,10 @@ fun PanelPrefs.downloadUrl(destPath: String): String {
     val base = baseUrl?.trimEnd('/') ?: return ""
     return "$base/api/files/download?path=${URLEncoder.encode(destPath, "UTF-8")}"
 }
+
+/** Builds the URL for a sidecar subtitle track, converted to VTT on the fly
+ * server-side (be/internal/handlers/files.go's subtitle handler). */
+fun PanelPrefs.subtitleUrl(destPath: String, name: String): String {
+    val base = baseUrl?.trimEnd('/') ?: return ""
+    return "$base/api/files/subtitle?path=${URLEncoder.encode(destPath, "UTF-8")}&name=${URLEncoder.encode(name, "UTF-8")}"
+}
