@@ -252,6 +252,7 @@ export function Projects() {
     try {
       const result = await api<{ healthy: boolean; message: string; statusCode?: number }>(`/projects/${site.id}/health`);
       show(`${site.name}: ${result.message}`, result.healthy ? "success" : "warning");
+      await load();
     } catch (err) {
       show(err instanceof Error ? err.message : "Health check failed", "error");
     } finally {

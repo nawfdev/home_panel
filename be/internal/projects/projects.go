@@ -829,30 +829,43 @@ func (m *Manager) Health(ctx context.Context, id int) HealthResult {
 	if !ok {
 		return HealthResult{Message: "Site not found"}
 	}
+	var result HealthResult
 	if p.HostID == 0 {
 		if p.Port == 0 {
-			return HealthResult{Message: "No health endpoint configured"}
+			result = HealthResult{Message: "No health endpoint configured"}
+		} else {
+			url := "http://127.0.0.1:" + strconv.Itoa(p.Port) + "/"
+			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				result = HealthResult{Message: err.Error()}
+			} else {
+				defer resp.Body.Close()
+				result = HealthResult{Healthy: resp.StatusCode < 500, StatusCode: resp.StatusCode, Message: resp.Status}
+			}
 		}
-		url := "http://127.0.0.1:" + strconv.Itoa(p.Port) + "/"
-		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-		resp, err := http.DefaultClient.Do(req)
+	} else {
+		hostHeader := "localhost"
+		if len(p.Domains) > 0 {
+			hostHeader = p.Domains[0]
+		}
+		command := "curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -H " + shellQuote("Host: "+hostHeader) + " http://127.0.0.1/"
+		out, err := m.runRemote(ctx, p, command)
 		if err != nil {
-			return HealthResult{Message: err.Error()}
+			result = HealthResult{Message: err.Error()}
+		} else {
+			code, _ := strconv.Atoi(strings.TrimSpace(out))
+			result = HealthResult{Healthy: code >= 200 && code < 500, StatusCode: code, Message: "HTTP " + strconv.Itoa(code)}
 		}
-		defer resp.Body.Close()
-		return HealthResult{Healthy: resp.StatusCode < 500, StatusCode: resp.StatusCode, Message: resp.Status}
 	}
-	hostHeader := "localhost"
-	if len(p.Domains) > 0 {
-		hostHeader = p.Domains[0]
+	status := "degraded"
+	if result.Healthy {
+		status = "running"
 	}
-	command := "curl -sS -o /dev/null -w '%{http_code}' --max-time 8 -H " + shellQuote("Host: "+hostHeader) + " http://127.0.0.1/"
-	out, err := m.runRemote(ctx, p, command)
-	if err != nil {
-		return HealthResult{Message: err.Error()}
-	}
-	code, _ := strconv.Atoi(strings.TrimSpace(out))
-	return HealthResult{Healthy: code >= 200 && code < 500, StatusCode: code, Message: "HTTP " + strconv.Itoa(code)}
+	_ = m.store.UpdateProject(id, func(site *store.Project) {
+		site.Status, site.Health = status, result.Message
+	})
+	return result
 }
 
 func (m *Manager) Logs(id int) []LogLine {
