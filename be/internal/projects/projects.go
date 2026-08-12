@@ -458,7 +458,15 @@ func (m *Manager) writeRemoteFile(p store.Project, target, content string, mode 
 		_ = client.Remove(tmp)
 		return err
 	}
-	return client.Rename(tmp, target)
+	if err := client.PosixRename(tmp, target); err == nil {
+		return nil
+	}
+	_ = client.Remove(target)
+	if err := client.Rename(tmp, target); err != nil {
+		_ = client.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func (m *Manager) Configure(ctx context.Context, id int) Result {
