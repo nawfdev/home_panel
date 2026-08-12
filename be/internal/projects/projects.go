@@ -23,6 +23,7 @@ import (
 	cfapi "github.com/nawfdev/home-panel/internal/cloudflare"
 	"github.com/nawfdev/home-panel/internal/sshmgr"
 	"github.com/nawfdev/home-panel/internal/store"
+	"github.com/pkg/sftp"
 )
 
 const (
@@ -442,12 +443,21 @@ func (m *Manager) writeRemoteFile(p store.Project, target, content string, mode 
 		return err
 	}
 	defer client.Close()
+	var owner *sftp.FileStat
+	if info, statErr := client.Stat(target); statErr == nil {
+		owner, _ = info.Sys().(*sftp.FileStat)
+	} else if !os.IsNotExist(statErr) {
+		return statErr
+	}
 	tmp := target + ".nestcore.tmp"
 	f, err := client.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
 	if err != nil {
 		return err
 	}
-	if _, err = f.Write([]byte(content)); err == nil {
+	if _, err = f.Write([]byte(content)); err == nil && owner != nil {
+		err = f.Chown(int(owner.UID), int(owner.GID))
+	}
+	if err == nil {
 		err = f.Chmod(mode)
 	}
 	closeErr := f.Close()
