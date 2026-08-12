@@ -200,6 +200,90 @@ func (s *Service) ListZones(ctx context.Context) ([]Zone, error) {
 	s.mu.Unlock()
 	return out.Result, nil
 }
+func (s *Service) FindZone(ctx context.Context, hostname string) (Zone, error) {
+	zones, err := s.ListZones(ctx)
+	if err != nil {
+		return Zone{}, err
+	}
+	hostname = strings.ToLower(strings.TrimSpace(hostname))
+	var match Zone
+	for _, zone := range zones {
+		name := strings.ToLower(zone.Name)
+		if hostname == name || strings.HasSuffix(hostname, "."+name) {
+			if len(name) > len(match.Name) {
+				match = zone
+			}
+		}
+	}
+	if match.ID == "" {
+		return Zone{}, fmt.Errorf("no Cloudflare zone found for %s", hostname)
+	}
+	return match, nil
+}
+
+type dnsRecord struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Name    string `json:"name"`
+	Content string `json:"content"`
+	Proxied bool   `json:"proxied"`
+}
+
+func (s *Service) UpsertTunnelDNS(ctx context.Context, hostname, tunnelID string) error {
+	zone, err := s.FindZone(ctx, hostname)
+	if err != nil {
+		return err
+	}
+	var listed apiResponse[[]dnsRecord]
+	endpoint := "/zones/" + zone.ID + "/dns_records?name=" + hostname
+	if err := s.do(ctx, http.MethodGet, endpoint, nil, &listed); err != nil {
+		return err
+	}
+	if !listed.Success {
+		return fmt.Errorf("%s", firstError(listed.Errors, "failed to list DNS records"))
+	}
+	payload := map[string]any{"type": "CNAME", "name": hostname, "content": tunnelID + ".cfargotunnel.com", "proxied": true}
+	method, target := http.MethodPost, "/zones/"+zone.ID+"/dns_records"
+	if len(listed.Result) > 0 {
+		method, target = http.MethodPut, target+"/"+listed.Result[0].ID
+	}
+	var changed apiResponse[dnsRecord]
+	if err := s.do(ctx, method, target, payload, &changed); err != nil {
+		return err
+	}
+	if !changed.Success {
+		return fmt.Errorf("%s", firstError(changed.Errors, "failed to update DNS record"))
+	}
+	return nil
+}
+
+func (s *Service) DeleteTunnelDNS(ctx context.Context, hostname, tunnelID string) error {
+	zone, err := s.FindZone(ctx, hostname)
+	if err != nil {
+		return err
+	}
+	var listed apiResponse[[]dnsRecord]
+	if err := s.do(ctx, http.MethodGet, "/zones/"+zone.ID+"/dns_records?name="+hostname, nil, &listed); err != nil {
+		return err
+	}
+	if !listed.Success {
+		return fmt.Errorf("%s", firstError(listed.Errors, "failed to list DNS records"))
+	}
+	target := tunnelID + ".cfargotunnel.com"
+	for _, record := range listed.Result {
+		if record.Type != "CNAME" || !strings.EqualFold(record.Content, target) {
+			continue
+		}
+		var deleted apiResponse[any]
+		if err := s.do(ctx, http.MethodDelete, "/zones/"+zone.ID+"/dns_records/"+record.ID, nil, &deleted); err != nil {
+			return err
+		}
+		if !deleted.Success {
+			return fmt.Errorf("%s", firstError(deleted.Errors, "failed to delete DNS record"))
+		}
+	}
+	return nil
+}
 
 func (s *Service) GetTunnelConnections(ctx context.Context, tunnelID string) (TunnelDetail, error) {
 	accountID, err := s.accountID(ctx)

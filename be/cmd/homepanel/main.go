@@ -35,8 +35,8 @@ import (
 	"github.com/nawfdev/home-panel/internal/telegram"
 	"github.com/nawfdev/home-panel/internal/terminal"
 	"github.com/nawfdev/home-panel/internal/torrentsearch"
-	"github.com/nawfdev/home-panel/internal/tv"
 	"github.com/nawfdev/home-panel/internal/tunnel"
+	"github.com/nawfdev/home-panel/internal/tv"
 	"github.com/nawfdev/home-panel/internal/updater"
 )
 
@@ -97,7 +97,8 @@ func main() {
 	log.Println("Starting metrics collection (every 60s)...")
 
 	tun := tunnel.New()
-	proj := projects.New(st)
+	cloudflareSvc := cloudflare.New(st)
+	proj := projects.New(st, hostsSvc, cloudflareSvc)
 	alerts.New(cfg, tg, tun).Start(context.Background())
 
 	aigw := aigateway.New(st)
@@ -109,7 +110,7 @@ func main() {
 
 	handler := server.New(server.Deps{
 		AiGateway:     aigw,
-		Cloudflare:    cloudflare.New(st),
+		Cloudflare:    cloudflareSvc,
 		Config:        cfg,
 		Docker:        docker.New(),
 		Files:         files.New(st, hostsSvc),

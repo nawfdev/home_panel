@@ -48,15 +48,40 @@ var FeatureKeys = []string{
 // "member" role; admins can widen or narrow it later from Settings.
 var DefaultMemberFeatures = []string{"movies", "files", "network", "remote-desktop"}
 
+// Project is the persisted hosting-site definition. Existing rows from the
+// original local process manager remain valid: zero HostID means local and
+// empty Type defaults to node at the service boundary.
 type Project struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
-	Path      string `json:"path"`
-	Port      int    `json:"port"`
-	Domain    string `json:"domain"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"created_at"`
-	Pid       int    `json:"pid,omitempty"`
+	ID              int       `json:"id"`
+	Name            string    `json:"name"`
+	HostID          int       `json:"host_id"`
+	Type            string    `json:"type"`
+	Path            string    `json:"path"`
+	SourcePath      string    `json:"source_path,omitempty"`
+	BuildCommand    string    `json:"build_command,omitempty"`
+	StartCommand    string    `json:"start_command,omitempty"`
+	PublishDir      string    `json:"publish_dir,omitempty"`
+	Port            int       `json:"port,omitempty"`
+	Domains         []string  `json:"domains"`
+	AppliedDomains  []string  `json:"applied_domains,omitempty"`
+	Domain          string    `json:"domain,omitempty"`
+	TunnelID        string    `json:"tunnel_id,omitempty"`
+	TunnelConfig    string    `json:"tunnel_config,omitempty"`
+	TunnelService   string    `json:"tunnel_service,omitempty"`
+	Status          string    `json:"status"`
+	Health          string    `json:"health,omitempty"`
+	CreatedAt       string    `json:"created_at"`
+	LastDeployedAt  string    `json:"last_deployed_at,omitempty"`
+	CurrentRelease  string    `json:"current_release,omitempty"`
+	PreviousRelease string    `json:"previous_release,omitempty"`
+	Releases        []Release `json:"releases,omitempty"`
+	Pid             int       `json:"pid,omitempty"`
+}
+
+type Release struct {
+	ID         string `json:"id"`
+	Path       string `json:"path"`
+	DeployedAt string `json:"deployed_at"`
 }
 
 // RemoteDevice is a saved peer (laptop/PC) running the remoteagent binary
@@ -118,6 +143,15 @@ func Open(file string) (*Store, error) {
 		_ = json.Unmarshal(raw, &s.d)
 		if s.d.Settings == nil {
 			s.d.Settings = map[string]interface{}{}
+		}
+		for i := range s.d.Projects {
+			p := &s.d.Projects[i]
+			if p.Type == "" {
+				p.Type = "node"
+			}
+			if len(p.Domains) == 0 && p.Domain != "" {
+				p.Domains = []string{p.Domain}
+			}
 		}
 		_ = os.Chmod(file, 0o600) // tighten perms on files created before this was enforced
 	}

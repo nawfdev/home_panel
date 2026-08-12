@@ -10,7 +10,8 @@ import (
 	"github.com/nawfdev/home-panel/internal/projects"
 )
 
-// Projects ports backend/routes/projects.js.
+// Projects serves the hosting-sites API. The /projects path remains the
+// persisted feature key and route for a clean data-compatible migration.
 type Projects struct {
 	Mgr *projects.Manager
 }
@@ -25,39 +26,53 @@ func (p *Projects) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Projects) Get(w http.ResponseWriter, r *http.Request) {
-	proj, ok := p.Mgr.Get(idParam(r))
+	site, ok := p.Mgr.Get(idParam(r))
 	if !ok {
-		httpx.Error(w, http.StatusNotFound, "Project not found")
+		httpx.Error(w, http.StatusNotFound, "Site not found")
 		return
 	}
-	httpx.JSON(w, http.StatusOK, proj)
+	httpx.JSON(w, http.StatusOK, site)
+}
+
+func decodeSiteInput(w http.ResponseWriter, r *http.Request) (projects.SiteInput, bool) {
+	var body projects.SiteInput
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "Invalid site payload: "+err.Error())
+		return body, false
+	}
+	return body, true
 }
 
 func (p *Projects) Create(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		Name   string  `json:"name"`
-		Path   string  `json:"path"`
-		Port   float64 `json:"port"`
-		Domain string  `json:"domain"`
-	}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-	if body.Name == "" || body.Path == "" || body.Port == 0 {
-		httpx.Error(w, http.StatusBadRequest, "name, path, and port required")
+	body, ok := decodeSiteInput(w, r)
+	if !ok {
 		return
 	}
-	proj, err := p.Mgr.Add(body.Name, body.Path, int(body.Port), body.Domain)
+	site, err := p.Mgr.Add(body)
 	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, err.Error())
+		httpx.Error(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	httpx.JSON(w, http.StatusOK, proj)
+	httpx.JSON(w, http.StatusCreated, site)
 }
 
 func (p *Projects) Update(w http.ResponseWriter, r *http.Request) {
-	var body map[string]interface{}
-	_ = json.NewDecoder(r.Body).Decode(&body)
-	proj, _ := p.Mgr.Update(idParam(r), body)
-	httpx.JSON(w, http.StatusOK, proj)
+	body, ok := decodeSiteInput(w, r)
+	if !ok {
+		return
+	}
+	site, err := p.Mgr.Update(idParam(r), body)
+	if err != nil {
+		status := http.StatusBadRequest
+		if err.Error() == "site not found" {
+			status = http.StatusNotFound
+		}
+		httpx.Error(w, status, err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, site)
 }
 
 func (p *Projects) Delete(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +89,22 @@ func (p *Projects) Stop(w http.ResponseWriter, r *http.Request) {
 
 func (p *Projects) Restart(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, p.Mgr.Restart(idParam(r)))
+}
+
+func (p *Projects) Deploy(w http.ResponseWriter, r *http.Request) {
+	httpx.JSON(w, http.StatusOK, p.Mgr.Deploy(r.Context(), idParam(r)))
+}
+
+func (p *Projects) Rollback(w http.ResponseWriter, r *http.Request) {
+	httpx.JSON(w, http.StatusOK, p.Mgr.Rollback(r.Context(), idParam(r)))
+}
+
+func (p *Projects) Configure(w http.ResponseWriter, r *http.Request) {
+	httpx.JSON(w, http.StatusOK, p.Mgr.Configure(r.Context(), idParam(r)))
+}
+
+func (p *Projects) Health(w http.ResponseWriter, r *http.Request) {
+	httpx.JSON(w, http.StatusOK, p.Mgr.Health(r.Context(), idParam(r)))
 }
 
 func (p *Projects) Logs(w http.ResponseWriter, r *http.Request) {

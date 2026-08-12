@@ -84,7 +84,7 @@ const NAV_ITEMS: NavEntry[] = [
     icon: FolderIcon,
     children: [
       { to: "/files", label: "Files", icon: FolderIcon },
-      { to: "/projects", label: "Projects", icon: RectangleStackIcon },
+      { to: "/projects", label: "Sites", icon: RectangleStackIcon },
     ],
   },
   { to: "/ai-gateway", label: "AI Gateway", icon: SparklesIcon },

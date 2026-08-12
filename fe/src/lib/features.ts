@@ -31,7 +31,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   terminal: "Terminal",
   "remote-desktop": "Remote Desktop",
   files: "Files",
-  projects: "Projects",
+  projects: "Sites",
   "ai-gateway": "AI Gateway",
   telegram: "Telegram",
   movies: "Movies (incl. Downloads & Stream)",
