@@ -26,6 +26,7 @@ import { RemoteDesktop } from "./pages/RemoteDesktop";
 import { RemoteDesktopView } from "./pages/RemoteDesktopView";
 import { Settings } from "./pages/Settings";
 import { AiGateway } from "./pages/AiGateway";
+import { Hosts } from "./pages/Hosts";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -86,6 +87,7 @@ function AppRoutes() {
         <Route path="/projects" element={<RequireFeature><Projects /></RequireFeature>} />
         <Route path="/system" element={<Navigate to="/dashboard" replace />} />
         <Route path="/ai-gateway" element={<RequireFeature><AiGateway /></RequireFeature>} />
+        <Route path="/hosts" element={user?.role === "admin" ? <Hosts /> : <Navigate to="/dashboard" replace />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>

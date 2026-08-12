@@ -36,6 +36,7 @@ interface NavLeaf {
   to: string;
   label: string;
   icon: IconType;
+  adminOnly?: boolean;
 }
 
 // Groups collapse related pages under one dropdown so the sidebar doesn't
@@ -87,6 +88,7 @@ const NAV_ITEMS: NavEntry[] = [
     ],
   },
   { to: "/ai-gateway", label: "AI Gateway", icon: SparklesIcon },
+  { to: "/hosts", label: "Hosts", icon: ServerIcon, adminOnly: true },
   { to: "/telegram", label: "Telegram", icon: PaperAirplaneIcon },
   {
     label: "Movies",
@@ -115,9 +117,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const visibleItems: NavEntry[] = user
     ? NAV_ITEMS.map((item) => {
         if (!isGroup(item)) return item;
-        const children = item.children.filter((c) => canAccessPath(user.features, user.role, c.to));
+        const children = item.children.filter((c) => (!c.adminOnly || user.role === "admin") && canAccessPath(user.features, user.role, c.to));
         return { ...item, children };
-      }).filter((item) => isGroup(item) ? item.children.length > 0 : canAccessPath(user.features, user.role, item.to))
+      }).filter((item) => isGroup(item) ? item.children.length > 0 : (!item.adminOnly || user.role === "admin") && canAccessPath(user.features, user.role, item.to))
     : NAV_ITEMS;
   // Group whose children contain the active route auto-expands; the rest
   // start collapsed. Keyed by group label since groups have no route of

@@ -29,6 +29,7 @@ import (
 	"github.com/nawfdev/home-panel/internal/remotedesktop"
 	"github.com/nawfdev/home-panel/internal/server"
 	"github.com/nawfdev/home-panel/internal/session"
+	"github.com/nawfdev/home-panel/internal/sshmgr"
 	"github.com/nawfdev/home-panel/internal/store"
 	"github.com/nawfdev/home-panel/internal/subtitles"
 	"github.com/nawfdev/home-panel/internal/telegram"
@@ -87,7 +88,8 @@ func main() {
 
 	sess := session.New(cfg.Session.Secret, cfg.Session.MaxAge)
 	tg := telegram.New(st)
-	term := terminal.New(sess)
+	hostsSvc := sshmgr.New(st, paths.Root)
+	term := terminal.New(sess, hostsSvc, st)
 
 	// Background metrics collection (replaces startMetricsCollection in server.js).
 	mc := metrics.New()
@@ -110,10 +112,11 @@ func main() {
 		Cloudflare:    cloudflare.New(st),
 		Config:        cfg,
 		Docker:        docker.New(),
-		Files:         files.New(st),
+		Files:         files.New(st, hostsSvc),
 		Movies:        mov,
 		TorrentSearch: ts,
 		TV:            tvSvc,
+		Hosts:         hostsSvc,
 		Paths:         paths,
 		Store:         st,
 		Sessions:      sess,

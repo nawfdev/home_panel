@@ -37,11 +37,12 @@ Nestcore is an all-in-one web dashboard for managing homelab infrastructure — 
 - **Services** — manage systemd units (Linux) or Windows services
 - **Cloudflare** — tunnel status, ingress route editor, zone list, synced with the Cloudflare API
 - **Telegram** — status/error notifications and test messages
-- **Files** — browser-based file manager (view, edit, upload, download, delete)
-- **Terminal** — WebSocket shell with ANSI color output
+- **Files** — browser-based file manager (view, edit, upload, download, delete), locally or over SSH on saved Linux hosts
+- **Terminal** — WebSocket shell with ANSI color output and a host switcher for saved SSH targets
 - **Remote Desktop** — control another LAN device's mouse/keyboard/clipboard in-browser via the bundled `remoteagent` binary
 - **Projects** — manage arbitrary Node/script projects (start/stop/restart, ports, domains)
 - **Settings** — password change, integration tokens, service path overrides, self-update check
+- **Hosts** — admin-managed SSH targets; a one-time password installs the panel key, then credentials are key-only
 
 ### Security & Reliability
 - Rate limiting (API & login)

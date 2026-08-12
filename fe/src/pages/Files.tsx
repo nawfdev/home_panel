@@ -7,6 +7,7 @@ import { ShareQr } from "../components/ui/ShareQr";
 import { MediaPlayer } from "./MediaPlayer";
 import { formatBytes } from "../lib/format";
 import { copyText } from "../lib/clipboard";
+import type { Host } from "../lib/hosts";
 import {
   ArrowPathIcon,
   ArrowUpIcon,
@@ -45,6 +46,8 @@ const TTL_OPTIONS: { label: string; seconds: number }[] = [
 export function Files() {
   const { show } = useToast();
   const [path, setPath] = useState("/");
+  const [hosts, setHosts] = useState<Host[]>([]);
+  const [hostId, setHostId] = useState(0);
   const [items, setItems] = useState<FileItem[] | null>(null);
   const [editing, setEditing] = useState<{ path: string; content: string } | null>(null);
   const [saving, setSaving] = useState(false);
@@ -71,7 +74,7 @@ export function Files() {
     try {
       const data = await api<{ success: boolean; path: string; items: FileItem[] }>("/files/list", {
         method: "POST",
-        body: JSON.stringify({ path: p }),
+        body: JSON.stringify({ path: p, host: hostId }),
       });
       setPath(data.path || "/");
       setItems(data.items ?? []);
@@ -82,6 +85,7 @@ export function Files() {
 
   useEffect(() => {
     loadDirectory("/");
+    api<Host[]>("/hosts").then(setHosts).catch(() => setHosts([]));
     api<{ success: boolean; maxUploadMb?: number }>("/settings/file-manager")
       .then((res) => {
         if (res.success && res.maxUploadMb) setMaxUploadMb(res.maxUploadMb);
@@ -110,10 +114,36 @@ export function Files() {
     }
     setUploadOpen(true);
   }
+  function changeHost(nextHostId: number) {
+    setHostId(nextHostId);
+    setPath("/");
+    setItems(null);
+    setEditing(null);
+    setPlayer(null);
+    void loadDirectoryForHost(nextHostId, "/");
+  }
+
+  async function loadDirectoryForHost(targetHostId: number, targetPath: string) {
+    try {
+      const data = await api<{ success: boolean; path: string; items: FileItem[] }>("/files/list", {
+        method: "POST",
+        body: JSON.stringify({ path: targetPath, host: targetHostId }),
+      });
+      setPath(data.path || "/");
+      setItems(data.items ?? []);
+    } catch (err) {
+      setItems([]);
+      show(err instanceof Error ? err.message : "Error loading directory", "error");
+    }
+  }
 
   async function handleClick(item: FileItem) {
     if (item.isDirectory) {
       loadDirectory(item.path);
+      return;
+    }
+    if (hostId !== 0) {
+      viewFile(item.path);
       return;
     }
     // Media files open in the player; everything else in the text viewer.
@@ -139,7 +169,7 @@ export function Files() {
     try {
       const data = await api<{ success: boolean; content: string }>("/files/read", {
         method: "POST",
-        body: JSON.stringify({ path: p }),
+        body: JSON.stringify({ path: p, host: hostId }),
       });
       setEditing({ path: p, content: data.content });
     } catch (err) {
@@ -153,7 +183,7 @@ export function Files() {
     try {
       await api("/files/write", {
         method: "POST",
-        body: JSON.stringify({ path: editing.path, content: editing.content }),
+        body: JSON.stringify({ path: editing.path, content: editing.content, host: hostId }),
       });
       show("File saved", "success");
       setEditing(null);
@@ -168,7 +198,7 @@ export function Files() {
   async function deleteItem() {
     if (!deleteTarget) return;
     try {
-      await api("/files/delete", { method: "POST", body: JSON.stringify({ path: deleteTarget }) });
+      await api("/files/delete", { method: "POST", body: JSON.stringify({ path: deleteTarget, host: hostId }) });
       loadDirectory(path);
     } catch (err) {
       show(err instanceof Error ? err.message : "Error deleting", "error");
@@ -178,7 +208,8 @@ export function Files() {
   }
 
   function downloadFile(p: string) {
-    window.location.href = `/api/files/download?path=${encodeURIComponent(p)}`;
+    const host = hostId === 0 ? "" : `&host=${hostId}`;
+    window.location.href = `/api/files/download?path=${encodeURIComponent(p)}${host}`;
   }
 
   function goUp() {
@@ -203,6 +234,7 @@ export function Files() {
     const formData = new FormData();
     formData.append("file", uploadFile);
     formData.append("path", path);
+    if (hostId !== 0) formData.append("host", String(hostId));
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/files/upload");
@@ -278,12 +310,21 @@ export function Files() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
+        <div className="min-w-0">
           <h2 className="text-2xl font-bold text-gray-100">Files</h2>
           <p className="text-gray-500 text-sm mt-1 font-mono truncate">{path}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <select
+            value={hostId}
+            onChange={(e) => changeHost(Number(e.target.value))}
+            className="input-field text-sm min-w-40"
+            aria-label="Files host"
+          >
+            <option value={0}>Local host</option>
+            {hosts.map((host) => <option key={host.id} value={host.id}>{host.name}</option>)}
+          </select>
           <button className="btn-secondary" onClick={goUp}>
             <ArrowUpIcon className="w-4 h-4 inline mr-1.5" />Up
           </button>
@@ -317,9 +358,11 @@ export function Files() {
                   </div>
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <button className="btn-secondary" title="Share" onClick={() => openShare(item)}>
-                    <ShareIcon className="w-4 h-4" />
-                  </button>
+                  {hostId === 0 && (
+                    <button className="btn-secondary" title="Share" onClick={() => openShare(item)}>
+                      <ShareIcon className="w-4 h-4" />
+                    </button>
+                  )}
                   {!item.isDirectory && (
                     <button className="btn-secondary" title="Download" onClick={() => downloadFile(item.path)}>
                       <ArrowDownTrayIcon className="w-4 h-4" />

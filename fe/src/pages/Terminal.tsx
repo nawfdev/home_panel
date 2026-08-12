@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Panel } from "../components/ui/Panel";
 import { ArrowPathIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { api } from "../lib/api";
+import type { Host } from "../lib/hosts";
 
 const ANSI_COLORS: Record<string, string> = {
   "30": "#2e3436",
@@ -41,7 +43,8 @@ export function Terminal() {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const [command, setCommand] = useState("");
-
+  const [hosts, setHosts] = useState<Host[]>([]);
+  const [hostId, setHostId] = useState(0);
   function append(html: string) {
     if (outputRef.current) {
       outputRef.current.innerHTML += html;
@@ -49,12 +52,13 @@ export function Terminal() {
     }
   }
 
-  function connect() {
+  const connect = useCallback((targetHostId = hostId) => {
     if (outputRef.current) outputRef.current.innerHTML = '<div style="color:#4ade80">Connecting to terminal...</div>';
     wsRef.current?.close();
 
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const ws = new WebSocket(`${protocol}//${window.location.host}/terminal`);
+    const query = targetHostId === 0 ? "" : `?host=${targetHostId}`;
+    const ws = new WebSocket(`${protocol}//${window.location.host}/terminal/ws${query}`);
     wsRef.current = ws;
 
     ws.onopen = () => {
@@ -70,16 +74,20 @@ export function Terminal() {
       append(escapeHtml(event.data));
     };
     ws.onclose = () => {
+      if (wsRef.current !== ws) return;
       setConnected(false);
       append('<div style="color:#f87171">&#10007; Terminal disconnected</div>\n');
     };
-  }
+  }, [hostId]);
 
   useEffect(() => {
-    connect();
-    return () => wsRef.current?.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    api<Host[]>("/hosts").then(setHosts).catch(() => setHosts([]));
   }, []);
+
+  useEffect(() => {
+    connect(hostId);
+    return () => wsRef.current?.close();
+  }, [connect, hostId]);
 
   function sendCommand() {
     if (!command.trim()) return;
@@ -99,14 +107,25 @@ export function Terminal() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-100">Terminal</h2>
-          <p className="text-gray-500 text-sm mt-1">Shell access to this host over WebSocket</p>
+          <p className="text-gray-500 text-sm mt-1">Shell access over WebSocket</p>
         </div>
-        <div className="flex items-center gap-2 text-sm">
-          <span className={`metric-dot ${connected ? "text-green-400" : "text-red-400"}`} />
-          <span className="text-gray-300">{connected ? "Connected" : "Disconnected"}</span>
+        <div className="flex items-center gap-3">
+          <select
+            value={hostId}
+            onChange={(e) => setHostId(Number(e.target.value))}
+            className="input-field text-sm min-w-44"
+            aria-label="Terminal host"
+          >
+            <option value={0}>Local host</option>
+            {hosts.map((host) => <option key={host.id} value={host.id}>{host.name}</option>)}
+          </select>
+          <div className="flex items-center gap-2 text-sm shrink-0">
+            <span className={`metric-dot ${connected ? "text-green-400" : "text-red-400"}`} />
+            <span className="text-gray-300">{connected ? "Connected" : "Disconnected"}</span>
+          </div>
         </div>
       </div>
 
@@ -115,7 +134,7 @@ export function Terminal() {
           <button className="btn-secondary" onClick={clearTerminal}>
             <TrashIcon className="w-4 h-4 inline mr-1.5" />Clear
           </button>
-          <button className="btn-secondary" onClick={connect}>
+          <button className="btn-secondary" onClick={() => connect()}>
             <ArrowPathIcon className="w-4 h-4 inline mr-1.5" />Reconnect
           </button>
         </div>

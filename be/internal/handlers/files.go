@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -19,9 +22,17 @@ type Files struct {
 func (f *Files) List(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path string `json:"path"`
+		Host int    `json:"host"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	path, items, err := f.Svc.List(req.Path)
+	var path string
+	var items any
+	var err error
+	if req.Host != 0 {
+		path, items, err = f.Svc.ListRemote(req.Host, req.Path)
+	} else {
+		path, items, err = f.Svc.List(req.Path)
+	}
 	if err != nil {
 		fileError(w, err)
 		return
@@ -32,9 +43,16 @@ func (f *Files) List(w http.ResponseWriter, r *http.Request) {
 func (f *Files) Read(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path string `json:"path"`
+		Host int    `json:"host"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	content, err := f.Svc.Read(req.Path)
+	var content string
+	var err error
+	if req.Host != 0 {
+		content, err = f.Svc.ReadRemote(req.Host, req.Path)
+	} else {
+		content, err = f.Svc.Read(req.Path)
+	}
 	if err != nil {
 		fileError(w, err)
 		return
@@ -46,9 +64,16 @@ func (f *Files) Write(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path    string `json:"path"`
 		Content string `json:"content"`
+		Host    int    `json:"host"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	if err := f.Svc.Write(req.Path, req.Content); err != nil {
+	var err error
+	if req.Host != 0 {
+		err = f.Svc.WriteRemote(req.Host, req.Path, req.Content)
+	} else {
+		err = f.Svc.Write(req.Path, req.Content)
+	}
+	if err != nil {
 		fileError(w, err)
 		return
 	}
@@ -58,9 +83,16 @@ func (f *Files) Write(w http.ResponseWriter, r *http.Request) {
 func (f *Files) Delete(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Path string `json:"path"`
+		Host int    `json:"host"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	if err := f.Svc.Delete(req.Path); err != nil {
+	var err error
+	if req.Host != 0 {
+		err = f.Svc.DeleteRemote(req.Host, req.Path)
+	} else {
+		err = f.Svc.Delete(req.Path)
+	}
+	if err != nil {
 		fileError(w, err)
 		return
 	}
@@ -68,7 +100,24 @@ func (f *Files) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (f *Files) Download(w http.ResponseWriter, r *http.Request) {
-	fullPath, err := f.Svc.DownloadPath(r.URL.Query().Get("path"))
+	hostID, _ := strconv.Atoi(r.URL.Query().Get("host"))
+	path := r.URL.Query().Get("path")
+	if hostID != 0 {
+		rc, size, err := f.Svc.OpenRemote(hostID, path)
+		if err != nil {
+			fileError(w, err)
+			return
+		}
+		defer rc.Close()
+		if ct := filesvc.ContentTypeFor(path); ct != "" {
+			w.Header().Set("Content-Type", ct)
+		}
+		w.Header().Set("Content-Length", strconv.FormatInt(size, 10))
+		w.Header().Set("Content-Disposition", "attachment; filename=\""+filepath.Base(path)+"\"")
+		_, _ = io.Copy(w, rc)
+		return
+	}
+	fullPath, err := f.Svc.DownloadPath(path)
 	if err != nil {
 		fileError(w, err)
 		return
@@ -94,7 +143,13 @@ func (f *Files) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = file.Close()
-	if err := f.Svc.Upload(r.FormValue("path"), header); err != nil {
+	hostID, _ := strconv.Atoi(r.FormValue("host"))
+	if hostID != 0 {
+		err = f.Svc.UploadRemote(hostID, r.FormValue("path"), header)
+	} else {
+		err = f.Svc.Upload(r.FormValue("path"), header)
+	}
+	if err != nil {
 		fileError(w, err)
 		return
 	}

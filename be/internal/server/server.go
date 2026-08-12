@@ -24,12 +24,13 @@ import (
 	"github.com/nawfdev/home-panel/internal/projects"
 	"github.com/nawfdev/home-panel/internal/remotedesktop"
 	"github.com/nawfdev/home-panel/internal/session"
+	"github.com/nawfdev/home-panel/internal/sshmgr"
 	"github.com/nawfdev/home-panel/internal/store"
 	"github.com/nawfdev/home-panel/internal/telegram"
 	termsvc "github.com/nawfdev/home-panel/internal/terminal"
 	"github.com/nawfdev/home-panel/internal/torrentsearch"
-	tvsvc "github.com/nawfdev/home-panel/internal/tv"
 	"github.com/nawfdev/home-panel/internal/tunnel"
+	tvsvc "github.com/nawfdev/home-panel/internal/tv"
 	"github.com/nawfdev/home-panel/internal/updater"
 )
 
@@ -43,6 +44,7 @@ type Deps struct {
 	Movies        *moviesvc.Service
 	TorrentSearch *torrentsearch.Service
 	Paths         config.Paths
+	Hosts         *sshmgr.Manager
 	Store         *store.Store
 	Sessions      *session.Manager
 	Metrics       *metrics.Collector
@@ -89,6 +91,7 @@ func New(d Deps) http.Handler {
 	tvH := &handlers.TV{Svc: d.TV}
 	usersH := &handlers.Users{Store: d.Store}
 	rolesH := &handlers.Roles{Store: d.Store}
+	hostsH := &handlers.Hosts{Store: d.Store, SSH: d.Hosts}
 
 	// Rate limiters mirror express-rate-limit windows from server.js.
 	apiLimiter := httpx.NewRateLimiter(15*time.Minute, 500, false,
@@ -96,9 +99,9 @@ func New(d Deps) http.Handler {
 	loginLimiter := httpx.NewRateLimiter(15*time.Minute, 10, true,
 		"Too many login attempts, please try again later.")
 
-	r.With(auth.RequireAuth, auth.RequireFeature("terminal")).Get("/terminal", d.Terminal.Handler)
+	r.With(auth.RequireAuth, auth.RequireFeature("terminal")).Get("/terminal/ws", d.Terminal.Handler)
 	// Segment/manifest/license proxy for the Live TV player — high-frequency,
-	// non-JSON traffic, so it's mounted outside /api's apiLimiter like /terminal
+	// non-JSON traffic, so it's mounted outside /api's apiLimiter like /terminal/ws
 	// above and /share below. POST is needed too: Widevine license requests
 	// carry a binary challenge in the body.
 	tvProxy := r.With(auth.RequireAuth, auth.RequireFeature("tv"))
@@ -154,6 +157,16 @@ func New(d Deps) http.Handler {
 			rr.Post("/", rolesH.Create)
 			rr.Put("/{id}", rolesH.Update)
 			rr.Delete("/{id}", rolesH.Delete)
+		})
+
+		api.Route("/hosts", func(hr chi.Router) {
+			hr.Use(auth.RequireAuth)
+			// Any authenticated user needs the host list to populate the
+			// Terminal/Files host-switcher; the Host struct carries no
+			// secrets. Adding/removing SSH targets stays admin-only.
+			hr.Get("/", hostsH.List)
+			hr.With(auth.RequireRole("admin")).Post("/", hostsH.Create)
+			hr.With(auth.RequireRole("admin")).Delete("/{id}", hostsH.Delete)
 		})
 
 		api.Route("/tunnel", func(tr chi.Router) {
@@ -363,14 +376,14 @@ func New(d Deps) http.Handler {
 
 	// Public file share links: intentionally OUTSIDE /api and its auth — anyone
 	// with the link can fetch the shared file/folder, which is the whole point.
-	// Mounted on r directly, like /terminal and the ai-gateway proxy.
+	// Mounted on r directly, like /terminal/ws and the ai-gateway proxy.
 	r.Get("/share/{token}", filesH.ServePublicShare)
 	r.Get("/share/{token}/*", filesH.ServePublicShare)
 
 	// AI Gateway proxy: called by an external client app (not the browser),
 	// so it deliberately sits outside apiLimiter's per-IP human-traffic budget
 	// and uses its own gateway-key auth instead of the cookie session — same
-	// reasoning as /terminal being mounted directly on r instead of under /api.
+	// reasoning as /terminal/ws being mounted directly on r instead of under /api.
 	r.Route("/api/ai-gateway/v1", func(gwr chi.Router) {
 		gwr.Use(gatewayAuth.RequireGatewayKey)
 		gwr.Post("/chat/completions", aigatewayH.ChatCompletions)

@@ -73,11 +73,27 @@ type RemoteDevice struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// Host is a saved SSH target (e.g. a secondary STB/box) the panel can run
+// terminal commands and browse files on, in addition to the machine it runs
+// on itself (hostId 0 always means "local"). Authentication is key-only: the
+// panel's own keypair (data/panel_id_ed25519) is installed into the target's
+// authorized_keys once when the host is added, so no password or private key
+// material for the remote box is ever persisted here.
+type Host struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	Address   string `json:"address"`
+	Port      int    `json:"port"`
+	User      string `json:"user"`
+	CreatedAt string `json:"created_at"`
+}
+
 type data struct {
 	Users         []User                 `json:"users"`
 	Roles         []Role                 `json:"roles"`
 	Projects      []Project              `json:"projects"`
 	RemoteDevices []RemoteDevice         `json:"remote_devices"`
+	Hosts         []Host                 `json:"hosts"`
 	Settings      map[string]interface{} `json:"settings"`
 }
 
@@ -286,6 +302,47 @@ func (s *Store) DeleteRemoteDevice(id int) error {
 	for i := range s.d.RemoteDevices {
 		if s.d.RemoteDevices[i].ID == id {
 			s.d.RemoteDevices = append(s.d.RemoteDevices[:i], s.d.RemoteDevices[i+1:]...)
+			return s.save()
+		}
+	}
+	return nil
+}
+
+func (s *Store) ListHosts() []Host {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]Host, len(s.d.Hosts))
+	copy(out, s.d.Hosts)
+	return out
+}
+
+func (s *Store) GetHost(id int) (Host, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, h := range s.d.Hosts {
+		if h.ID == id {
+			return h, true
+		}
+	}
+	return Host{}, false
+}
+
+// InsertHost mirrors the InsertRemoteDevice id scheme (len+1).
+func (s *Store) InsertHost(h Host) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h.ID = len(s.d.Hosts) + 1
+	h.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	s.d.Hosts = append(s.d.Hosts, h)
+	return h.ID, s.save()
+}
+
+func (s *Store) DeleteHost(id int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.d.Hosts {
+		if s.d.Hosts[i].ID == id {
+			s.d.Hosts = append(s.d.Hosts[:i], s.d.Hosts[i+1:]...)
 			return s.save()
 		}
 	}
