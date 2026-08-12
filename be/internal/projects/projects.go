@@ -266,13 +266,13 @@ func (m *Manager) Delete(id int) Result {
 	if p.HostID == 0 && p.Status == "running" {
 		m.Stop(id)
 	}
-	if err := m.store.DeleteProject(id); err != nil {
-		return Result{Success: false, Message: err.Error()}
-	}
 	if p.HostID != 0 {
 		if err := m.removeRemoteConfig(context.Background(), p); err != nil {
-			return Result{Success: false, Message: "Site removed, but remote cleanup failed: " + err.Error()}
+			return Result{Success: false, Message: "Remote cleanup failed; site was not removed: " + err.Error()}
 		}
+	}
+	if err := m.store.DeleteProject(id); err != nil {
+		return Result{Success: false, Message: err.Error()}
 	}
 	return Result{Success: true, Message: "Site removed; deployed files were preserved"}
 }
