@@ -278,7 +278,7 @@ export function Dashboard() {
 
       <div className="mb-6">
         <h3 className="section-heading"><ChartBarIcon />Performance trends (24h)</h3>
-        <div className="grid grid-cols-1 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <PerformanceChart title="CPU Usage" data={cpuHistory} color="#60a5fa" />
           <PerformanceChart title="Memory Usage" data={memHistory} color="#4ade80" />
         </div>

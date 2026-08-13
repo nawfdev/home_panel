@@ -107,8 +107,11 @@ func main() {
 	backupSvc.StartRetention(context.Background())
 	healthSvc := hosthealth.New(st, hostsSvc)
 
-	// Background metrics collection (replaces startMetricsCollection in server.js).
-	mc := metrics.New()
+	// Background metrics collection retains the full 24-hour graph across restarts.
+	mc, err := metrics.Open(filepath.Join(paths.Root, "data", "metrics-history.jsonl"))
+	if err != nil {
+		log.Fatalf("failed to open metrics history: %v", err)
+	}
 	mc.Start(context.Background())
 	log.Println("Starting metrics collection (every 60s)...")
 
