@@ -50,7 +50,7 @@ const ROUTE_FEATURE: Record<string, FeatureKey> = {
   "/pm2": "pm2",
   "/logs": "logs",
   "/services": "services",
-  "/files": "files",
+  "/shares": "files",
   "/movies": "movies",
   "/downloads": "movies",
   "/stream": "movies",

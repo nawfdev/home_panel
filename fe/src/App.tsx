@@ -15,6 +15,7 @@ import { PM2 } from "./pages/PM2";
 import { Logs } from "./pages/Logs";
 import { Services } from "./pages/Services";
 import { Files } from "./pages/Files";
+import { Shares } from "./pages/Shares";
 import { Movies } from "./pages/Movies";
 import { Downloads } from "./pages/Downloads";
 import { Stream } from "./pages/Stream";
@@ -76,6 +77,7 @@ function AppRoutes() {
         <Route path="/logs" element={<RequireFeature><Logs /></RequireFeature>} />
         <Route path="/services" element={<RequireFeature><Services /></RequireFeature>} />
         <Route path="/files" element={<RequireFeature><Files /></RequireFeature>} />
+        <Route path="/shares" element={<RequireFeature><Shares /></RequireFeature>} />
         <Route path="/movies" element={<RequireFeature><Movies /></RequireFeature>} />
         <Route path="/downloads" element={<RequireFeature><Downloads /></RequireFeature>} />
         <Route path="/stream" element={<RequireFeature><Stream /></RequireFeature>} />

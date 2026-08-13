@@ -27,6 +27,7 @@ import {
   ChevronDownIcon,
   ComputerDesktopIcon,
   TvIcon,
+  ShareIcon,
 } from "@heroicons/react/24/outline";
 import type { ComponentType, SVGProps } from "react";
 
@@ -85,6 +86,7 @@ const NAV_ITEMS: NavEntry[] = [
     children: [
       { to: "/files", label: "Files", icon: FolderIcon },
       { to: "/projects", label: "Sites", icon: RectangleStackIcon },
+      { to: "/shares", label: "Shared links", icon: ShareIcon },
     ],
   },
   { to: "/ai-gateway", label: "AI Gateway", icon: SparklesIcon },
