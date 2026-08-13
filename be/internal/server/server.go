@@ -71,7 +71,6 @@ type Deps struct {
 func New(d Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(httpx.NewIPAllowlist(d.Config.Security.AllowedIPs).Middleware)
-	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(httpx.SecurityHeaders)
 

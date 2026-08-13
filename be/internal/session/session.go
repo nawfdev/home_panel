@@ -56,10 +56,7 @@ func (m *Manager) get(r *http.Request) *sessions.Session {
 }
 
 func requestSecure(r *http.Request) bool {
-	if r.TLS != nil {
-		return true
-	}
-	return strings.EqualFold(strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]), "https")
+	return r.TLS != nil
 }
 
 func requestIP(r *http.Request) string {

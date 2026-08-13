@@ -1,9 +1,12 @@
 package tv
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,6 +26,66 @@ var hopHeaders = map[string]bool{
 	"upgrade":             true,
 }
 
+var blockedNetworks = mustBlockedNetworks(
+	"0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8",
+	"169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24",
+	"192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24",
+	"224.0.0.0/4", "240.0.0.0/4", "::/128", "::1/128", "fc00::/7",
+	"fe80::/10", "ff00::/8", "2001:db8::/32",
+)
+
+func mustBlockedNetworks(cidrs ...string) []*net.IPNet {
+	networks := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			panic(err)
+		}
+		networks = append(networks, network)
+	}
+	return networks
+}
+
+func blockedIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	for _, blocked := range blockedNetworks {
+		if blocked.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func resolvePublicIPs(ctx context.Context, host string) error {
+	ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+	if err != nil {
+		return err
+	}
+	if len(ips) == 0 {
+		return fmt.Errorf("upstream host has no addresses")
+	}
+	for _, ip := range ips {
+		if blockedIP(ip) {
+			return fmt.Errorf("private or reserved upstream address")
+		}
+	}
+	return nil
+}
+
+func publicIPDialer(ctx context.Context, network, address string) (net.Conn, error) {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	if err := resolvePublicIPs(ctx, host); err != nil {
+		return nil, err
+	}
+	dialer := net.Dialer{}
+	return dialer.DialContext(ctx, network, address)
+}
+
 // Proxy relays a stream/license request to an upstream URL with headers the
 // browser can't set itself (Referer/User-Agent are forbidden on XHR/fetch,
 // and a Widevine license server is opaque to canonical CORS anyway). The
@@ -35,8 +98,12 @@ func (s *Service) Proxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parsed, err := url.Parse(target)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" || parsed.User != nil {
 		http.Error(w, "invalid url", http.StatusBadRequest)
+		return
+	}
+	if err := resolvePublicIPs(r.Context(), parsed.Hostname()); err != nil {
+		http.Error(w, "upstream address is not allowed", http.StatusForbidden)
 		return
 	}
 
@@ -64,7 +131,20 @@ func (s *Service) Proxy(w http.ResponseWriter, r *http.Request) {
 		req.Header.Set("Content-Type", ct)
 	}
 
-	resp, err := s.httpClient.Do(req)
+	client := *s.httpClient
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = publicIPDialer
+	client.Transport = transport
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		if err := resolvePublicIPs(req.Context(), req.URL.Hostname()); err != nil {
+			return err
+		}
+		return nil
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		http.Error(w, "upstream fetch failed: "+err.Error(), http.StatusBadGateway)
 		return
