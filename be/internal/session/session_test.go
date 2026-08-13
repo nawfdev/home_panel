@@ -23,6 +23,22 @@ func TestLoginIgnoresUntrustedForwardedProto(t *testing.T) {
 	}
 }
 
+func TestLoginTrustsSanitizedHTTPScheme(t *testing.T) {
+	manager := New(strings.Repeat("s", 32), 60_000)
+	request := httptest.NewRequest(http.MethodPost, "http://panel.local/api/auth/login", nil)
+	request.URL.Scheme = "https"
+	response := httptest.NewRecorder()
+
+	if err := manager.Login(response, request, SessionUser{ID: 1, Username: "admin", Role: "admin"}); err != nil {
+		t.Fatal(err)
+	}
+
+	cookie := response.Result().Cookies()[0]
+	if !cookie.Secure {
+		t.Fatal("trusted proxy HTTPS scheme produced a cookie without Secure")
+	}
+}
+
 func TestLoginMarksTLSCookieSecure(t *testing.T) {
 	manager := New(strings.Repeat("s", 32), 60_000)
 	request := httptest.NewRequest(http.MethodPost, "https://panel.local/api/auth/login", nil)

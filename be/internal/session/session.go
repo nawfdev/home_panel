@@ -56,7 +56,7 @@ func (m *Manager) get(r *http.Request) *sessions.Session {
 }
 
 func requestSecure(r *http.Request) bool {
-	return r.TLS != nil
+	return r.TLS != nil || r.URL.Scheme == "https"
 }
 
 func requestIP(r *http.Request) string {

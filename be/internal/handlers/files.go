@@ -292,11 +292,11 @@ func (f *Files) ServePublicShare(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(filesvc.PlayerHTML(mt, r.URL.Path, videoSrc, info.Name(), info.Size(), info.ModTime(), subs)))
+			_, _ = w.Write([]byte(filesvc.PlayerHTML(mt, r.URL.Path, videoSrc, info.Name(), info.Size(), info.ModTime(), subs, httpx.CSPNonce(r))))
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(filesvc.DownloadPageHTML(r.URL.Path, info.Name(), info.Size(), info.ModTime())))
+		_, _ = w.Write([]byte(filesvc.DownloadPageHTML(r.URL.Path, info.Name(), info.Size(), info.ModTime(), httpx.CSPNonce(r))))
 		return
 	}
 	if q.Get("web") == "1" {

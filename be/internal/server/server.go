@@ -71,8 +71,10 @@ type Deps struct {
 func New(d Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(httpx.NewIPAllowlist(d.Config.Security.AllowedIPs).Middleware)
+	r.Use(httpx.TrustedProxy)
 	r.Use(middleware.Recoverer)
 	r.Use(httpx.SecurityHeaders)
+	r.Use(httpx.CSRFProtection)
 
 	auth := &handlers.Auth{Store: d.Store, Session: d.Sessions, Audit: d.Audit}
 	system := handlers.System{Store: d.Store, PM2: d.PM2}

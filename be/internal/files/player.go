@@ -68,7 +68,7 @@ function nsShare(){ if(navigator.share){ navigator.share({url:window.location.hr
 // shared non-media file (documents, archives, ...): a centered card with a
 // file icon, name, size, and a prominent Download button. The bytes come from
 // basePath?raw=1.
-func DownloadPageHTML(basePath, fileName string, size int64, modTime time.Time) string {
+func DownloadPageHTML(basePath, fileName string, size int64, modTime time.Time, nonce string) string {
 	rawURL := basePath + "?raw=1"
 	ext := strings.ToUpper(strings.TrimPrefix(filepath.Ext(fileName), "."))
 	if len(ext) > 5 {
@@ -89,7 +89,7 @@ func DownloadPageHTML(basePath, fileName string, size int64, modTime time.Time) 
 	b.WriteString(`<a class="dlbtn" href="` + htmlEscape(rawURL) + `" download>` + icoDownload + `Download</a>`)
 	b.WriteString(copyShareHTML())
 	b.WriteString(`</div><div class="dlfoot">Shared via Nestcore</div></div>`)
-	b.WriteString(`<script>` + shareActionsJS + `</script>`)
+	b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">` + shareActionsJS + `</script>`)
 	b.WriteString(`</body></html>`)
 	return b.String()
 }
@@ -125,7 +125,7 @@ body{min-height:100vh;display:flex;align-items:center;justify-content:center;pad
 // but the caller may point it at a web-compat sibling instead (see
 // EnsureWebPlayable) while the Download button/link below still uses the
 // original via basePath?raw=1, so downloads are never affected.
-func PlayerHTML(mediaType, basePath, videoSrc, fileName string, size int64, modTime time.Time, subs []Subtitle) string {
+func PlayerHTML(mediaType, basePath, videoSrc, fileName string, size int64, modTime time.Time, subs []Subtitle, nonce string) string {
 	rawURL := basePath + "?raw=1"
 	subsJSON, _ := json.Marshal(subtitleTracks(basePath, subs))
 
@@ -144,21 +144,21 @@ func PlayerHTML(mediaType, basePath, videoSrc, fileName string, size int64, modT
 	case "image":
 		b.WriteString(`<div class="stage"><img src="` + htmlEscape(videoSrc) + `" alt="` + htmlEscape(fileName) + `" class="media-img"></div>`)
 		b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
-		b.WriteString(`<script>` + shareActionsJS + `</script></body></html>`)
+		b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">` + shareActionsJS + `</script></body></html>`)
 		return b.String()
 	case "audio":
 		b.WriteString(`<div class="stage audio"><audio controls src="` + htmlEscape(videoSrc) + `" class="media-audio"></audio></div>`)
 		b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
-		b.WriteString(`<script>` + shareActionsJS + `</script></body></html>`)
+		b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">` + shareActionsJS + `</script></body></html>`)
 		return b.String()
 	}
 
 	// Custom video player.
 	b.WriteString(videoPlayerHTML(videoSrc))
 	b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
-	b.WriteString(`<script>window.__SUBS__=` + string(subsJSON) + `;</script>`)
-	b.WriteString(`<script>` + renderedPlayerJS() + `</script>`)
-	b.WriteString(`<script>` + shareActionsJS + `</script>`)
+	b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">window.__SUBS__=` + string(subsJSON) + `;</script>`)
+	b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">` + renderedPlayerJS() + `</script>`)
+	b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">` + shareActionsJS + `</script>`)
 	b.WriteString(`</body></html>`)
 	return b.String()
 }
