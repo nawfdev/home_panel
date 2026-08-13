@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"encoding/pem"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -197,6 +198,43 @@ func (m *Manager) RunCommand(ctx context.Context, host store.Host, command strin
 		}
 		return outBuf.String(), errBuf.String(), -1, runErr
 	}
+}
+
+// StartTerminal opens an interactive remote shell with a PTY. The caller owns
+// the returned session and must close it when the terminal disconnects.
+func (m *Manager) StartTerminal(host store.Host, rows, cols uint32) (*ssh.Session, io.WriteCloser, io.Reader, error) {
+	c, err := m.client(host)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	sess, err := c.NewSession()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("open ssh terminal: %w", err)
+	}
+	stdin, err := sess.StdinPipe()
+	if err != nil {
+		_ = sess.Close()
+		return nil, nil, nil, fmt.Errorf("open ssh terminal stdin: %w", err)
+	}
+	stdout, err := sess.StdoutPipe()
+	if err != nil {
+		_ = sess.Close()
+		return nil, nil, nil, fmt.Errorf("open ssh terminal stdout: %w", err)
+	}
+	sess.Stderr = sess.Stdout
+	if err := sess.RequestPty("xterm-256color", int(rows), int(cols), ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
+	}); err != nil {
+		_ = sess.Close()
+		return nil, nil, nil, fmt.Errorf("request ssh terminal: %w", err)
+	}
+	if err := sess.Shell(); err != nil {
+		_ = sess.Close()
+		return nil, nil, nil, fmt.Errorf("start ssh terminal: %w", err)
+	}
+	return sess, stdin, stdout, nil
 }
 
 // NetworkInfo returns a Linux host's network snapshot over the existing SSH

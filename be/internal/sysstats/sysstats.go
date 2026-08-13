@@ -165,7 +165,16 @@ func collectDisks(ctx context.Context) []DiskStats {
 		return out
 	}
 	seen := map[string]bool{}
+	ignoredTypes := map[string]bool{
+		"squashfs": true,
+		"overlay":  true,
+	}
 	for _, p := range parts {
+		// Snap packages and container overlay filesystems are immutable images,
+		// so 100% usage is expected and does not represent host disk pressure.
+		if ignoredTypes[p.Fstype] || strings.HasPrefix(p.Device, "/dev/loop") {
+			continue
+		}
 		if seen[p.Mountpoint] {
 			continue
 		}

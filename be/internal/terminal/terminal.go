@@ -1,52 +1,55 @@
-// Package terminal ports backend/services/terminal.js.
+// Package terminal exposes authenticated interactive shell sessions over WebSocket.
 package terminal
 
 import (
-	"bytes"
-	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
-	"os/exec"
-	"runtime"
 	"strconv"
-	"strings"
-	"time"
+	"sync"
 
 	"github.com/gorilla/websocket"
 	"github.com/nawfdev/home-panel/internal/audit"
 	"github.com/nawfdev/home-panel/internal/session"
 	"github.com/nawfdev/home-panel/internal/sshmgr"
 	"github.com/nawfdev/home-panel/internal/store"
+	"golang.org/x/crypto/ssh"
 )
 
-var blockedCommands = []string{
-	"rm -rf /",
-	"format",
-	"del /f /s /q",
-	"shutdown",
-	"reboot",
-	"mkfs",
-	"dd if=",
-	"> /dev/sda",
+const (
+	defaultCols = 100
+	defaultRows = 30
+	maxCols     = 500
+	maxRows     = 200
+)
+
+type resizeMessage struct {
+	Type string `json:"type"`
+	Cols uint16 `json:"cols"`
+	Rows uint16 `json:"rows"`
+}
+
+type terminalSession interface {
+	io.ReadWriteCloser
+	Resize(cols, rows uint16) error
+	Wait() error
 }
 
 type Service struct {
-	sessions *session.Manager
 	sshMgr   *sshmgr.Manager
 	store    *store.Store
 	audit    *audit.Logger
 	upgrader websocket.Upgrader
 }
 
-func New(sessions *session.Manager, sshMgr *sshmgr.Manager, st *store.Store, auditLog *audit.Logger) *Service {
+func New(_ *session.Manager, sshMgr *sshmgr.Manager, st *store.Store, auditLog *audit.Logger) *Service {
 	return &Service{
-		sessions: sessions,
-		sshMgr:   sshMgr,
-		store:    st,
-		audit:    auditLog,
+		sshMgr: sshMgr,
+		store:  st,
+		audit:  auditLog,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: sameOrigin,
 		},
@@ -54,87 +57,164 @@ func New(sessions *session.Manager, sshMgr *sshmgr.Manager, st *store.Store, aud
 }
 
 func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
-	// RequireAuth (see server.go's route wiring) already resolved the caller
-	// via cookie OR bearer token and stashed it on the request context —
-	// checking the cookie again here would reject bearer-token clients
-	// (Android) even though the middleware already authorized them.
 	user, ok := session.FromContext(r.Context())
 	if !ok {
-		conn, err := s.upgrader.Upgrade(w, r, nil)
-		if err == nil {
-			_ = conn.WriteMessage(websocket.TextMessage, []byte("\x1b[31mError: Unauthorized via WebSocket. Please refresh.\x1b[0m"))
-			_ = conn.WriteMessage(websocket.TextMessage, []byte("AUTH_FAILED"))
-			_ = conn.CloseHandler()(4001, "Unauthorized")
-			_ = conn.Close()
-		}
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
+	hostID, host, ok := s.resolveHost(r)
+	if !ok {
+		http.Error(w, "unknown host", http.StatusNotFound)
+		return
+	}
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
 	defer conn.Close()
 
-	log.Printf("Terminal connected: %s", user.Username)
-	isWindows := runtime.GOOS == "windows"
+	cols, rows := dimensions(r)
+	term, err := s.startSession(hostID, host, cols, rows)
+	if err != nil {
+		_ = conn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mTerminal unavailable: "+err.Error()+"\x1b[0m\r\n"))
+		s.audit.Record(r, "terminal.session", sessionTarget(hostID, host), hostID, "failure", err.Error())
+		return
+	}
+	defer term.Close()
 
-	var host store.Host
-	hostID := 0
-	if v := r.URL.Query().Get("host"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			hostID = n
-		}
-	}
-	if hostID != 0 {
-		h, ok := s.store.GetHost(hostID)
-		if !ok {
-			write(conn, "\x1b[31mError: unknown host\x1b[0m\r\n")
-			return
-		}
-		host = h
+	log.Printf("Terminal connected [%s]: host=%d", user.Username, hostID)
+	s.audit.Record(r, "terminal.session", sessionTarget(hostID, host), hostID, "started", "")
+
+	var writeMu sync.Mutex
+	writeWS := func(messageType int, payload []byte) error {
+		writeMu.Lock()
+		defer writeMu.Unlock()
+		return conn.WriteMessage(messageType, payload)
 	}
 
-	write(conn, "\x1b[32m✓ Terminal connected\x1b[0m\r\n")
-	if hostID != 0 {
-		write(conn, fmt.Sprintf("User: %s | Host: %s (%s@%s) | Shell: bash\r\n", user.Username, host.Name, host.User, host.Address))
-	} else {
-		write(conn, fmt.Sprintf("User: %s | Platform: %s | Shell: %s\r\n", user.Username, runtime.GOOS, shellName(isWindows)))
-	}
-	write(conn, "Enter commands below:\r\n")
-	write(conn, "\x1b[33m⚠️  Dangerous commands are blocked for safety\x1b[0m\r\n\r\n")
+	outputDone := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 32*1024)
+		for {
+			n, readErr := term.Read(buf)
+			if n > 0 {
+				if err := writeWS(websocket.BinaryMessage, buf[:n]); err != nil {
+					outputDone <- err
+					return
+				}
+			}
+			if readErr != nil {
+				outputDone <- readErr
+				return
+			}
+		}
+	}()
 
-	for {
-		_, msg, err := conn.ReadMessage()
-		if err != nil {
-			log.Printf("Terminal disconnected: %s", user.Username)
-			return
+	processDone := make(chan error, 1)
+	go func() { processDone <- term.Wait() }()
+
+	inputDone := make(chan error, 1)
+	go func() {
+		for {
+			messageType, payload, readErr := conn.ReadMessage()
+			if readErr != nil {
+				inputDone <- readErr
+				return
+			}
+			switch messageType {
+			case websocket.BinaryMessage:
+				_, readErr = term.Write(payload)
+			case websocket.TextMessage:
+				readErr = handleControl(term, payload)
+			}
+			if readErr != nil {
+				inputDone <- readErr
+				return
+			}
 		}
-		command := strings.TrimSpace(string(msg))
-		if command == "" {
-			continue
-		}
-		log.Printf("Terminal command [%s]: %s", user.Username, command)
-		write(conn, "\x1b[36m$ "+command+"\x1b[0m\r\n")
-		if command == "clear" {
-			write(conn, "\x1b[2J\x1b[H")
-			continue
-		}
-		if isDangerousCommand(command) {
-			s.audit.Record(r, "terminal.command", command, hostID, "blocked", "dangerous command")
-			write(conn, "\x1b[31m✗ BLOCKED: This command is not allowed for security reasons\x1b[0m\r\n\r\n")
-			log.Printf("Blocked dangerous terminal command [%s]: %s", user.Username, command)
-			continue
-		}
-		var result string
-		var details string
-		if hostID != 0 {
-			result, details = runRemoteCommand(conn, s.sshMgr, host, command)
-		} else {
-			result, details = runCommand(conn, command, isWindows)
-		}
-		s.audit.Record(r, "terminal.command", command, hostID, result, details)
+	}()
+
+	select {
+	case <-inputDone:
+	case <-outputDone:
+	case <-processDone:
 	}
+	s.audit.Record(r, "terminal.session", sessionTarget(hostID, host), hostID, "ended", "")
+	log.Printf("Terminal disconnected [%s]: host=%d", user.Username, hostID)
+}
+
+func (s *Service) resolveHost(r *http.Request) (int, store.Host, bool) {
+	value := r.URL.Query().Get("host")
+	if value == "" {
+		return 0, store.Host{}, true
+	}
+	hostID, err := strconv.Atoi(value)
+	if err != nil || hostID <= 0 {
+		return 0, store.Host{}, false
+	}
+	host, ok := s.store.GetHost(hostID)
+	return hostID, host, ok
+}
+
+func (s *Service) startSession(hostID int, host store.Host, cols, rows uint16) (terminalSession, error) {
+	if hostID == 0 {
+		return startLocalTerminal(cols, rows)
+	}
+	sess, stdin, stdout, err := s.sshMgr.StartTerminal(host, uint32(rows), uint32(cols))
+	if err != nil {
+		return nil, err
+	}
+	return &sshTerminal{session: sess, stdin: stdin, stdout: stdout}, nil
+}
+
+type sshTerminal struct {
+	session *ssh.Session
+	stdin   io.WriteCloser
+	stdout  io.Reader
+}
+
+func (t *sshTerminal) Read(p []byte) (int, error)  { return t.stdout.Read(p) }
+func (t *sshTerminal) Write(p []byte) (int, error) { return t.stdin.Write(p) }
+func (t *sshTerminal) Resize(cols, rows uint16) error {
+	return t.session.WindowChange(int(rows), int(cols))
+}
+func (t *sshTerminal) Wait() error { return t.session.Wait() }
+func (t *sshTerminal) Close() error {
+	_ = t.stdin.Close()
+	return t.session.Close()
+}
+
+func handleControl(term terminalSession, payload []byte) error {
+	var message resizeMessage
+	if err := json.Unmarshal(payload, &message); err != nil || message.Type != "resize" {
+		return nil
+	}
+	if message.Cols == 0 || message.Rows == 0 || message.Cols > maxCols || message.Rows > maxRows {
+		return nil
+	}
+	return term.Resize(message.Cols, message.Rows)
+}
+
+func dimensions(r *http.Request) (uint16, uint16) {
+	cols := queryDimension(r, "cols", defaultCols, maxCols)
+	rows := queryDimension(r, "rows", defaultRows, maxRows)
+	return cols, rows
+}
+
+func queryDimension(r *http.Request, key string, fallback, maximum uint16) uint16 {
+	value, err := strconv.ParseUint(r.URL.Query().Get(key), 10, 16)
+	if err != nil || value == 0 || value > uint64(maximum) {
+		return fallback
+	}
+	return uint16(value)
+}
+
+func sessionTarget(hostID int, host store.Host) string {
+	if hostID == 0 {
+		return "local"
+	}
+	return fmt.Sprintf("%s@%s", host.User, host.Address)
 }
 
 func sameOrigin(r *http.Request) bool {
@@ -144,85 +224,4 @@ func sameOrigin(r *http.Request) bool {
 	}
 	u, err := url.Parse(origin)
 	return err == nil && u.Host == r.Host
-}
-
-func runCommand(conn *websocket.Conn, command string, isWindows bool) (string, string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	name := "bash"
-	args := []string{"-c", command}
-	if isWindows {
-		name = "cmd"
-		args = []string{"/c", command}
-	}
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Dir, _ = os.Getwd()
-	cmd.Env = os.Environ()
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	err := cmd.Run()
-	if stdout.Len() > 0 {
-		write(conn, stdout.String())
-	}
-	if stderr.Len() > 0 {
-		write(conn, "\x1b[31m"+stderr.String()+"\x1b[0m")
-	}
-	result := "success"
-	details := ""
-	if err != nil {
-		result = "failure"
-		details = err.Error()
-		if exitErr, ok := err.(*exec.ExitError); ok {
-			write(conn, fmt.Sprintf("\x1b[31m[Exit code: %d]\x1b[0m\r\n", exitErr.ExitCode()))
-		} else {
-			write(conn, "\x1b[31mError: "+err.Error()+"\x1b[0m\r\n")
-		}
-	}
-	write(conn, "\r\n")
-	return result, details
-}
-
-func runRemoteCommand(conn *websocket.Conn, sshMgr *sshmgr.Manager, host store.Host, command string) (string, string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	stdout, stderr, exitCode, err := sshMgr.RunCommand(ctx, host, command)
-	if stdout != "" {
-		write(conn, stdout)
-	}
-	if stderr != "" {
-		write(conn, "\x1b[31m"+stderr+"\x1b[0m")
-	}
-	result := "success"
-	details := ""
-	if err != nil {
-		result, details = "failure", err.Error()
-		write(conn, "\x1b[31mError: "+err.Error()+"\x1b[0m\r\n")
-	} else if exitCode != 0 {
-		result, details = "failure", fmt.Sprintf("exit code %d", exitCode)
-		write(conn, fmt.Sprintf("\x1b[31m[Exit code: %d]\x1b[0m\r\n", exitCode))
-	}
-	write(conn, "\r\n")
-	return result, details
-}
-
-func write(conn *websocket.Conn, msg string) {
-	_ = conn.WriteMessage(websocket.TextMessage, []byte(msg))
-}
-
-func shellName(isWindows bool) string {
-	if isWindows {
-		return "cmd"
-	}
-	return "bash"
-}
-
-func isDangerousCommand(command string) bool {
-	lower := strings.ToLower(strings.TrimSpace(command))
-	for _, blocked := range blockedCommands {
-		if strings.Contains(lower, strings.ToLower(blocked)) {
-			return true
-		}
-	}
-	return false
 }
