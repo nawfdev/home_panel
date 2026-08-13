@@ -50,6 +50,8 @@ interface HostHealth {
   cpu: number;
   memory: number;
   disk: number;
+  downloadedBytes: number;
+  uploadedBytes: number;
   temperature: number | null;
   uptime: number;
   latencyMs: number;
@@ -261,11 +263,13 @@ export function Dashboard() {
                 <span className={`text-xs ${host.online ? "text-green-400" : "text-red-400"}`}>{host.online ? "Online" : "Offline"}</span>
               </div>
               {host.online ? (
-                <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div><p className="text-gray-500">CPU</p><p className="font-mono text-gray-200">{host.cpu.toFixed(1)}%</p></div>
                   <div><p className="text-gray-500">RAM</p><p className="font-mono text-gray-200">{host.memory.toFixed(1)}%</p></div>
                   <div><p className="text-gray-500">Disk</p><p className="font-mono text-gray-200">{host.disk.toFixed(1)}%</p></div>
                   <div><p className="text-gray-500">Latency</p><p className="font-mono text-gray-200">{host.latencyMs} ms</p></div>
+                  <div><p className="text-gray-500">Downloaded</p><p className="font-mono text-green-400">{formatBytes(host.downloadedBytes)}</p></div>
+                  <div><p className="text-gray-500">Uploaded</p><p className="font-mono text-blue-400">{formatBytes(host.uploadedBytes)}</p></div>
                   <div><p className="text-gray-500">Temp</p><p className="font-mono text-gray-200">{host.temperature == null ? "N/A" : `${host.temperature.toFixed(1)}°C`}</p></div>
                   <div><p className="text-gray-500">Uptime</p><p className="font-mono text-gray-200">{formatUptime(host.uptime)}</p></div>
                 </div>

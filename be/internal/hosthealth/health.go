@@ -15,18 +15,20 @@ import (
 )
 
 type Snapshot struct {
-	HostID      int      `json:"hostId"`
-	Name        string   `json:"name"`
-	Address     string   `json:"address"`
-	Online      bool     `json:"online"`
-	CPU         float64  `json:"cpu"`
-	Memory      float64  `json:"memory"`
-	Disk        float64  `json:"disk"`
-	Temperature *float64 `json:"temperature"`
-	Uptime      uint64   `json:"uptime"`
-	LatencyMs   int64    `json:"latencyMs"`
-	LastSeen    string   `json:"lastSeen,omitempty"`
-	Error       string   `json:"error,omitempty"`
+	HostID          int      `json:"hostId"`
+	Name            string   `json:"name"`
+	Address         string   `json:"address"`
+	Online          bool     `json:"online"`
+	CPU             float64  `json:"cpu"`
+	Memory          float64  `json:"memory"`
+	Disk            float64  `json:"disk"`
+	DownloadedBytes uint64   `json:"downloadedBytes"`
+	UploadedBytes   uint64   `json:"uploadedBytes"`
+	Temperature     *float64 `json:"temperature"`
+	Uptime          uint64   `json:"uptime"`
+	LatencyMs       int64    `json:"latencyMs"`
+	LastSeen        string   `json:"lastSeen,omitempty"`
+	Error           string   `json:"error,omitempty"`
 }
 
 type Service struct {
@@ -75,13 +77,20 @@ func (s *Service) Local(ctx context.Context) Snapshot {
 			out.Disk = disk.UsagePercent
 		}
 	}
+	for _, network := range stats.Network {
+		if network.Iface == "lo" || strings.HasPrefix(network.Iface, "Loopback") {
+			continue
+		}
+		out.DownloadedBytes += network.RxBytes
+		out.UploadedBytes += network.TxBytes
+	}
 	temp := sysstats.GetTemperature(ctx)
 	out.Temperature = temp.Main
 	out.LastSeen = s.markSeen(0)
 	return out
 }
 
-const remoteCommand = `LC_ALL=C; cpu=$(top -bn1 2>/dev/null | awk '/Cpu\(s\)|%Cpu/{for(i=1;i<=NF;i++) if($i ~ /id,?$/){gsub(/,/,"",$(i-1)); print 100-$(i-1); exit}}'); mem=$(awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}END{if(t>0) printf "%.2f",(t-a)*100/t}' /proc/meminfo); disk=$(df -P / 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5);print $5}'); up=$(cut -d. -f1 /proc/uptime); temp=""; for f in /sys/class/thermal/thermal_zone*/temp; do if [ -r "$f" ]; then v=$(cat "$f"); [ "$v" -gt 0 ] 2>/dev/null && { temp=$(awk "BEGIN{printf \"%.1f\",$v/1000}"); break; }; fi; done; printf 'cpu=%s\nmem=%s\ndisk=%s\nuptime=%s\ntemp=%s\n' "$cpu" "$mem" "$disk" "$up" "$temp"`
+const remoteCommand = `LC_ALL=C; cpu=$(top -bn1 2>/dev/null | awk '/Cpu\(s\)|%Cpu/{for(i=1;i<=NF;i++) if($i ~ /id,?$/){gsub(/,/,"",$(i-1)); print 100-$(i-1); exit}}'); mem=$(awk '/MemTotal/{t=$2}/MemAvailable/{a=$2}END{if(t>0) printf "%.2f",(t-a)*100/t}' /proc/meminfo); disk=$(df -P / 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5);print $5}'); up=$(cut -d. -f1 /proc/uptime); net=$(awk -F: 'NR>2 {iface=$1; gsub(/^[ \t]+|[ \t]+$/,"",iface); if(iface!="lo"){split($2,a); rx+=a[1]; tx+=a[9]}} END{printf "%.0f %.0f",rx,tx}' /proc/net/dev); set -- $net; temp=""; for f in /sys/class/thermal/thermal_zone*/temp; do if [ -r "$f" ]; then v=$(cat "$f"); [ "$v" -gt 0 ] 2>/dev/null && { temp=$(awk "BEGIN{printf \"%.1f\",$v/1000}"); break; }; fi; done; printf 'cpu=%s\nmem=%s\ndisk=%s\nuptime=%s\ndownloaded=%s\nuploaded=%s\ntemp=%s\n' "$cpu" "$mem" "$disk" "$up" "$1" "$2" "$temp"`
 
 func number(values map[string]string, name string) float64 {
 	value, _ := strconv.ParseFloat(strings.TrimSpace(values[name]), 64)
@@ -112,6 +121,8 @@ func (s *Service) Remote(ctx context.Context, host store.Host) Snapshot {
 	out.Memory = number(values, "mem")
 	out.Disk = number(values, "disk")
 	out.Uptime = uint64(number(values, "uptime"))
+	out.DownloadedBytes = uint64(number(values, "downloaded"))
+	out.UploadedBytes = uint64(number(values, "uploaded"))
 	if value := number(values, "temp"); value > 0 {
 		out.Temperature = &value
 	}
