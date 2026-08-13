@@ -5,6 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { FEATURE_KEYS, FEATURE_LABELS, type FeatureKey } from "../lib/features";
 import { Panel } from "../components/ui/Panel";
 import { Modal } from "../components/ui/Modal";
+import { formatBytes } from "../lib/format";
 import {
   MagnifyingGlassIcon,
   LockClosedIcon,
@@ -13,15 +14,45 @@ import {
   ArrowPathIcon,
   UsersIcon,
   TrashIcon,
+  CircleStackIcon,
+  ArrowDownTrayIcon,
 } from "@heroicons/react/24/outline";
 
-type Tab = "account" | "users" | "integrations" | "paths" | "updates";
+interface SessionDTO {
+  id: string;
+  username: string;
+  ip: string;
+  userAgent: string;
+  createdAt: string;
+  lastSeen: string;
+  current: boolean;
+}
+
+interface BackupDTO {
+  name: string;
+  size: number;
+  createdAt: string;
+}
+
+interface AuditDTO {
+  id: number;
+  timestamp: string;
+  username?: string;
+  ip: string;
+  action: string;
+  target?: string;
+  hostId: number;
+  result: string;
+}
+
+type Tab = "account" | "users" | "integrations" | "paths" | "operations" | "updates";
 
 const TABS: { id: Tab; label: string; icon: typeof LockClosedIcon; adminOnly?: boolean }[] = [
   { id: "account", label: "Account", icon: LockClosedIcon },
   { id: "users", label: "Users", icon: UsersIcon, adminOnly: true },
   { id: "integrations", label: "Integrations", icon: PuzzlePieceIcon, adminOnly: true },
   { id: "paths", label: "Service paths", icon: FolderIcon, adminOnly: true },
+  { id: "operations", label: "Operations", icon: CircleStackIcon, adminOnly: true },
   { id: "updates", label: "Updates", icon: ArrowPathIcon, adminOnly: true },
 ];
 
@@ -208,6 +239,19 @@ export function Settings() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+  const [totpEnabled, setTotpEnabled] = useState(false);
+  const [totpSecret, setTotpSecret] = useState("");
+  const [totpUri, setTotpUri] = useState("");
+  const [totpCode, setTotpCode] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [disablePassword, setDisablePassword] = useState("");
+  const [sessions, setSessions] = useState<SessionDTO[]>([]);
+
+  const [backups, setBackups] = useState<BackupDTO[]>([]);
+  const [backupPassword, setBackupPassword] = useState("");
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [auditEvents, setAuditEvents] = useState<AuditDTO[]>([]);
+  const [operationsBusy, setOperationsBusy] = useState(false);
 
   const [cfTokenPlaceholder, setCfTokenPlaceholder] = useState("Global API Key or Token");
   const [cfApiToken, setCfApiToken] = useState("");
@@ -311,7 +355,95 @@ export function Settings() {
         if (res.success && res.maxUploadMb) setMaxUploadMb(res.maxUploadMb);
       })
       .catch(() => {});
+    api<{ enabled: boolean }>("/auth/totp").then((data) => setTotpEnabled(data.enabled)).catch(() => {});
+    api<{ sessions: SessionDTO[] }>("/auth/sessions").then((data) => setSessions(data.sessions)).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!isAdmin || tab !== "operations") return;
+    Promise.all([
+      api<{ backups: BackupDTO[] }>("/backups"),
+      api<{ events: AuditDTO[] }>("/audit?limit=100"),
+    ]).then(([backupData, auditData]) => {
+      setBackups(backupData.backups);
+      setAuditEvents(auditData.events);
+    }).catch((err) => show(err instanceof Error ? err.message : "Failed to load operations", "error"));
+  }, [isAdmin, tab, show]);
+
+  async function setupTotp() {
+    try {
+      const data = await api<{ secret: string; uri: string }>("/auth/totp/setup", { method: "POST" });
+      setTotpSecret(data.secret);
+      setTotpUri(data.uri);
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to start setup", "error");
+    }
+  }
+
+  async function enableTotp() {
+    try {
+      const data = await api<{ recoveryCodes: string[] }>("/auth/totp/enable", { method: "POST", body: JSON.stringify({ secret: totpSecret, code: totpCode }) });
+      setTotpEnabled(true);
+      setRecoveryCodes(data.recoveryCodes);
+      setTotpCode("");
+      show("Two-factor authentication enabled", "success");
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to enable two-factor authentication", "error");
+    }
+  }
+
+  async function disableTotp() {
+    try {
+      await api("/auth/totp/disable", { method: "POST", body: JSON.stringify({ password: disablePassword }) });
+      setTotpEnabled(false);
+      setTotpSecret("");
+      setRecoveryCodes([]);
+      setDisablePassword("");
+      show("Two-factor authentication disabled", "success");
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to disable two-factor authentication", "error");
+    }
+  }
+
+  async function revokeSession(id: string) {
+    try {
+      await api(`/auth/sessions/${id}`, { method: "DELETE" });
+      setSessions((items) => items.filter((item) => item.id !== id));
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to revoke session", "error");
+    }
+  }
+
+  async function createBackup() {
+    setOperationsBusy(true);
+    try {
+      const data = await api<{ backup: BackupDTO }>("/backups", { method: "POST", body: JSON.stringify({ password: backupPassword }) });
+      setBackups((items) => [data.backup, ...items]);
+      show("Encrypted backup created", "success");
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to create backup", "error");
+    } finally {
+      setOperationsBusy(false);
+    }
+  }
+
+  async function restoreBackup() {
+    if (!restoreFile) return;
+    setOperationsBusy(true);
+    const form = new FormData();
+    form.append("file", restoreFile);
+    form.append("password", backupPassword);
+    try {
+      const res = await fetch("/api/backups/restore", { method: "POST", credentials: "include", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? res.statusText);
+      show(data.message, "success", 10000);
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to restore backup", "error");
+    } finally {
+      setOperationsBusy(false);
+    }
+  }
 
   async function saveFileManager() {
     setSavingUpload(true);
@@ -554,31 +686,38 @@ export function Settings() {
 
       <div className="max-w-2xl">
         {tab === "account" && (
-          <Panel title="Change password">
-            <div className="space-y-3">
-              <div>
-                <label className="block text-gray-500 text-xs mb-1.5">Current password</label>
-                <input
-                  type="password"
-                  value={currentPassword}
-                  onChange={(e) => setCurrentPassword(e.target.value)}
-                  className="input-field w-full"
-                />
+          <div className="space-y-4">
+            <Panel title="Change password">
+              <div className="space-y-3">
+                <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" className="input-field w-full" />
+                <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password" className="input-field w-full" />
               </div>
-              <div>
-                <label className="block text-gray-500 text-xs mb-1.5">New password</label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="input-field w-full"
-                />
+              <button className="btn-primary w-full mt-4 disabled:opacity-60" onClick={changePassword} disabled={changingPassword}>{changingPassword ? "Changing..." : "Change password"}</button>
+            </Panel>
+            <Panel title="Two-factor authentication">
+              {totpEnabled ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-green-400">Enabled</p>
+                  <input type="password" value={disablePassword} onChange={(e) => setDisablePassword(e.target.value)} placeholder="Password to disable" className="input-field w-full" />
+                  <button className="btn-danger" onClick={disableTotp}>Disable two-factor authentication</button>
+                </div>
+              ) : totpSecret ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-gray-400">Add this secret to your authenticator, then verify one code.</p>
+                  <code className="block bg-black/30 rounded p-3 text-sm break-all">{totpSecret}</code>
+                  <a className="text-xs text-blue-400 break-all" href={totpUri}>Open authenticator URI</a>
+                  <input value={totpCode} onChange={(e) => setTotpCode(e.target.value)} placeholder="6-digit code" className="input-field w-full font-mono" />
+                  <button className="btn-primary" onClick={enableTotp}>Verify and enable</button>
+                </div>
+              ) : <button className="btn-primary" onClick={setupTotp}>Set up authenticator</button>}
+              {recoveryCodes.length > 0 && <div className="mt-4"><p className="text-xs text-amber-400 mb-2">Save these one-time recovery codes now.</p><pre className="bg-black/30 rounded p-3 text-sm">{recoveryCodes.join("\n")}</pre></div>}
+            </Panel>
+            <Panel title="Active sessions">
+              <div className="space-y-2">
+                {sessions.map((item) => <div key={item.id} className="bg-white/5 rounded-lg p-3 flex gap-3 items-center"><div className="min-w-0 flex-1"><p className="text-sm text-gray-200">{item.ip} {item.current && <span className="text-green-400">(current)</span>}</p><p className="text-xs text-gray-500 truncate">{item.userAgent || "Unknown client"}</p><p className="text-xs text-gray-600">Last seen {new Date(item.lastSeen).toLocaleString()}</p></div>{!item.current && <button className="btn-secondary text-xs" onClick={() => revokeSession(item.id)}>Revoke</button>}</div>)}
               </div>
-            </div>
-            <button className="btn-primary w-full mt-4 disabled:opacity-60" onClick={changePassword} disabled={changingPassword}>
-              {changingPassword ? "Changing..." : "Change password"}
-            </button>
-          </Panel>
+            </Panel>
+          </div>
         )}
 
         {tab === "users" && isAdmin && (
@@ -872,6 +1011,24 @@ export function Settings() {
               {savingUpload ? "Saving..." : "Save file manager settings"}
             </button>
           </Panel>
+        )}
+
+        {tab === "operations" && isAdmin && (
+          <div className="space-y-4">
+            <Panel title="Encrypted backup and restore">
+              <p className="text-xs text-gray-500 mb-3">Backups include the database, runtime configuration, settings, and SSH identity. Use at least 12 characters.</p>
+              <input type="password" value={backupPassword} onChange={(e) => setBackupPassword(e.target.value)} placeholder="Backup password" className="input-field w-full mb-3" />
+              <div className="flex gap-2 mb-4">
+                <button className="btn-primary flex-1 disabled:opacity-60" disabled={operationsBusy || backupPassword.length < 12} onClick={createBackup}>Create backup</button>
+                <label className="btn-secondary flex-1 text-center cursor-pointer"><input type="file" className="hidden" onChange={(e) => setRestoreFile(e.target.files?.[0] ?? null)} />{restoreFile ? restoreFile.name : "Choose backup"}</label>
+                <button className="btn-danger flex-1 disabled:opacity-60" disabled={operationsBusy || !restoreFile || backupPassword.length < 12} onClick={restoreBackup}>Restore</button>
+              </div>
+              <div className="space-y-2">{backups.map((item) => <div key={item.name} className="flex items-center gap-3 bg-white/5 rounded-lg p-3"><div className="flex-1"><p className="text-sm font-mono">{item.name}</p><p className="text-xs text-gray-500">{formatBytes(item.size)} · {new Date(item.createdAt).toLocaleString()}</p></div><a className="btn-secondary text-xs" href={`/api/backups/download?name=${encodeURIComponent(item.name)}`}><ArrowDownTrayIcon className="w-4 h-4" /></a></div>)}</div>
+            </Panel>
+            <Panel title="Audit log">
+              <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr className="text-left text-gray-500"><th className="pb-2">Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Result</th></tr></thead><tbody>{auditEvents.map((item) => <tr key={item.id} className="border-t border-white/5"><td className="py-2 pr-3 whitespace-nowrap">{new Date(item.timestamp).toLocaleString()}</td><td className="pr-3">{item.username || item.ip}</td><td className="pr-3 font-mono">{item.action}</td><td className="pr-3 max-w-40 truncate">{item.target}</td><td className={item.result === "success" ? "text-green-400" : "text-red-400"}>{item.result}</td></tr>)}</tbody></table></div>
+            </Panel>
+          </div>
         )}
 
         {tab === "updates" && (

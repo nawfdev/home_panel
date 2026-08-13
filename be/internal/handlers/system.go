@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/nawfdev/home-panel/internal/audit"
 	"github.com/nawfdev/home-panel/internal/httpx"
 	"github.com/nawfdev/home-panel/internal/platform"
 	"github.com/nawfdev/home-panel/internal/store"
@@ -136,7 +137,7 @@ func (s System) RebootHost(w http.ResponseWriter, r *http.Request) {
 }
 
 // Services ports backend/routes/services.js + system-services.js.
-type Services struct{}
+type Services struct{ Audit *audit.Logger }
 
 var serviceNameRe = regexp.MustCompile(`^[a-zA-Z0-9_\-.@]+$`)
 
@@ -182,6 +183,11 @@ func (sv Services) control(w http.ResponseWriter, r *http.Request, action string
 		err = ctrl.Start(ctx, name)
 	} else {
 		err = ctrl.Stop(ctx, name)
+	}
+	if err != nil {
+		sv.Audit.Record(r, "service."+action, name, 0, "failure", err.Error())
+	} else {
+		sv.Audit.Record(r, "service."+action, name, 0, "success", "")
 	}
 	if err != nil {
 		httpx.JSON(w, http.StatusInternalServerError, map[string]interface{}{"success": false, "error": err.Error()})

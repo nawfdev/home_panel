@@ -3,9 +3,10 @@ import { api } from "../lib/api";
 import { useInterval } from "../hooks/useInterval";
 import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
+import { TrafficChart } from "../components/network/TrafficChart";
 import { formatBytes } from "../lib/format";
 import { ArrowPathIcon, GlobeAltIcon, CloudIcon, ServerIcon } from "@heroicons/react/24/outline";
-
+import type { Host } from "../lib/hosts";
 interface NetInterface {
   name: string;
   ip4?: string | null;
@@ -21,6 +22,18 @@ interface NetStat {
   tx_sec: number;
 }
 
+
+interface TrafficPoint {
+  timestamp: number;
+  rxSec: number;
+  txSec: number;
+}
+
+interface TrafficTotal {
+  interface: string;
+  download: number;
+  upload: number;
+}
 interface CloudflareInfo {
   domain?: string;
   tunnelId?: string;
@@ -40,32 +53,78 @@ interface NetworkInfo {
 export function Network() {
   const { show } = useToast();
   const [info, setInfo] = useState<NetworkInfo | null>(null);
+  const [hosts, setHosts] = useState<Host[]>([]);
+  const [hostId, setHostId] = useState(0);
+  const [period, setPeriod] = useState<"1h" | "24h" | "7d">("24h");
+  const [history, setHistory] = useState<TrafficPoint[]>([]);
+  const [totals, setTotals] = useState<TrafficTotal[]>([]);
 
-  async function load() {
+  async function load(targetHostId = hostId) {
     try {
-      const data = await api<{ success: boolean; network: NetworkInfo }>("/network/info");
+      const query = targetHostId === 0 ? "" : `?host=${targetHostId}`;
+      const data = await api<{ success: boolean; network: NetworkInfo }>(`/network/info${query}`);
       setInfo(data.network);
     } catch (err) {
       show(err instanceof Error ? err.message : "Failed to load network info", "error");
     }
   }
 
-  useInterval(load, 10000);
+  async function loadStats() {
+    try {
+      const query = hostId === 0 ? "" : `?host=${hostId}`;
+      const data = await api<{ success: boolean; stats: NetStat[] }>(`/network/stats${query}`);
+      setInfo((current) => current === null ? current : { ...current, stats: data.stats });
+    } catch {
+      // The full refresh reports errors; keep background traffic polling quiet.
+    }
+  }
+
+  async function loadHistory(targetHostId = hostId, targetPeriod = period) {
+    try {
+      const data = await api<{ series: TrafficPoint[]; totals: TrafficTotal[] }>(
+        `/network/history?host=${targetHostId}&period=${targetPeriod}`,
+      );
+      setHistory(data.series);
+      setTotals(data.totals);
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to load traffic history", "error");
+    }
+  }
+
+  useInterval(loadStats, 1000);
+  useInterval(loadHistory, 60000);
   useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    api<Host[]>("/hosts").then(setHosts).catch(() => setHosts([]));
   }, []);
+
+  useEffect(() => {
+    setInfo(null);
+    load(hostId);
+    loadHistory(hostId, period);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hostId, period]);
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-100">Network</h2>
-          <p className="text-gray-500 text-sm mt-1">Connectivity, interfaces, and traffic on this host</p>
+          <p className="text-gray-500 text-sm mt-1">Connectivity, interfaces, and traffic by host</p>
         </div>
-        <button className="btn-secondary" onClick={load}>
-          <ArrowPathIcon className="w-4 h-4 inline mr-1.5" />Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={hostId}
+            onChange={(event) => setHostId(Number(event.target.value))}
+            className="input-field text-sm min-w-44"
+            aria-label="Network host"
+          >
+            <option value={0}>Local panel</option>
+            {hosts.map((host) => <option key={host.id} value={host.id}>{host.name}</option>)}
+          </select>
+          <button className="btn-secondary shrink-0" onClick={() => load(hostId)}>
+            <ArrowPathIcon className="w-4 h-4 inline mr-1.5" />Refresh
+          </button>
+        </div>
       </div>
 
       <div className="space-y-4">
@@ -82,32 +141,34 @@ export function Network() {
           </div>
         </Panel>
 
-        <Panel title="Cloudflare tunnel" icon={CloudIcon}>
-          {info?.cloudflare ? (
-            <>
-              <div className="info-row">
-                <span className="info-row-label">Status</span>
-                <span
-                  className={`info-row-value ${info.cloudflare.status === "running" ? "text-green-400" : "text-red-400"}`}
-                >
-                  {info.cloudflare.status === "running" ? "Running" : "Stopped"}
-                </span>
-              </div>
-              <div className="info-row">
-                <span className="info-row-label">Domain</span>
-                <span className="info-row-value font-mono">{info.cloudflare.domain || "Not configured"}</span>
-              </div>
-              <div className="info-row">
-                <span className="info-row-label">Tunnel ID</span>
-                <span className="info-row-value font-mono">{info.cloudflare.tunnelId || "N/A"}</span>
-              </div>
-            </>
-          ) : (
-            <p className="text-sm text-gray-500">
-              Tunnel not configured. Set one up on the Tunnel page to expose this host.
-            </p>
-          )}
-        </Panel>
+        {hostId === 0 && (
+          <Panel title="Cloudflare tunnel" icon={CloudIcon}>
+            {info?.cloudflare ? (
+              <>
+                <div className="info-row">
+                  <span className="info-row-label">Status</span>
+                  <span
+                    className={`info-row-value ${info.cloudflare.status === "running" ? "text-green-400" : "text-red-400"}`}
+                  >
+                    {info.cloudflare.status === "running" ? "Running" : "Stopped"}
+                  </span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">Domain</span>
+                  <span className="info-row-value font-mono">{info.cloudflare.domain || "Not configured"}</span>
+                </div>
+                <div className="info-row">
+                  <span className="info-row-label">Tunnel ID</span>
+                  <span className="info-row-value font-mono">{info.cloudflare.tunnelId || "N/A"}</span>
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">
+                Tunnel not configured. Set one up on the Tunnel page to expose this host.
+              </p>
+            )}
+          </Panel>
+        )}
 
         <Panel title="Local interfaces" icon={ServerIcon}>
           {info === null ? (
@@ -197,6 +258,35 @@ export function Network() {
                       <span className="font-mono text-blue-400">{formatBytes(stat.tx_sec)}/s</span>
                     </div>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+
+        <Panel title="Traffic history">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <p className="text-xs text-gray-500">Persisted transfer rates and totals for the selected host.</p>
+            <div className="flex gap-1">
+              {(["1h", "24h", "7d"] as const).map((value) => (
+                <button
+                  key={value}
+                  className={`btn-secondary !py-1 !px-3 text-xs ${period === value ? "!bg-white/10 text-white" : ""}`}
+                  onClick={() => setPeriod(value)}
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
+          </div>
+          {history.length > 0 ? <TrafficChart data={history} /> : <p className="text-sm text-gray-500 py-8 text-center">History appears after two collection intervals.</p>}
+          {totals.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
+              {totals.map((total) => (
+                <div key={total.interface} className="bg-white/5 rounded-lg p-3">
+                  <p className="text-sm font-medium text-gray-200 mb-2">{total.interface}</p>
+                  <div className="flex justify-between text-xs"><span className="text-gray-500">Downloaded</span><span className="font-mono text-green-400">{formatBytes(total.download)}</span></div>
+                  <div className="flex justify-between text-xs mt-1"><span className="text-gray-500">Uploaded</span><span className="font-mono text-blue-400">{formatBytes(total.upload)}</span></div>
                 </div>
               ))}
             </div>

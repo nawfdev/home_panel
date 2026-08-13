@@ -4,20 +4,24 @@ package handlers
 
 import (
 	"encoding/json"
-	"log"
-	"net/http"
-	"slices"
-	"strings"
-
+	"github.com/go-chi/chi/v5"
+	"github.com/nawfdev/home-panel/internal/audit"
+	"github.com/nawfdev/home-panel/internal/authsec"
 	"github.com/nawfdev/home-panel/internal/httpx"
 	"github.com/nawfdev/home-panel/internal/session"
 	"github.com/nawfdev/home-panel/internal/store"
 	"golang.org/x/crypto/bcrypt"
+	"log"
+	"net/http"
+	"slices"
+	"strings"
+	"time"
 )
 
 type Auth struct {
-	Store    *store.Store
-	Sessions *session.Manager
+	Store   *store.Store
+	Session *session.Manager
+	Audit   *audit.Logger
 }
 
 // RequireAuth accepts either the browser's session cookie or a native
@@ -27,7 +31,7 @@ type Auth struct {
 // which auth method was used.
 func (a *Auth) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if u, ok := a.Sessions.Current(r); ok {
+		if u, ok := a.Session.Current(r); ok {
 			next.ServeHTTP(w, r.WithContext(session.WithUser(r.Context(), u)))
 			return
 		}
@@ -95,55 +99,63 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		Code     string `json:"code"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-
 	if body.Username == "" || body.Password == "" {
+		a.Audit.RecordActor(r, body.Username, "auth.login", "panel", "failure", "missing credentials")
 		httpx.Error(w, http.StatusBadRequest, "Username and password required")
 		return
 	}
-
 	user, ok := a.Store.GetUserByUsername(body.Username)
 	if !ok || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password)) != nil {
+		a.Audit.RecordActor(r, body.Username, "auth.login", "panel", "failure", "invalid credentials")
 		httpx.Error(w, http.StatusUnauthorized, "Invalid credentials")
 		return
 	}
-
+	if user.TOTPSecret != "" {
+		valid := authsec.Validate(user.TOTPSecret, body.Code, time.Now())
+		if !valid && authsec.IsRecoveryCode(body.Code) {
+			valid = a.Store.ConsumeRecoveryCode(user.ID, authsec.HashRecoveryCode(body.Code))
+		}
+		if !valid {
+			a.Audit.RecordActor(r, user.Username, "auth.login", "panel", "failure", "two-factor code required")
+			httpx.JSON(w, http.StatusUnauthorized, map[string]any{"success": false, "error": "Two-factor code required", "requiresTwoFactor": true})
+			return
+		}
+	}
 	su := session.SessionUser{ID: user.ID, Username: user.Username, Role: user.Role}
-	if err := a.Sessions.Login(w, r, su); err != nil {
+	if err := a.Session.Login(w, r, su); err != nil {
+		a.Audit.RecordActor(r, user.Username, "auth.login", "panel", "failure", "session creation failed")
 		httpx.Error(w, http.StatusInternalServerError, "Login failed")
 		return
 	}
-
-	// Also issue a bearer token so native clients (Android) can authenticate
-	// without a cookie jar. Browsers ignore this field.
 	token, err := a.Store.IssueUserToken(user.ID)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "Login failed")
 		return
 	}
-
-	httpx.JSON(w, http.StatusOK, map[string]interface{}{
-		"success": true,
-		"user":    meResponse(a.Store, su),
-		"token":   token,
-	})
+	a.Audit.RecordActor(r, user.Username, "auth.login", "panel", "success", "")
+	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "user": meResponse(a.Store, su), "token": token})
 }
 
 func (a *Auth) Logout(w http.ResponseWriter, r *http.Request) {
-	// Not behind RequireAuth (logout is a no-op success even with a stale/no
-	// session), so resolve the caller directly instead of via request context.
-	if u, ok := a.Sessions.Current(r); ok {
+	username := ""
+	if u, ok := a.Session.Current(r); ok {
+		username = u.Username
 		_ = a.Store.ClearUserToken(u.ID)
 	} else if token, ok := bearerToken(r); ok {
 		if user, ok := a.Store.GetUserByToken(token); ok {
+			username = user.Username
 			_ = a.Store.ClearUserToken(user.ID)
 		}
 	}
-	if err := a.Sessions.Logout(w, r); err != nil {
+	if err := a.Session.Logout(w, r); err != nil {
+		a.Audit.RecordActor(r, username, "auth.logout", "panel", "failure", err.Error())
 		httpx.Error(w, http.StatusInternalServerError, "Logout failed")
 		return
 	}
+	a.Audit.RecordActor(r, username, "auth.logout", "panel", "success", "")
 	httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -193,4 +205,75 @@ func (a *Auth) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Password changed successfully"})
+}
+
+func (a *Auth) TOTPStatus(w http.ResponseWriter, r *http.Request) {
+	current, _ := session.FromContext(r.Context())
+	user, _ := a.Store.GetUserByID(current.ID)
+	httpx.JSON(w, http.StatusOK, map[string]any{"enabled": user.TOTPSecret != ""})
+}
+
+func (a *Auth) TOTPSetup(w http.ResponseWriter, r *http.Request) {
+	current, _ := session.FromContext(r.Context())
+	secret, err := authsec.NewSecret()
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "Failed to generate TOTP secret")
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"secret": secret, "uri": authsec.URI(current.Username, secret)})
+}
+
+func (a *Auth) TOTPEnable(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Secret string `json:"secret"`
+		Code   string `json:"code"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if !authsec.Validate(body.Secret, body.Code, time.Now()) {
+		httpx.Error(w, http.StatusBadRequest, "Invalid verification code")
+		return
+	}
+	current, _ := session.FromContext(r.Context())
+	plain, hashed, err := authsec.RecoveryCodes(8)
+	if err != nil || a.Store.SetUserTOTP(current.ID, body.Secret, hashed) != nil {
+		httpx.Error(w, http.StatusInternalServerError, "Failed to enable TOTP")
+		return
+	}
+	a.Audit.Record(r, "security.totp.enable", current.Username, 0, "success", "")
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "recoveryCodes": plain})
+}
+
+func (a *Auth) TOTPDisable(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Password string `json:"password"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	current, _ := session.FromContext(r.Context())
+	user, ok := a.Store.GetUserByID(current.ID)
+	if !ok || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password)) != nil {
+		httpx.Error(w, http.StatusUnauthorized, "Current password is incorrect")
+		return
+	}
+	if err := a.Store.SetUserTOTP(current.ID, "", nil); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "Failed to disable TOTP")
+		return
+	}
+	a.Audit.Record(r, "security.totp.disable", current.Username, 0, "success", "")
+	httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (a *Auth) ListSessions(w http.ResponseWriter, r *http.Request) {
+	current, _ := session.FromContext(r.Context())
+	httpx.JSON(w, http.StatusOK, map[string]any{"sessions": a.Session.List(r, current.ID, current.Role == "admin")})
+}
+
+func (a *Auth) RevokeSession(w http.ResponseWriter, r *http.Request) {
+	current, _ := session.FromContext(r.Context())
+	id := chi.URLParam(r, "id")
+	if !a.Session.Revoke(id, current.ID, current.Role == "admin") {
+		httpx.Error(w, http.StatusNotFound, "Session not found")
+		return
+	}
+	a.Audit.Record(r, "security.session.revoke", id, 0, "success", "")
+	httpx.JSON(w, http.StatusOK, map[string]bool{"success": true})
 }

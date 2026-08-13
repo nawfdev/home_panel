@@ -16,12 +16,14 @@ import (
 )
 
 type User struct {
-	ID        int    `json:"id"`
-	Username  string `json:"username"`
-	Password  string `json:"password"`
-	Role      string `json:"role"`
-	TokenHash string `json:"token_hash,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
+	ID            int      `json:"id"`
+	Username      string   `json:"username"`
+	Password      string   `json:"password"`
+	Role          string   `json:"role"`
+	TokenHash     string   `json:"token_hash,omitempty"`
+	TOTPSecret    string   `json:"totp_secret,omitempty"`
+	RecoveryCodes []string `json:"recovery_codes,omitempty"`
+	CreatedAt     string   `json:"created_at,omitempty"`
 }
 
 // Role is an admin-configurable preset of which feature keys its members may

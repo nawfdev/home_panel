@@ -245,6 +245,17 @@ h1, h2, h3, h4 {
     transition: border-color 0.15s, background 0.15s;
   }
 
+  select.input-field {
+    color-scheme: dark;
+    background-color: #18181b;
+  }
+
+  select.input-field option,
+  select.input-field optgroup {
+    color: #fafafa;
+    background-color: #18181b;
+  }
+
   .input-field:hover {
     border-color: #3f3f46;
   }

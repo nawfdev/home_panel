@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/nawfdev/home-panel/internal/audit"
 	"github.com/nawfdev/home-panel/internal/session"
 	"github.com/nawfdev/home-panel/internal/sshmgr"
 	"github.com/nawfdev/home-panel/internal/store"
@@ -36,14 +37,16 @@ type Service struct {
 	sessions *session.Manager
 	sshMgr   *sshmgr.Manager
 	store    *store.Store
+	audit    *audit.Logger
 	upgrader websocket.Upgrader
 }
 
-func New(sessions *session.Manager, sshMgr *sshmgr.Manager, st *store.Store) *Service {
+func New(sessions *session.Manager, sshMgr *sshmgr.Manager, st *store.Store, auditLog *audit.Logger) *Service {
 	return &Service{
 		sessions: sessions,
 		sshMgr:   sshMgr,
 		store:    st,
+		audit:    auditLog,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: sameOrigin,
 		},
@@ -118,15 +121,19 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if isDangerousCommand(command) {
+			s.audit.Record(r, "terminal.command", command, hostID, "blocked", "dangerous command")
 			write(conn, "\x1b[31m✗ BLOCKED: This command is not allowed for security reasons\x1b[0m\r\n\r\n")
 			log.Printf("Blocked dangerous terminal command [%s]: %s", user.Username, command)
 			continue
 		}
+		var result string
+		var details string
 		if hostID != 0 {
-			runRemoteCommand(conn, s.sshMgr, host, command)
+			result, details = runRemoteCommand(conn, s.sshMgr, host, command)
 		} else {
-			runCommand(conn, command, isWindows)
+			result, details = runCommand(conn, command, isWindows)
 		}
+		s.audit.Record(r, "terminal.command", command, hostID, result, details)
 	}
 }
 
@@ -139,7 +146,7 @@ func sameOrigin(r *http.Request) bool {
 	return err == nil && u.Host == r.Host
 }
 
-func runCommand(conn *websocket.Conn, command string, isWindows bool) {
+func runCommand(conn *websocket.Conn, command string, isWindows bool) (string, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	name := "bash"
@@ -161,7 +168,11 @@ func runCommand(conn *websocket.Conn, command string, isWindows bool) {
 	if stderr.Len() > 0 {
 		write(conn, "\x1b[31m"+stderr.String()+"\x1b[0m")
 	}
+	result := "success"
+	details := ""
 	if err != nil {
+		result = "failure"
+		details = err.Error()
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			write(conn, fmt.Sprintf("\x1b[31m[Exit code: %d]\x1b[0m\r\n", exitErr.ExitCode()))
 		} else {
@@ -169,9 +180,10 @@ func runCommand(conn *websocket.Conn, command string, isWindows bool) {
 		}
 	}
 	write(conn, "\r\n")
+	return result, details
 }
 
-func runRemoteCommand(conn *websocket.Conn, sshMgr *sshmgr.Manager, host store.Host, command string) {
+func runRemoteCommand(conn *websocket.Conn, sshMgr *sshmgr.Manager, host store.Host, command string) (string, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	stdout, stderr, exitCode, err := sshMgr.RunCommand(ctx, host, command)
@@ -181,12 +193,17 @@ func runRemoteCommand(conn *websocket.Conn, sshMgr *sshmgr.Manager, host store.H
 	if stderr != "" {
 		write(conn, "\x1b[31m"+stderr+"\x1b[0m")
 	}
+	result := "success"
+	details := ""
 	if err != nil {
+		result, details = "failure", err.Error()
 		write(conn, "\x1b[31mError: "+err.Error()+"\x1b[0m\r\n")
 	} else if exitCode != 0 {
+		result, details = "failure", fmt.Sprintf("exit code %d", exitCode)
 		write(conn, fmt.Sprintf("\x1b[31m[Exit code: %d]\x1b[0m\r\n", exitCode))
 	}
 	write(conn, "\r\n")
+	return result, details
 }
 
 func write(conn *websocket.Conn, msg string) {

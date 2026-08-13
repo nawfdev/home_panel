@@ -42,6 +42,21 @@ interface DashboardData {
   projects: { total: number; running: number };
 }
 
+interface HostHealth {
+  hostId: number;
+  name: string;
+  address: string;
+  online: boolean;
+  cpu: number;
+  memory: number;
+  disk: number;
+  temperature: number | null;
+  uptime: number;
+  latencyMs: number;
+  lastSeen?: string;
+  error?: string;
+}
+
 interface MetricPoint {
   timestamp: string;
   value: number;
@@ -95,6 +110,7 @@ export function Dashboard() {
   const [memHistory, setMemHistory] = useState<MetricPoint[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [processes, setProcesses] = useState<ProcessInfo[] | null>(null);
+  const [hosts, setHosts] = useState<HostHealth[]>([]);
 
   const [rebootModalOpen, setRebootModalOpen] = useState(false);
   const [rebootAck, setRebootAck] = useState(false);
@@ -131,6 +147,15 @@ export function Dashboard() {
     }
   }
 
+  async function loadHostHealth() {
+    try {
+      const response = await api<{ hosts: HostHealth[] }>("/health/hosts");
+      setHosts(response.hosts);
+    } catch (err) {
+      console.error("Host health error:", err);
+    }
+  }
+
   function closeRebootModal() {
     setRebootModalOpen(false);
     setRebootAck(false);
@@ -161,10 +186,12 @@ export function Dashboard() {
   useInterval(loadDashboard, 10000);
   useInterval(loadProcesses, 5000);
   useInterval(loadGraphs, 60000);
+  useInterval(loadHostHealth, 30000);
   useEffect(() => {
     loadDashboard();
     loadProcesses();
     loadGraphs();
+    loadHostHealth();
   }, []);
 
   const tunnel = data ? tunnelDisplay(data.tunnel) : null;
@@ -221,6 +248,31 @@ export function Dashboard() {
           <p className="metric-label">System Uptime</p>
           <p className="metric-value">{data ? formatUptime(data.system.uptime) : "—"}</p>
           <p className="metric-sub">Since boot</p>
+        </div>
+      </div>
+
+      <div className="mb-6">
+        <h3 className="section-heading"><ServerIcon />Host health</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {hosts.map((host) => (
+            <div key={host.hostId} className="panel p-4">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="min-w-0"><p className="font-medium text-gray-200 truncate">{host.name}</p><p className="text-xs text-gray-500 truncate">{host.address}</p></div>
+                <span className={`text-xs ${host.online ? "text-green-400" : "text-red-400"}`}>{host.online ? "Online" : "Offline"}</span>
+              </div>
+              {host.online ? (
+                <div className="grid grid-cols-3 gap-2 text-xs">
+                  <div><p className="text-gray-500">CPU</p><p className="font-mono text-gray-200">{host.cpu.toFixed(1)}%</p></div>
+                  <div><p className="text-gray-500">RAM</p><p className="font-mono text-gray-200">{host.memory.toFixed(1)}%</p></div>
+                  <div><p className="text-gray-500">Disk</p><p className="font-mono text-gray-200">{host.disk.toFixed(1)}%</p></div>
+                  <div><p className="text-gray-500">Latency</p><p className="font-mono text-gray-200">{host.latencyMs} ms</p></div>
+                  <div><p className="text-gray-500">Temp</p><p className="font-mono text-gray-200">{host.temperature == null ? "N/A" : `${host.temperature.toFixed(1)}°C`}</p></div>
+                  <div><p className="text-gray-500">Uptime</p><p className="font-mono text-gray-200">{formatUptime(host.uptime)}</p></div>
+                </div>
+              ) : <p className="text-xs text-gray-500 truncate" title={host.error}>{host.lastSeen ? `Last seen ${new Date(host.lastSeen).toLocaleString()}` : host.error || "Not yet seen"}</p>}
+            </div>
+          ))}
+          {hosts.length === 0 && <p className="text-sm text-gray-500">Loading host health...</p>}
         </div>
       </div>
 

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
@@ -150,7 +151,11 @@ private fun SearchTab(apiClient: ApiClient, onUnauthorized: () -> Unit) {
             LoadingState()
         } else {
             LazyColumn(modifier = Modifier.padding(top = 12.dp)) {
-                items(films, key = { it.detailUrl }) { f ->
+                // detailUrl can repeat — it comes from a scraped source site
+                // that sometimes lists the same title twice (mirrors/re-ups).
+                // A bare detailUrl key crashed Compose on scroll the same way
+                // TV's channel.id duplicates did; index+key is always unique.
+                itemsIndexed(films, key = { index, f -> "$index:${f.detailUrl}" }) { _, f ->
                     Panel(
                         modifier = Modifier
                             .clickable { openDetail(f) }

@@ -17,13 +17,17 @@ import (
 
 	"github.com/nawfdev/home-panel/internal/aigateway"
 	"github.com/nawfdev/home-panel/internal/alerts"
+	"github.com/nawfdev/home-panel/internal/audit"
+	"github.com/nawfdev/home-panel/internal/backup"
 	"github.com/nawfdev/home-panel/internal/cloudflare"
 	"github.com/nawfdev/home-panel/internal/config"
 	"github.com/nawfdev/home-panel/internal/docker"
 	"github.com/nawfdev/home-panel/internal/files"
+	"github.com/nawfdev/home-panel/internal/hosthealth"
 	"github.com/nawfdev/home-panel/internal/logs"
 	"github.com/nawfdev/home-panel/internal/metrics"
 	"github.com/nawfdev/home-panel/internal/movies"
+	"github.com/nawfdev/home-panel/internal/networkhistory"
 	"github.com/nawfdev/home-panel/internal/pm2"
 	"github.com/nawfdev/home-panel/internal/projects"
 	"github.com/nawfdev/home-panel/internal/remotedesktop"
@@ -87,9 +91,21 @@ func main() {
 	}
 
 	sess := session.New(cfg.Session.Secret, cfg.Session.MaxAge)
+	auditLog, err := audit.Open(filepath.Join(paths.Root, "data", "audit.jsonl"))
+	if err != nil {
+		log.Fatalf("failed to open audit log: %v", err)
+	}
 	tg := telegram.New(st)
 	hostsSvc := sshmgr.New(st, paths.Root)
-	term := terminal.New(sess, hostsSvc, st)
+	term := terminal.New(sess, hostsSvc, st, auditLog)
+	traffic, err := networkhistory.Open(filepath.Join(paths.Root, "data", "network-history.jsonl"), st, hostsSvc)
+	if err != nil {
+		log.Fatalf("failed to open network history: %v", err)
+	}
+	traffic.Start(context.Background())
+	backupSvc := backup.New(paths.Root)
+	backupSvc.StartRetention(context.Background())
+	healthSvc := hosthealth.New(st, hostsSvc)
 
 	// Background metrics collection (replaces startMetricsCollection in server.js).
 	mc := metrics.New()
@@ -109,31 +125,40 @@ func main() {
 	tvSvc := tv.NewService()
 
 	handler := server.New(server.Deps{
-		AiGateway:     aigw,
-		Cloudflare:    cloudflareSvc,
-		Config:        cfg,
-		Docker:        docker.New(),
-		Files:         files.New(st, hostsSvc),
-		Movies:        mov,
-		TorrentSearch: ts,
-		TV:            tvSvc,
-		Hosts:         hostsSvc,
-		Paths:         paths,
-		Store:         st,
-		Sessions:      sess,
-		Metrics:       mc,
-		Logs:          logs.New(paths.Root),
-		PM2:           pm2.New(),
-		Projects:      proj,
-		RemoteDesktop: remotedesktop.New(st),
-		Telegram:      tg,
-		Terminal:      term,
-		Tunnel:        tun,
-		Updater:       updater.New(paths.Root),
+		Audit:          auditLog,
+		Backups:        backupSvc,
+		AiGateway:      aigw,
+		Cloudflare:     cloudflareSvc,
+		Config:         cfg,
+		Docker:         docker.New(),
+		Files:          files.New(st, hostsSvc),
+		Health:         healthSvc,
+		Movies:         mov,
+		TorrentSearch:  ts,
+		TV:             tvSvc,
+		NetworkHistory: traffic,
+		Hosts:          hostsSvc,
+		Paths:          paths,
+		Store:          st,
+		Sessions:       sess,
+		Metrics:        mc,
+		Logs:           logs.New(paths.Root),
+		PM2:            pm2.New(),
+		Projects:       proj,
+		RemoteDesktop:  remotedesktop.New(st),
+		Telegram:       tg,
+		Terminal:       term,
+		Tunnel:         tun,
+		Updater:        updater.New(paths.Root),
 	})
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
-	srv := &http.Server{Addr: addr, Handler: handler}
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -141,7 +166,7 @@ func main() {
 	go func() {
 		log.Println("Nestcore - Server Started")
 		log.Printf("URL: http://%s", addr)
-		log.Println("Default Login: admin / admin123")
+		log.Println("Change the default administrator password immediately after first login")
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server error: %v", err)
 		}

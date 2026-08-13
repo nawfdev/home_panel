@@ -1,88 +1,178 @@
-// Package session provides server-side-equivalent auth state via a signed cookie.
-// express-session used a server memory store + sid cookie; for a single-user
-// homelab panel a signed cookie store is equivalent and simpler, and big-bang
-// migration means users re-login once anyway.
+// Package session provides authenticated browser sessions backed by signed cookies.
 package session
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/gorilla/sessions"
 )
 
 const cookieName = "homepanel.sid"
 
-// SessionUser is the payload stored in req.session.user by the Node backend.
 type SessionUser struct {
 	ID       int    `json:"id"`
 	Username string `json:"username"`
 	Role     string `json:"role"`
 }
 
-type Manager struct {
-	store *sessions.CookieStore
+type Info struct {
+	ID        string `json:"id"`
+	UserID    int    `json:"userId"`
+	Username  string `json:"username"`
+	IP        string `json:"ip"`
+	UserAgent string `json:"userAgent"`
+	CreatedAt string `json:"createdAt"`
+	LastSeen  string `json:"lastSeen"`
+	Current   bool   `json:"current"`
 }
 
-// New builds a manager. maxAgeMs matches config.session.maxAge (milliseconds).
+type record struct {
+	Info
+	expires time.Time
+}
+
+type Manager struct {
+	store  *sessions.CookieStore
+	maxAge time.Duration
+	mu     sync.RWMutex
+	active map[string]record
+}
+
 func New(secret string, maxAgeMs int64) *Manager {
 	cs := sessions.NewCookieStore([]byte(secret))
-	cs.Options = &sessions.Options{
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   false, // matches Node cookie.secure:false
-		MaxAge:   int(maxAgeMs / 1000),
-		SameSite: http.SameSiteLaxMode,
-	}
-	return &Manager{store: cs}
+	cs.Options = &sessions.Options{Path: "/", HttpOnly: true, MaxAge: int(maxAgeMs / 1000), SameSite: http.SameSiteLaxMode}
+	return &Manager{store: cs, maxAge: time.Duration(maxAgeMs) * time.Millisecond, active: map[string]record{}}
 }
 
 func (m *Manager) get(r *http.Request) *sessions.Session {
-	// CookieStore.Get never returns a usable-nil session; the error only signals
-	// a tampered/old cookie, in which case we still get a fresh empty session.
 	s, _ := m.store.Get(r, cookieName)
 	return s
 }
 
-// Login stores the user and writes the cookie.
+func requestSecure(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]), "https")
+}
+
+func requestIP(r *http.Request) string {
+	host := r.RemoteAddr
+	if i := strings.LastIndex(host, ":"); i >= 0 {
+		host = strings.Trim(host[:i], "[]")
+	}
+	return host
+}
+
+func sessionID() (string, error) {
+	buf := make([]byte, 24)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
+}
+
 func (m *Manager) Login(w http.ResponseWriter, r *http.Request, u SessionUser) error {
+	id, err := sessionID()
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
 	s := m.get(r)
+	s.Options.Secure = requestSecure(r)
 	s.Values["id"] = u.ID
 	s.Values["username"] = u.Username
 	s.Values["role"] = u.Role
-	return s.Save(r, w)
+	s.Values["session_id"] = id
+	if err := s.Save(r, w); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	m.active[id] = record{Info: Info{ID: id, UserID: u.ID, Username: u.Username, IP: requestIP(r), UserAgent: r.UserAgent(), CreatedAt: now.Format(time.RFC3339), LastSeen: now.Format(time.RFC3339)}, expires: now.Add(m.maxAge)}
+	m.mu.Unlock()
+	return nil
 }
 
-// Logout clears the session cookie.
 func (m *Manager) Logout(w http.ResponseWriter, r *http.Request) error {
 	s := m.get(r)
+	if id, ok := s.Values["session_id"].(string); ok {
+		m.mu.Lock()
+		delete(m.active, id)
+		m.mu.Unlock()
+	}
 	s.Options.MaxAge = -1
+	s.Options.Secure = requestSecure(r)
 	s.Values = map[interface{}]interface{}{}
 	return s.Save(r, w)
 }
 
-// Current returns the logged-in user, or ok=false when unauthenticated.
 func (m *Manager) Current(r *http.Request) (SessionUser, bool) {
 	s := m.get(r)
 	id, ok := s.Values["id"].(int)
 	if !ok || id == 0 {
 		return SessionUser{}, false
 	}
+	if sid, ok := s.Values["session_id"].(string); ok {
+		m.mu.Lock()
+		rec, exists := m.active[sid]
+		if !exists || time.Now().After(rec.expires) {
+			delete(m.active, sid)
+			m.mu.Unlock()
+			return SessionUser{}, false
+		}
+		now := time.Now().UTC()
+		rec.LastSeen = now.Format(time.RFC3339)
+		rec.expires = now.Add(m.maxAge)
+		m.active[sid] = rec
+		m.mu.Unlock()
+	}
 	username, _ := s.Values["username"].(string)
 	role, _ := s.Values["role"].(string)
 	return SessionUser{ID: id, Username: username, Role: role}, true
 }
 
-// ctxKey holds the resolved SessionUser on the request context. RequireAuth
-// resolves the caller once (cookie session or bearer token, either path) and
-// stashes the result here so downstream handlers don't care which auth
-// method was used.
+func (m *Manager) List(r *http.Request, userID int, admin bool) []Info {
+	current, _ := m.get(r).Values["session_id"].(string)
+	now := time.Now()
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []Info{}
+	for id, rec := range m.active {
+		if now.After(rec.expires) {
+			delete(m.active, id)
+			continue
+		}
+		if admin || rec.UserID == userID {
+			info := rec.Info
+			info.Current = id == current
+			out = append(out, info)
+		}
+	}
+	return out
+}
+
+func (m *Manager) Revoke(id string, userID int, admin bool) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	rec, ok := m.active[id]
+	if !ok || !admin && rec.UserID != userID {
+		return false
+	}
+	delete(m.active, id)
+	return true
+}
+
 type ctxKey struct{}
 
 func WithUser(ctx context.Context, u SessionUser) context.Context {
 	return context.WithValue(ctx, ctxKey{}, u)
 }
-
 func FromContext(ctx context.Context) (SessionUser, bool) {
 	u, ok := ctx.Value(ctxKey{}).(SessionUser)
 	return u, ok

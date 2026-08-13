@@ -7,6 +7,9 @@
     "secret": "GENERATE_A_RANDOM_SECRET_HERE",
     "maxAge": 86400000
   },
+  "security": {
+    "allowedIps": []
+  },
   "cloudflare": {
     "tunnelName": "",
     "tunnelId": "",

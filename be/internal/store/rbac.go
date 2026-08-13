@@ -131,6 +131,37 @@ func (s *Store) ClearUserToken(id int) error {
 	return nil
 }
 
+func (s *Store) SetUserTOTP(id int, secret string, recoveryCodes []string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.d.Users {
+		if s.d.Users[i].ID == id {
+			s.d.Users[i].TOTPSecret = secret
+			s.d.Users[i].RecoveryCodes = append([]string(nil), recoveryCodes...)
+			return s.save()
+		}
+	}
+	return ErrNotFound
+}
+
+func (s *Store) ConsumeRecoveryCode(id int, codeHash string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.d.Users {
+		if s.d.Users[i].ID != id {
+			continue
+		}
+		for j, candidate := range s.d.Users[i].RecoveryCodes {
+			if candidate == codeHash {
+				s.d.Users[i].RecoveryCodes = append(s.d.Users[i].RecoveryCodes[:j], s.d.Users[i].RecoveryCodes[j+1:]...)
+				_ = s.save()
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *Store) ListRoles() []Role {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

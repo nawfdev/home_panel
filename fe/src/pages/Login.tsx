@@ -6,6 +6,8 @@ export function Login() {
   const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [code, setCode] = useState("");
+  const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -14,10 +16,12 @@ export function Login() {
     setError(null);
     setIsSubmitting(true);
     try {
-      await login(username, password);
+      await login(username, password, code);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 401 && err.message === "Two-factor code required") {
+        setRequiresTwoFactor(true);
+      }
       setError(err instanceof ApiError ? err.message : "Login failed. Please try again.");
-    } finally {
       setIsSubmitting(false);
     }
   }
@@ -55,6 +59,21 @@ export function Login() {
               required
             />
           </div>
+          {requiresTwoFactor && (
+            <div className="mb-5">
+              <label className="block text-gray-400 text-sm font-medium mb-2">Authenticator or recovery code</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                className="input-field w-full font-mono tracking-widest"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                autoFocus
+                required
+              />
+            </div>
+          )}
           <button type="submit" disabled={isSubmitting} className="btn-primary w-full disabled:opacity-60">
             {isSubmitting ? "Signing in..." : "Login"}
           </button>

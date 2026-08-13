@@ -11,15 +11,19 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/nawfdev/home-panel/internal/aigateway"
+	"github.com/nawfdev/home-panel/internal/audit"
+	"github.com/nawfdev/home-panel/internal/backup"
 	"github.com/nawfdev/home-panel/internal/cloudflare"
 	"github.com/nawfdev/home-panel/internal/config"
 	dockersvc "github.com/nawfdev/home-panel/internal/docker"
 	filesvc "github.com/nawfdev/home-panel/internal/files"
 	"github.com/nawfdev/home-panel/internal/handlers"
+	"github.com/nawfdev/home-panel/internal/hosthealth"
 	"github.com/nawfdev/home-panel/internal/httpx"
 	"github.com/nawfdev/home-panel/internal/logs"
 	"github.com/nawfdev/home-panel/internal/metrics"
 	moviesvc "github.com/nawfdev/home-panel/internal/movies"
+	"github.com/nawfdev/home-panel/internal/networkhistory"
 	pm2svc "github.com/nawfdev/home-panel/internal/pm2"
 	"github.com/nawfdev/home-panel/internal/projects"
 	"github.com/nawfdev/home-panel/internal/remotedesktop"
@@ -36,48 +40,53 @@ import (
 
 // Deps holds everything the router needs.
 type Deps struct {
-	AiGateway     *aigateway.Service
-	Cloudflare    *cloudflare.Service
-	Config        *config.Config
-	Docker        *dockersvc.Service
-	Files         *filesvc.Service
-	Movies        *moviesvc.Service
-	TorrentSearch *torrentsearch.Service
-	Paths         config.Paths
-	Hosts         *sshmgr.Manager
-	Store         *store.Store
-	Sessions      *session.Manager
-	Metrics       *metrics.Collector
-	Logs          *logs.Service
-	PM2           *pm2svc.Service
-	Projects      *projects.Manager
-	RemoteDesktop *remotedesktop.Manager
-	Telegram      *telegram.Service
-	Terminal      *termsvc.Service
-	TV            *tvsvc.Service
-	Tunnel        *tunnel.Service
-	Updater       *updater.Updater
+	AiGateway      *aigateway.Service
+	Audit          *audit.Logger
+	Backups        *backup.Service
+	Cloudflare     *cloudflare.Service
+	Config         *config.Config
+	Docker         *dockersvc.Service
+	Files          *filesvc.Service
+	Health         *hosthealth.Service
+	Movies         *moviesvc.Service
+	NetworkHistory *networkhistory.Collector
+	TorrentSearch  *torrentsearch.Service
+	Paths          config.Paths
+	Hosts          *sshmgr.Manager
+	Store          *store.Store
+	Sessions       *session.Manager
+	Metrics        *metrics.Collector
+	Logs           *logs.Service
+	PM2            *pm2svc.Service
+	Projects       *projects.Manager
+	RemoteDesktop  *remotedesktop.Manager
+	Telegram       *telegram.Service
+	Terminal       *termsvc.Service
+	TV             *tvsvc.Service
+	Tunnel         *tunnel.Service
+	Updater        *updater.Updater
 }
 
 // New builds the top-level http.Handler.
 func New(d Deps) http.Handler {
 	r := chi.NewRouter()
+	r.Use(httpx.NewIPAllowlist(d.Config.Security.AllowedIPs).Middleware)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.Use(httpx.SecurityHeaders)
 
-	auth := &handlers.Auth{Store: d.Store, Sessions: d.Sessions}
+	auth := &handlers.Auth{Store: d.Store, Session: d.Sessions, Audit: d.Audit}
 	system := handlers.System{Store: d.Store, PM2: d.PM2}
-	services := handlers.Services{}
+	services := handlers.Services{Audit: d.Audit}
 	metricsH := &handlers.Metrics{Collector: d.Metrics}
 	logsH := &handlers.Logs{Svc: d.Logs}
 	pm2H := &handlers.PM2{Svc: d.PM2}
 	dockerH := &handlers.Docker{Svc: d.Docker}
-	filesH := &handlers.Files{Svc: d.Files}
+	filesH := &handlers.Files{Svc: d.Files, Audit: d.Audit}
 	tunnelH := &handlers.Tunnel{Svc: d.Tunnel}
 	projectsH := &handlers.Projects{Mgr: d.Projects}
 	remoteDesktopH := &handlers.RemoteDesktop{Mgr: d.RemoteDesktop}
-	networkH := &handlers.Network{Tunnel: d.Tunnel}
+	networkH := &handlers.Network{Tunnel: d.Tunnel, Store: d.Store, SSH: d.Hosts}
 	dashboardH := &handlers.Dashboard{Cloudflare: d.Cloudflare, Store: d.Store, Tunnel: d.Tunnel, Projects: d.Projects}
 	updateH := &handlers.Update{Updater: d.Updater, Store: d.Store, PM2: d.PM2}
 	cloudflareH := &handlers.Cloudflare{Store: d.Store, Svc: d.Cloudflare}
@@ -92,6 +101,10 @@ func New(d Deps) http.Handler {
 	usersH := &handlers.Users{Store: d.Store}
 	rolesH := &handlers.Roles{Store: d.Store}
 	hostsH := &handlers.Hosts{Store: d.Store, SSH: d.Hosts}
+	auditH := &handlers.AuditLog{Log: d.Audit}
+	backupH := &handlers.Backups{Service: d.Backups, Audit: d.Audit}
+	healthH := &handlers.Health{Service: d.Health}
+	networkHistoryH := &handlers.NetworkHistory{Collector: d.NetworkHistory}
 
 	// Rate limiters mirror express-rate-limit windows from server.js.
 	apiLimiter := httpx.NewRateLimiter(15*time.Minute, 500, false,
@@ -116,6 +129,12 @@ func New(d Deps) http.Handler {
 			ar.Post("/logout", auth.Logout)
 			ar.With(auth.RequireAuth).Get("/me", auth.Me)
 			ar.With(auth.RequireAuth).Post("/change-password", auth.ChangePassword)
+			ar.With(auth.RequireAuth).Get("/totp", auth.TOTPStatus)
+			ar.With(auth.RequireAuth).Post("/totp/setup", auth.TOTPSetup)
+			ar.With(auth.RequireAuth).Post("/totp/enable", auth.TOTPEnable)
+			ar.With(auth.RequireAuth).Post("/totp/disable", auth.TOTPDisable)
+			ar.With(auth.RequireAuth).Get("/sessions", auth.ListSessions)
+			ar.With(auth.RequireAuth).Delete("/sessions/{id}", auth.RevokeSession)
 		})
 
 		api.Route("/system", func(sr chi.Router) {
@@ -141,6 +160,18 @@ func New(d Deps) http.Handler {
 			mr.Get("/temperature", metricsH.Temperature)
 		})
 
+		api.With(auth.RequireAuth).Get("/health/hosts", healthH.List)
+		api.Route("/audit", func(ar chi.Router) {
+			ar.Use(auth.RequireAuth, auth.RequireRole("admin"))
+			ar.Get("/", auditH.List)
+		})
+		api.Route("/backups", func(br chi.Router) {
+			br.Use(auth.RequireAuth, auth.RequireRole("admin"))
+			br.Get("/", backupH.List)
+			br.Post("/", backupH.Create)
+			br.Get("/download", backupH.Download)
+			br.Post("/restore", backupH.Restore)
+		})
 		api.With(auth.RequireAuth).Get("/dashboard", dashboardH.Index)
 
 		api.Route("/users", func(ur chi.Router) {
@@ -217,9 +248,11 @@ func New(d Deps) http.Handler {
 		api.Route("/network", func(nr chi.Router) {
 			nr.Use(auth.RequireAuth, auth.RequireFeature("network"))
 			nr.Get("/info", networkH.Info)
+			nr.Get("/stats", networkH.Stats)
 			nr.Get("/public-ip", networkH.PublicIP)
 			nr.Get("/interfaces", networkH.Interfaces)
 			nr.Get("/connectivity", networkH.Connectivity)
+			nr.Get("/history", networkHistoryH.History)
 		})
 
 		api.Route("/update", func(ur chi.Router) {

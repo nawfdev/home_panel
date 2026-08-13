@@ -45,9 +45,10 @@ Nestcore is an all-in-one web dashboard for managing homelab infrastructure — 
 - **Hosts** — admin-managed SSH targets; a one-time password installs the panel key, then credentials are key-only
 
 ### Security & Reliability
-- Rate limiting (API & login)
-- Path traversal / command injection protections
-- bcrypt-hashed sessions and passwords
+- Rate limiting for API and login traffic
+- Path traversal and command-injection protections
+- bcrypt password hashing, signed HttpOnly sessions, optional TOTP and IP allowlist
+- Audit log, active-session revocation, encrypted configuration backups
 - Graceful shutdown (stops spawned tunnel/project processes cleanly on restart)
 
 ---
@@ -100,8 +101,8 @@ First login uses whatever `defaultAdmin` you set in `config/config.json` — **s
 
 Two files under `config/` hold live secrets and are **git-ignored** — copy the `.example.json` versions and fill them in yourself, never commit the real ones:
 
-- `config/config.json` — server port/host, session secret, default admin credentials, alert thresholds
-- `config/settings.json` — Cloudflare API token, Telegram bot token, service path overrides
+- `config/config.json` — server port/host, session secret, optional `security.allowedIps`, default admin credentials, alert thresholds
+- `config/settings.json` — initial integration/service settings; settings saved in the panel persist in `data/db.json`
 
 `HOMEPANEL_ROOT` and `HOMEPANEL_FRONTEND_DIR` env vars can override the repo root and frontend directory if you're not running from a standard checkout layout.
 

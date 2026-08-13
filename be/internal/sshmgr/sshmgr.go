@@ -199,6 +199,54 @@ func (m *Manager) RunCommand(ctx context.Context, host store.Host, command strin
 	}
 }
 
+// NetworkInfo returns a Linux host's network snapshot over the existing SSH
+// connection. Each section is length-prefixed so command output cannot be
+// confused with a delimiter appearing in interface, DNS, or route data.
+func (m *Manager) NetworkInfo(ctx context.Context, host store.Host) (addresses, routes, resolvConf, netDev string, err error) {
+	const command = `command -v ip >/dev/null 2>&1 && { ip -j address 2>/dev/null || ip address; } > /tmp/homepanel-net-addresses; command -v ip >/dev/null 2>&1 && ip route 2>/dev/null > /tmp/homepanel-net-routes; for f in /proc/net/dev /etc/resolv.conf /tmp/homepanel-net-addresses /tmp/homepanel-net-routes; do if [ -r "$f" ]; then wc -c < "$f"; cat "$f"; else printf '0\n'; fi; done`
+	stdout, stderr, exitCode, err := m.RunCommand(ctx, host, command)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	if exitCode != 0 {
+		return "", "", "", "", fmt.Errorf("collect network info: exit code %d: %s", exitCode, strings.TrimSpace(stderr))
+	}
+
+	readSection := func(input string) (section, rest string, parseErr error) {
+		lineEnd := strings.IndexByte(input, '\n')
+		if lineEnd < 0 {
+			return "", "", fmt.Errorf("missing section length")
+		}
+		length, parseErr := strconv.Atoi(strings.TrimSpace(input[:lineEnd]))
+		if parseErr != nil || length < 0 {
+			return "", "", fmt.Errorf("invalid section length %q", input[:lineEnd])
+		}
+		input = input[lineEnd+1:]
+		if len(input) < length {
+			return "", "", fmt.Errorf("short section: got %d bytes, want %d", len(input), length)
+		}
+		return input[:length], input[length:], nil
+	}
+
+	netDev, stdout, err = readSection(stdout)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("parse /proc/net/dev: %w", err)
+	}
+	resolvConf, stdout, err = readSection(stdout)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("parse /etc/resolv.conf: %w", err)
+	}
+	addresses, stdout, err = readSection(stdout)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("parse addresses: %w", err)
+	}
+	routes, _, err = readSection(stdout)
+	if err != nil {
+		return "", "", "", "", fmt.Errorf("parse routes: %w", err)
+	}
+	return strings.TrimSpace(addresses), strings.TrimSpace(routes), resolvConf, netDev, nil
+}
+
 // SFTPClient returns a new SFTP client bound to a pooled connection for host.
 // Callers must Close() it when done.
 func (m *Manager) SFTPClient(host store.Host) (*sftp.Client, error) {

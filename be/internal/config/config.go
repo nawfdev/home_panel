@@ -18,6 +18,9 @@ type Config struct {
 		Secret string `json:"secret"`
 		MaxAge int64  `json:"maxAge"` // milliseconds (matches express-session)
 	} `json:"session"`
+	Security struct {
+		AllowedIPs []string `json:"allowedIps"`
+	} `json:"security"`
 	Cloudflare struct {
 		TunnelName string `json:"tunnelName"`
 		TunnelID   string `json:"tunnelId"`

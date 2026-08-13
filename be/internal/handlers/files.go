@@ -10,13 +10,15 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/nawfdev/home-panel/internal/audit"
 	filesvc "github.com/nawfdev/home-panel/internal/files"
 	"github.com/nawfdev/home-panel/internal/httpx"
 )
 
 // Files ports backend/routes/files.js.
 type Files struct {
-	Svc *filesvc.Service
+	Svc   *filesvc.Service
+	Audit *audit.Logger
 }
 
 func (f *Files) List(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +76,11 @@ func (f *Files) Write(w http.ResponseWriter, r *http.Request) {
 		err = f.Svc.Write(req.Path, req.Content)
 	}
 	if err != nil {
+		f.Audit.Record(r, "file.write", req.Path, req.Host, "failure", err.Error())
+	} else {
+		f.Audit.Record(r, "file.write", req.Path, req.Host, "success", "")
+	}
+	if err != nil {
 		fileError(w, err)
 		return
 	}
@@ -91,6 +98,11 @@ func (f *Files) Delete(w http.ResponseWriter, r *http.Request) {
 		err = f.Svc.DeleteRemote(req.Host, req.Path)
 	} else {
 		err = f.Svc.Delete(req.Path)
+	}
+	if err != nil {
+		f.Audit.Record(r, "file.delete", req.Path, req.Host, "failure", err.Error())
+	} else {
+		f.Audit.Record(r, "file.delete", req.Path, req.Host, "success", "")
 	}
 	if err != nil {
 		fileError(w, err)
@@ -148,6 +160,12 @@ func (f *Files) Upload(w http.ResponseWriter, r *http.Request) {
 		err = f.Svc.UploadRemote(hostID, r.FormValue("path"), header)
 	} else {
 		err = f.Svc.Upload(r.FormValue("path"), header)
+	}
+	target := filepath.Join(r.FormValue("path"), header.Filename)
+	if err != nil {
+		f.Audit.Record(r, "file.upload", target, hostID, "failure", err.Error())
+	} else {
+		f.Audit.Record(r, "file.upload", target, hostID, "success", "")
 	}
 	if err != nil {
 		fileError(w, err)
