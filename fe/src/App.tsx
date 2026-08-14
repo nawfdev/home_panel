@@ -25,13 +25,16 @@ import { Terminal } from "./pages/Terminal";
 import { Projects } from "./pages/Projects";
 import { RemoteDesktop } from "./pages/RemoteDesktop";
 import { RemoteDesktopView } from "./pages/RemoteDesktopView";
-import { Settings } from "./pages/Settings";
 import { AiGateway } from "./pages/AiGateway";
 import { Hosts } from "./pages/Hosts";
+import { Users } from "./pages/Users";
+import { Operations } from "./pages/Operations";
+import { Integrations } from "./pages/Integrations";
+import { Updates } from "./pages/Updates";
+import { Account } from "./pages/Account";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
-
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>;
   }
@@ -43,7 +46,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
 
 // Client-side defense in depth for the RBAC feature grant — real enforcement
 // is server-side (RequireFeature middleware). Routes with no gating entry in
-// featureForPath (dashboard, settings) always pass through.
+// featureForPath (dashboard, account) always pass through.
 function RequireFeature({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const location = useLocation();
@@ -90,7 +93,12 @@ function AppRoutes() {
         <Route path="/system" element={<Navigate to="/dashboard" replace />} />
         <Route path="/ai-gateway" element={<RequireFeature><AiGateway /></RequireFeature>} />
         <Route path="/hosts" element={user?.role === "admin" ? <Hosts /> : <Navigate to="/dashboard" replace />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/users" element={user?.role === "admin" ? <Users /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/operations" element={user?.role === "admin" ? <Operations /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/integrations" element={user?.role === "admin" ? <Integrations /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/updates" element={user?.role === "admin" ? <Updates /> : <Navigate to="/dashboard" replace />} />
+        <Route path="/account" element={<Account />} />
+        <Route path="/settings" element={<Navigate to="/account" replace />} />
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Route>
     </Routes>

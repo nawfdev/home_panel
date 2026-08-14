@@ -255,7 +255,7 @@ export function Dashboard() {
 
       <div className="mb-6">
         <h3 className="section-heading"><ServerIcon />Host health</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-3 gap-3">
           {hosts.map((host) => (
             <div key={host.hostId} className="panel p-4">
               <div className="flex items-start justify-between gap-3 mb-3">

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/nawfdev/home-panel/internal/httpx"
@@ -48,6 +49,66 @@ func (h *Hosts) Create(w http.ResponseWriter, r *http.Request) {
 	host, err := h.SSH.Bootstrap(ctx, body.Name, body.Address, port, body.User, body.Password)
 	if err != nil {
 		httpx.Error(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, host)
+}
+
+// Update edits an existing host's configuration (name, address, port, user)
+// and optionally reinstalls the SSH key if a new password is provided.
+func (h *Hosts) Update(w http.ResponseWriter, r *http.Request) {
+	id := idParam(r)
+	host, ok := h.Store.GetHost(id)
+	if !ok {
+		httpx.Error(w, http.StatusNotFound, "host not found")
+		return
+	}
+
+	var body struct {
+		Name     *string `json:"name"`
+		Address  *string `json:"address"`
+		Port     *int    `json:"port"`
+		User     *string `json:"user"`
+		Password *string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if body.Name != nil && strings.TrimSpace(*body.Name) != "" {
+		host.Name = strings.TrimSpace(*body.Name)
+	}
+	if body.Address != nil && strings.TrimSpace(*body.Address) != "" {
+		host.Address = strings.TrimSpace(*body.Address)
+	}
+	if body.Port != nil && *body.Port > 0 && *body.Port <= 65535 {
+		host.Port = *body.Port
+	}
+	if body.User != nil && strings.TrimSpace(*body.User) != "" {
+		host.User = strings.TrimSpace(*body.User)
+	}
+
+	// If a password is provided, reinstall SSH key with updated credentials
+	if body.Password != nil && strings.TrimSpace(*body.Password) != "" {
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		updatedHost, err := h.SSH.Bootstrap(ctx, host.Name, host.Address, host.Port, host.User, *body.Password)
+		if err != nil {
+			httpx.Error(w, http.StatusBadGateway, "Failed to connect and install SSH key: "+err.Error())
+			return
+		}
+		host.ID = id
+		if err := h.Store.UpdateHost(host); err != nil {
+			httpx.Error(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		httpx.JSON(w, http.StatusOK, updatedHost)
+		return
+	}
+
+	if err := h.Store.UpdateHost(host); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	httpx.JSON(w, http.StatusOK, host)

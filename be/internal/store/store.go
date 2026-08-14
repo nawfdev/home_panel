@@ -6,6 +6,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -371,6 +372,18 @@ func (s *Store) InsertHost(h Host) (int, error) {
 	h.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	s.d.Hosts = append(s.d.Hosts, h)
 	return h.ID, s.save()
+}
+
+func (s *Store) UpdateHost(h Host) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.d.Hosts {
+		if s.d.Hosts[i].ID == h.ID {
+			s.d.Hosts[i] = h
+			return s.save()
+		}
+	}
+	return fmt.Errorf("host %d not found", h.ID)
 }
 
 func (s *Store) DeleteHost(id int) error {

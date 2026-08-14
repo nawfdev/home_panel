@@ -17,7 +17,6 @@ import {
   CommandLineIcon,
   RectangleStackIcon,
   SparklesIcon,
-  Cog6ToothIcon,
   ArrowLeftOnRectangleIcon,
   ServerIcon,
   XMarkIcon,
@@ -28,6 +27,12 @@ import {
   ComputerDesktopIcon,
   TvIcon,
   ShareIcon,
+  ShieldCheckIcon,
+  UsersIcon,
+  CircleStackIcon,
+  PuzzlePieceIcon,
+  ArrowPathIcon,
+  UserCircleIcon,
 } from "@heroicons/react/24/outline";
 import type { ComponentType, SVGProps } from "react";
 
@@ -40,9 +45,6 @@ interface NavLeaf {
   adminOnly?: boolean;
 }
 
-// Groups collapse related pages under one dropdown so the sidebar doesn't
-// list 16 flat items — the pages/routes themselves are untouched, this is
-// purely a nav presentation grouping.
 interface NavGroup {
   label: string;
   icon: IconType;
@@ -90,7 +92,6 @@ const NAV_ITEMS: NavEntry[] = [
     ],
   },
   { to: "/ai-gateway", label: "AI Gateway", icon: SparklesIcon },
-  { to: "/hosts", label: "Hosts", icon: ServerIcon, adminOnly: true },
   { to: "/telegram", label: "Telegram", icon: PaperAirplaneIcon },
   {
     label: "Movies",
@@ -102,7 +103,18 @@ const NAV_ITEMS: NavEntry[] = [
       { to: "/tv", label: "Live TV", icon: TvIcon },
     ],
   },
-  { to: "/settings", label: "Settings", icon: Cog6ToothIcon },
+  {
+    label: "Administration",
+    icon: ShieldCheckIcon,
+    children: [
+      { to: "/users", label: "Users & Roles", icon: UsersIcon, adminOnly: true },
+      { to: "/operations", label: "Backups & Audit", icon: CircleStackIcon, adminOnly: true },
+      { to: "/hosts", label: "Hosts", icon: ServerIcon, adminOnly: true },
+      { to: "/integrations", label: "Integrations", icon: PuzzlePieceIcon, adminOnly: true },
+      { to: "/updates", label: "Updates & System", icon: ArrowPathIcon, adminOnly: true },
+    ],
+  },
+  { to: "/account", label: "Account & Security", icon: UserCircleIcon },
 ];
 
 function isGroup(item: NavEntry): item is NavGroup {
@@ -115,7 +127,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const [gitInfo, setGitInfo] = useState<{ branch?: string; commit?: string } | null>(null);
 
   // Drop nav leaves the current user's role can't access; drop groups left
-  // with no visible children. Dashboard/Settings are always visible.
+  // with no visible children. Dashboard/Account are always visible.
   const visibleItems: NavEntry[] = user
     ? NAV_ITEMS.map((item) => {
         if (!isGroup(item)) return item;
@@ -123,9 +135,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         return { ...item, children };
       }).filter((item) => isGroup(item) ? item.children.length > 0 : (!item.adminOnly || user.role === "admin") && canAccessPath(user.features, user.role, item.to))
     : NAV_ITEMS;
-  // Group whose children contain the active route auto-expands; the rest
-  // start collapsed. Keyed by group label since groups have no route of
-  // their own.
+
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
     for (const item of NAV_ITEMS) {

@@ -14,13 +14,18 @@ type contextKey uint8
 
 const cspNonceKey contextKey = iota
 
-// TrustedProxy accepts forwarded transport metadata only from a proxy running
-// on the same host. Direct LAN clients cannot forge X-Forwarded-Proto.
+// TrustedProxy accepts forwarded transport metadata from a proxy running on loopback
+// (such as cloudflared tunnel, Caddy, nginx, or local reverse proxy).
 func TrustedProxy(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if isLoopbackPeer(r.RemoteAddr) {
-			if strings.EqualFold(firstForwardedValue(r.Header.Get("X-Forwarded-Proto")), "https") {
+		if isLoopbackPeer(r.RemoteAddr) || r.Header.Get("CF-Ray") != "" {
+			// Cloudflare Tunnel and reverse proxies
+			proto := firstForwardedValue(r.Header.Get("X-Forwarded-Proto"))
+			if strings.EqualFold(proto, "https") || strings.Contains(r.Header.Get("CF-Visitor"), "https") {
 				r.URL.Scheme = "https"
+			}
+			if fHost := firstForwardedValue(r.Header.Get("X-Forwarded-Host")); fHost != "" {
+				r.Host = fHost
 			}
 		} else {
 			r.Header.Del("X-Forwarded-Proto")
@@ -45,8 +50,23 @@ func firstForwardedValue(value string) string {
 	return strings.TrimSpace(strings.SplitN(value, ",", 2)[0])
 }
 
-// CSRFProtection rejects unsafe browser requests from another origin. Native
-// bearer clients generally omit Origin and remain supported.
+func stripPort(hostport string) string {
+	host, _, err := net.SplitHostPort(hostport)
+	if err != nil {
+		return hostport
+	}
+	return host
+}
+
+func sameHost(a, b string) bool {
+	if strings.EqualFold(a, b) {
+		return true
+	}
+	return strings.EqualFold(stripPort(a), stripPort(b))
+}
+
+// CSRFProtection rejects unsafe browser requests from untrusted foreign origins.
+// Supports direct LAN IP, domain names, and cloudflared tunnels.
 func CSRFProtection(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if safeMethod(r.Method) {
@@ -55,14 +75,38 @@ func CSRFProtection(next http.Handler) http.Handler {
 		}
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
 		if origin == "" {
+			if ref := strings.TrimSpace(r.Header.Get("Referer")); ref != "" {
+				if parsedRef, err := url.Parse(ref); err == nil && parsedRef.Scheme != "" && parsedRef.Host != "" {
+					origin = parsedRef.Scheme + "://" + parsedRef.Host
+				}
+			}
+		}
+		if origin == "" {
+			// Non-browser client (mobile app, curl, CLI)
 			next.ServeHTTP(w, r)
 			return
 		}
 		parsed, err := url.Parse(origin)
-		if err != nil || parsed.Scheme == "" || !strings.EqualFold(parsed.Host, r.Host) || parsed.Scheme != requestScheme(r) {
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			Error(w, http.StatusForbidden, "Cross-origin request denied")
 			return
 		}
+
+		// When request arrives via local reverse proxy or Cloudflare Tunnel, accept valid origins
+		isLoopback := isLoopbackPeer(r.RemoteAddr)
+		isCloudflare := r.Header.Get("CF-Ray") != "" || r.Header.Get("CF-Connecting-IP") != ""
+
+		if isLoopback || isCloudflare {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Direct access (LAN IP): verify origin host matches request host
+		if !sameHost(parsed.Host, r.Host) {
+			Error(w, http.StatusForbidden, "Cross-origin request denied")
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }

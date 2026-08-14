@@ -198,6 +198,8 @@ func New(d Deps) http.Handler {
 			// secrets. Adding/removing SSH targets stays admin-only.
 			hr.Get("/", hostsH.List)
 			hr.With(auth.RequireRole("admin")).Post("/", hostsH.Create)
+			hr.With(auth.RequireRole("admin")).Patch("/{id}", hostsH.Update)
+			hr.With(auth.RequireRole("admin")).Put("/{id}", hostsH.Update)
 			hr.With(auth.RequireRole("admin")).Delete("/{id}", hostsH.Delete)
 		})
 

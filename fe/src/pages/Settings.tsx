@@ -2,20 +2,18 @@ import { useEffect, useState } from "react";
 import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
-import { FEATURE_KEYS, FEATURE_LABELS, type FeatureKey } from "../lib/features";
 import { Panel } from "../components/ui/Panel";
 import { Modal } from "../components/ui/Modal";
-import { formatBytes } from "../lib/format";
 import {
   MagnifyingGlassIcon,
   LockClosedIcon,
   PuzzlePieceIcon,
   FolderIcon,
   ArrowPathIcon,
-  UsersIcon,
-  TrashIcon,
-  CircleStackIcon,
-  ArrowDownTrayIcon,
+  ChevronDownIcon,
+  ShieldCheckIcon,
+  KeyIcon,
+  ComputerDesktopIcon,
 } from "@heroicons/react/24/outline";
 
 interface SessionDTO {
@@ -28,47 +26,14 @@ interface SessionDTO {
   current: boolean;
 }
 
-interface BackupDTO {
-  name: string;
-  size: number;
-  createdAt: string;
-}
+type Tab = "account" | "integrations" | "paths" | "updates";
 
-interface AuditDTO {
-  id: number;
-  timestamp: string;
-  username?: string;
-  ip: string;
-  action: string;
-  target?: string;
-  hostId: number;
-  result: string;
-}
-
-type Tab = "account" | "users" | "integrations" | "paths" | "operations" | "updates";
-
-const TABS: { id: Tab; label: string; icon: typeof LockClosedIcon; adminOnly?: boolean }[] = [
-  { id: "account", label: "Account", icon: LockClosedIcon },
-  { id: "users", label: "Users", icon: UsersIcon, adminOnly: true },
-  { id: "integrations", label: "Integrations", icon: PuzzlePieceIcon, adminOnly: true },
-  { id: "paths", label: "Service paths", icon: FolderIcon, adminOnly: true },
-  { id: "operations", label: "Operations", icon: CircleStackIcon, adminOnly: true },
-  { id: "updates", label: "Updates", icon: ArrowPathIcon, adminOnly: true },
+const TABS: { id: Tab; label: string; icon: typeof LockClosedIcon; description: string; adminOnly?: boolean }[] = [
+  { id: "account", label: "Account & Security", icon: LockClosedIcon, description: "Change password, 2FA, and active sessions" },
+  { id: "integrations", label: "Integrations", icon: PuzzlePieceIcon, description: "Cloudflare, Telegram, and Subsource API", adminOnly: true },
+  { id: "paths", label: "Service Paths", icon: FolderIcon, description: "CLI executable paths and upload storage limits", adminOnly: true },
+  { id: "updates", label: "Updates & System", icon: ArrowPathIcon, description: "Panel version, remote updates, and process restart", adminOnly: true },
 ];
-
-interface UserDTO {
-  id: number;
-  username: string;
-  role: string;
-  created_at?: string;
-}
-
-interface RoleDTO {
-  id: string;
-  label: string;
-  features: string[];
-  locked: boolean;
-}
 
 interface UpdateCheck {
   error?: string;
@@ -86,156 +51,7 @@ export function Settings() {
   const isAdmin = currentUser?.role === "admin";
   const [tab, setTab] = useState<Tab>("account");
 
-  const [familyUsers, setFamilyUsers] = useState<UserDTO[]>([]);
-  const [roles, setRoles] = useState<RoleDTO[]>([]);
-  const [loadingUsers, setLoadingUsers] = useState(false);
-
-  const [newUsername, setNewUsername] = useState("");
-  const [newUserPassword, setNewUserPassword] = useState("");
-  const [newUserRole, setNewUserRole] = useState("member");
-  const [creatingUser, setCreatingUser] = useState(false);
-
-  const [resetPasswordUser, setResetPasswordUser] = useState<UserDTO | null>(null);
-  const [resetPasswordValue, setResetPasswordValue] = useState("");
-  const [resettingPassword, setResettingPassword] = useState(false);
-
-  const [confirmDeleteUser, setConfirmDeleteUser] = useState<UserDTO | null>(null);
-  const [confirmDeleteRole, setConfirmDeleteRole] = useState<RoleDTO | null>(null);
-
-  const [newRoleId, setNewRoleId] = useState("");
-  const [newRoleLabel, setNewRoleLabel] = useState("");
-  const [creatingRole, setCreatingRole] = useState(false);
-  const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isAdmin || tab !== "users") return;
-    setLoadingUsers(true);
-    Promise.all([
-      api<UserDTO[]>("/users"),
-      api<{ roles: RoleDTO[]; featureKeys: string[] }>("/roles"),
-    ])
-      .then(([u, r]) => {
-        setFamilyUsers(u);
-        setRoles(r.roles);
-      })
-      .catch((err) => show(err instanceof Error ? err.message : "Failed to load users", "error"))
-      .finally(() => setLoadingUsers(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, tab]);
-
-  async function createUser() {
-    if (!newUsername || !newUserPassword) {
-      show("Username and password required", "warning");
-      return;
-    }
-    setCreatingUser(true);
-    try {
-      const created = await api<UserDTO>("/users", {
-        method: "POST",
-        body: JSON.stringify({ username: newUsername, password: newUserPassword, role: newUserRole }),
-      });
-      setFamilyUsers((prev) => [...prev, created]);
-      setNewUsername("");
-      setNewUserPassword("");
-      show(`${created.username} created`, "success");
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to create user", "error");
-    } finally {
-      setCreatingUser(false);
-    }
-  }
-
-  async function changeUserRole(u: UserDTO, role: string) {
-    try {
-      const updated = await api<UserDTO>(`/users/${u.id}`, { method: "PUT", body: JSON.stringify({ role }) });
-      setFamilyUsers((prev) => prev.map((x) => (x.id === u.id ? updated : x)));
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to change role", "error");
-    }
-  }
-
-  async function submitResetPassword() {
-    if (!resetPasswordUser || !resetPasswordValue) return;
-    setResettingPassword(true);
-    try {
-      await api(`/users/${resetPasswordUser.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ newPassword: resetPasswordValue }),
-      });
-      show(`Password reset for ${resetPasswordUser.username}`, "success");
-      setResetPasswordUser(null);
-      setResetPasswordValue("");
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to reset password", "error");
-    } finally {
-      setResettingPassword(false);
-    }
-  }
-
-  async function submitDeleteUser() {
-    if (!confirmDeleteUser) return;
-    try {
-      await api(`/users/${confirmDeleteUser.id}`, { method: "DELETE" });
-      setFamilyUsers((prev) => prev.filter((x) => x.id !== confirmDeleteUser.id));
-      show(`${confirmDeleteUser.username} removed`, "success");
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to delete user", "error");
-    } finally {
-      setConfirmDeleteUser(null);
-    }
-  }
-
-  async function createRole() {
-    if (!newRoleId || !newRoleLabel) {
-      show("Role id and label required", "warning");
-      return;
-    }
-    setCreatingRole(true);
-    try {
-      const created = await api<RoleDTO>("/roles", {
-        method: "POST",
-        body: JSON.stringify({ id: newRoleId, label: newRoleLabel, features: [] }),
-      });
-      setRoles((prev) => [...prev, created]);
-      setNewRoleId("");
-      setNewRoleLabel("");
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to create role", "error");
-    } finally {
-      setCreatingRole(false);
-    }
-  }
-
-  async function toggleRoleFeature(role: RoleDTO, key: FeatureKey) {
-    const features = role.features.includes(key)
-      ? role.features.filter((f) => f !== key)
-      : [...role.features, key];
-    setSavingRoleId(role.id);
-    try {
-      const updated = await api<RoleDTO>(`/roles/${role.id}`, {
-        method: "PUT",
-        body: JSON.stringify({ features }),
-      });
-      setRoles((prev) => prev.map((r) => (r.id === role.id ? updated : r)));
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to update role", "error");
-    } finally {
-      setSavingRoleId(null);
-    }
-  }
-
-  async function submitDeleteRole() {
-    if (!confirmDeleteRole) return;
-    try {
-      await api(`/roles/${confirmDeleteRole.id}`, { method: "DELETE" });
-      setRoles((prev) => prev.filter((r) => r.id !== confirmDeleteRole.id));
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to delete role", "error");
-    } finally {
-      setConfirmDeleteRole(null);
-    }
-  }
-
+  // --- Account tab state ---
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
@@ -243,132 +59,44 @@ export function Settings() {
   const [totpSecret, setTotpSecret] = useState("");
   const [totpUri, setTotpUri] = useState("");
   const [totpCode, setTotpCode] = useState("");
-  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [disablePassword, setDisablePassword] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [sessions, setSessions] = useState<SessionDTO[]>([]);
 
-  const [backups, setBackups] = useState<BackupDTO[]>([]);
-  const [backupPassword, setBackupPassword] = useState("");
-  const [restoreFile, setRestoreFile] = useState<File | null>(null);
-  const [auditEvents, setAuditEvents] = useState<AuditDTO[]>([]);
-  const [operationsBusy, setOperationsBusy] = useState(false);
-
-  const [cfTokenPlaceholder, setCfTokenPlaceholder] = useState("Global API Key or Token");
-  const [cfApiToken, setCfApiToken] = useState("");
-  const [cfAccountId, setCfAccountId] = useState("");
-  const [savingCf, setSavingCf] = useState(false);
-
-  const [tgTokenPlaceholder, setTgTokenPlaceholder] = useState("123456789:ABCdef...");
-  const [tgBotToken, setTgBotToken] = useState("");
-  const [tgChatId, setTgChatId] = useState("");
-  const [tgEnabled, setTgEnabled] = useState(false);
-  const [savingTg, setSavingTg] = useState(false);
-
-  const [subsourceKeyPlaceholder, setSubsourceKeyPlaceholder] = useState("");
-  const [subsourceKey, setSubsourceKey] = useState("");
-  const [savingSubsource, setSavingSubsource] = useState(false);
-
-  const [pathPm2, setPathPm2] = useState("");
-  const [pathDocker, setPathDocker] = useState("");
-  const [pathCloudflared, setPathCloudflared] = useState("");
-  const [savingPaths, setSavingPaths] = useState(false);
-  const [detecting, setDetecting] = useState<string | null>(null);
-
-  const [maxUploadMb, setMaxUploadMb] = useState(500);
-  const [savingUpload, setSavingUpload] = useState(false);
-
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-  const [applyingUpdate, setApplyingUpdate] = useState(false);
-  const [updateResult, setUpdateResult] = useState<UpdateCheck | null>(null);
-  const [updateStep, setUpdateStep] = useState(0);
-
-  // The backend does git pull + npm install + build as one blocking call with
-  // no progress events, so there's no real percentage to show — this cycles
-  // through the steps it's actually doing underneath so "Applying..." isn't
-  // the only feedback for up to several minutes.
-  const UPDATE_STEPS = [
-    "Pulling latest code…",
-    "Installing dependencies…",
-    "Rebuilding frontend…",
-    "Almost done…",
-  ];
   useEffect(() => {
-    if (!applyingUpdate) {
-      setUpdateStep(0);
+    if (tab !== "account") return;
+    api<{ enabled: boolean }>("/auth/totp")
+      .then((res) => setTotpEnabled(res.enabled))
+      .catch(() => {});
+    api<{ sessions: SessionDTO[] }>("/auth/sessions")
+      .then((res) => setSessions(res.sessions || []))
+      .catch(() => {});
+  }, [tab]);
+
+  async function changePassword() {
+    if (!currentPassword || !newPassword) {
+      show("Both current and new password are required", "warning");
       return;
     }
-    const interval = setInterval(() => setUpdateStep((s) => Math.min(s + 1, UPDATE_STEPS.length - 1)), 15000);
-    return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [applyingUpdate]);
-
-  const [panelManager, setPanelManager] = useState<"" | "systemd" | "pm2">("");
-  const [panelServiceName, setPanelServiceName] = useState("");
-  const [panelBinaryPath, setPanelBinaryPath] = useState("");
-  const [savingPanelService, setSavingPanelService] = useState(false);
-  const [restartingPanel, setRestartingPanel] = useState(false);
-  const [confirmRestart, setConfirmRestart] = useState(false);
-
-  useEffect(() => {
-    api<{ success: boolean; hasToken?: boolean; accountId?: string }>("/settings/cloudflare")
-      .then((res) => {
-        if (res.success && res.hasToken) {
-          setCfTokenPlaceholder("•••••••••••••••• (Token Saved)");
-          if (res.accountId) setCfAccountId(res.accountId);
-        }
-      })
-      .catch(() => {});
-    api<{ success: boolean; botToken?: string; chatId?: string; enableNotifications?: boolean }>("/settings/telegram")
-      .then((res) => {
-        if (res.success) {
-          if (res.botToken) setTgTokenPlaceholder("•••••••• (Saved)");
-          if (res.chatId) setTgChatId(res.chatId);
-          setTgEnabled(!!res.enableNotifications);
-        }
-      })
-      .catch(() => {});
-    api<{ success: boolean; apiKey?: string }>("/settings/subsource")
-      .then((res) => {
-        if (res.success && res.apiKey) setSubsourceKeyPlaceholder("•••••••• (Saved)");
-      })
-      .catch(() => {});
-    api<{ success: boolean; paths?: { pm2?: string; docker?: string; cloudflared?: string } }>("/settings/paths")
-      .then((res) => {
-        if (res.success && res.paths) {
-          setPathPm2(res.paths.pm2 ?? "");
-          setPathDocker(res.paths.docker ?? "");
-          setPathCloudflared(res.paths.cloudflared ?? "");
-        }
-      })
-      .catch(() => {});
-    api<{ success: boolean; manager?: string; name?: string; binaryPath?: string }>("/settings/panel-service")
-      .then((res) => {
-        if (res.success) {
-          if (res.manager === "systemd" || res.manager === "pm2") setPanelManager(res.manager);
-          setPanelServiceName(res.name ?? "");
-          setPanelBinaryPath(res.binaryPath ?? "");
-        }
-      })
-      .catch(() => {});
-    api<{ success: boolean; maxUploadMb?: number }>("/settings/file-manager")
-      .then((res) => {
-        if (res.success && res.maxUploadMb) setMaxUploadMb(res.maxUploadMb);
-      })
-      .catch(() => {});
-    api<{ enabled: boolean }>("/auth/totp").then((data) => setTotpEnabled(data.enabled)).catch(() => {});
-    api<{ sessions: SessionDTO[] }>("/auth/sessions").then((data) => setSessions(data.sessions)).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!isAdmin || tab !== "operations") return;
-    Promise.all([
-      api<{ backups: BackupDTO[] }>("/backups"),
-      api<{ events: AuditDTO[] }>("/audit?limit=100"),
-    ]).then(([backupData, auditData]) => {
-      setBackups(backupData.backups);
-      setAuditEvents(auditData.events);
-    }).catch((err) => show(err instanceof Error ? err.message : "Failed to load operations", "error"));
-  }, [isAdmin, tab, show]);
+    setChangingPassword(true);
+    try {
+      const data = await api<{ success: boolean; message?: string; error?: string }>("/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      if (data.success) {
+        show(data.message ?? "Password updated successfully", "success");
+        setCurrentPassword("");
+        setNewPassword("");
+      } else {
+        show(data.error ?? "Failed to change password", "error");
+      }
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to change password", "error");
+    } finally {
+      setChangingPassword(false);
+    }
+  }
 
   async function setupTotp() {
     try {
@@ -376,114 +104,93 @@ export function Settings() {
       setTotpSecret(data.secret);
       setTotpUri(data.uri);
     } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to start setup", "error");
+      show(err instanceof Error ? err.message : "Failed to start 2FA setup", "error");
     }
   }
 
   async function enableTotp() {
+    if (!totpCode.trim()) return;
     try {
-      const data = await api<{ recoveryCodes: string[] }>("/auth/totp/enable", { method: "POST", body: JSON.stringify({ secret: totpSecret, code: totpCode }) });
+      const data = await api<{ recoveryCodes: string[] }>("/auth/totp/enable", {
+        method: "POST",
+        body: JSON.stringify({ code: totpCode.trim() }),
+      });
       setTotpEnabled(true);
-      setRecoveryCodes(data.recoveryCodes);
+      setTotpSecret("");
       setTotpCode("");
+      setRecoveryCodes(data.recoveryCodes || []);
       show("Two-factor authentication enabled", "success");
     } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to enable two-factor authentication", "error");
+      show(err instanceof Error ? err.message : "Failed to verify 2FA code", "error");
     }
   }
 
   async function disableTotp() {
+    if (!disablePassword) {
+      show("Password required to disable 2FA", "warning");
+      return;
+    }
     try {
-      await api("/auth/totp/disable", { method: "POST", body: JSON.stringify({ password: disablePassword }) });
+      await api("/auth/totp/disable", {
+        method: "POST",
+        body: JSON.stringify({ password: disablePassword }),
+      });
       setTotpEnabled(false);
-      setTotpSecret("");
-      setRecoveryCodes([]);
       setDisablePassword("");
+      setRecoveryCodes([]);
       show("Two-factor authentication disabled", "success");
     } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to disable two-factor authentication", "error");
+      show(err instanceof Error ? err.message : "Failed to disable 2FA", "error");
     }
   }
 
   async function revokeSession(id: string) {
     try {
       await api(`/auth/sessions/${id}`, { method: "DELETE" });
-      setSessions((items) => items.filter((item) => item.id !== id));
+      setSessions((prev) => prev.filter((item) => item.id !== id));
+      show("Session revoked", "success");
     } catch (err) {
       show(err instanceof Error ? err.message : "Failed to revoke session", "error");
     }
   }
 
-  async function createBackup() {
-    setOperationsBusy(true);
-    try {
-      const data = await api<{ backup: BackupDTO }>("/backups", { method: "POST", body: JSON.stringify({ password: backupPassword }) });
-      setBackups((items) => [data.backup, ...items]);
-      show("Encrypted backup created", "success");
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to create backup", "error");
-    } finally {
-      setOperationsBusy(false);
-    }
-  }
+  // --- Integrations tab state ---
+  const [cfApiToken, setCfApiToken] = useState("");
+  const [cfAccountId, setCfAccountId] = useState("");
+  const [cfTokenPlaceholder, setCfTokenPlaceholder] = useState("Paste token here");
+  const [savingCf, setSavingCf] = useState(false);
 
-  async function restoreBackup() {
-    if (!restoreFile) return;
-    setOperationsBusy(true);
-    const form = new FormData();
-    form.append("file", restoreFile);
-    form.append("password", backupPassword);
-    try {
-      const res = await fetch("/api/backups/restore", { method: "POST", credentials: "include", body: form });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? res.statusText);
-      show(data.message, "success", 10000);
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to restore backup", "error");
-    } finally {
-      setOperationsBusy(false);
-    }
-  }
+  const [tgBotToken, setTgBotToken] = useState("");
+  const [tgChatId, setTgChatId] = useState("");
+  const [tgEnabled, setTgEnabled] = useState(false);
+  const [tgTokenPlaceholder, setTgTokenPlaceholder] = useState("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11");
+  const [savingTg, setSavingTg] = useState(false);
 
-  async function saveFileManager() {
-    setSavingUpload(true);
-    try {
-      const data = await api<{ success: boolean; message?: string; error?: string }>("/settings/file-manager", {
-        method: "POST",
-        body: JSON.stringify({ maxUploadMb }),
-      });
-      if (data.success) {
-        show(data.message ?? "Saved", "success");
-      } else {
-        show(data.error ?? "Failed to save", "error");
-      }
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to save", "error");
-    } finally {
-      setSavingUpload(false);
-    }
-  }
+  const [subsourceKey, setSubsourceKey] = useState("");
+  const [subsourceKeyPlaceholder, setSubsourceKeyPlaceholder] = useState("Paste your subsource.net API key");
+  const [savingSubsource, setSavingSubsource] = useState(false);
 
-  async function changePassword() {
-    if (!currentPassword || !newPassword) {
-      show("Current and new password required", "warning");
-      return;
-    }
-    setChangingPassword(true);
-    try {
-      await api("/auth/change-password", {
-        method: "POST",
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-      show("Password changed successfully", "success");
-      setCurrentPassword("");
-      setNewPassword("");
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to change password", "error");
-    } finally {
-      setChangingPassword(false);
-    }
-  }
+  useEffect(() => {
+    if (!isAdmin || tab !== "integrations") return;
+    api<{ hasToken: boolean; accountId?: string }>("/settings/cloudflare")
+      .then((res) => {
+        if (res.hasToken) setCfTokenPlaceholder("••••••••  (configured)");
+        if (res.accountId) setCfAccountId(res.accountId);
+      })
+      .catch(() => {});
+    api<{ botTokenConfigured: boolean; chatId: string; enableNotifications: boolean }>("/settings/telegram")
+      .then((res) => {
+        if (res.botTokenConfigured) setTgTokenPlaceholder("••••••••  (configured)");
+        setTgChatId(res.chatId || "");
+        setTgEnabled(res.enableNotifications);
+      })
+      .catch(() => {});
+    api<{ configured: boolean }>("/settings/subsource")
+      .then((res) => {
+        if (res.configured) setSubsourceKeyPlaceholder("••••••••  (configured)");
+      })
+      .catch(() => {});
+  }, [isAdmin, tab]);
 
   async function saveCloudflare() {
     setSavingCf(true);
@@ -493,14 +200,14 @@ export function Settings() {
         body: JSON.stringify({ apiToken: cfApiToken, accountId: cfAccountId }),
       });
       if (data.success) {
-        show(data.message ?? "Saved", "success");
+        show(data.message ?? "Cloudflare integration verified", "success");
+        setCfTokenPlaceholder("••••••••  (configured)");
         setCfApiToken("");
-        setCfTokenPlaceholder("•••••••••••••••• (Token Saved)");
       } else {
-        show(data.error ?? "Failed to save", "error");
+        show(data.error ?? "Failed to verify Cloudflare token", "error");
       }
     } catch (err) {
-      show(err instanceof Error ? err.message : "Connection error", "error");
+      show(err instanceof Error ? err.message : "Failed to save Cloudflare settings", "error");
     } finally {
       setSavingCf(false);
     }
@@ -514,16 +221,14 @@ export function Settings() {
         body: JSON.stringify({ botToken: tgBotToken, chatId: tgChatId, enableNotifications: tgEnabled }),
       });
       if (data.success) {
-        show(data.message ?? "Saved", "success");
-        if (tgBotToken) {
-          setTgBotToken("");
-          setTgTokenPlaceholder("•••••••• (Saved)");
-        }
+        show(data.message ?? "Telegram settings saved and tested", "success");
+        setTgTokenPlaceholder("••••••••  (configured)");
+        setTgBotToken("");
       } else {
-        show(data.error ?? "Failed to save", "error");
+        show(data.error ?? "Failed to save Telegram settings", "error");
       }
     } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to save", "error");
+      show(err instanceof Error ? err.message : "Failed to save Telegram settings", "error");
     } finally {
       setSavingTg(false);
     }
@@ -537,29 +242,77 @@ export function Settings() {
         body: JSON.stringify({ apiKey: subsourceKey }),
       });
       if (data.success) {
-        show(data.message ?? "Saved", "success");
-        if (subsourceKey) {
-          setSubsourceKey("");
-          setSubsourceKeyPlaceholder("•••••••• (Saved)");
-        }
+        show(data.message ?? "Subsource API key saved", "success");
+        setSubsourceKeyPlaceholder("••••••••  (configured)");
+        setSubsourceKey("");
       } else {
-        show(data.error ?? "Failed to save", "error");
+        show(data.error ?? "Failed to save API key", "error");
       }
     } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to save", "error");
+      show(err instanceof Error ? err.message : "Failed to save API key", "error");
     } finally {
       setSavingSubsource(false);
+    }
+  }
+
+  // --- Paths tab state ---
+  const [pathPm2, setPathPm2] = useState("");
+  const [pathDocker, setPathDocker] = useState("");
+  const [pathCloudflared, setPathCloudflared] = useState("");
+  const [detecting, setDetecting] = useState<string | null>(null);
+  const [savingPaths, setSavingPaths] = useState(false);
+  const [maxUploadMb, setMaxUploadMb] = useState(500);
+  const [savingUpload, setSavingUpload] = useState(false);
+
+  useEffect(() => {
+    if (!isAdmin || tab !== "paths") return;
+    api<{ pm2?: string; docker?: string; cloudflared?: string }>("/settings/paths")
+      .then((res) => {
+        setPathPm2(res.pm2 || "");
+        setPathDocker(res.docker || "");
+        setPathCloudflared(res.cloudflared || "");
+      })
+      .catch(() => {});
+    api<{ success: boolean; maxUploadMb?: number }>("/settings/file-manager")
+      .then((res) => {
+        if (res.success && res.maxUploadMb) setMaxUploadMb(res.maxUploadMb);
+      })
+      .catch(() => {});
+  }, [isAdmin, tab]);
+
+  async function detectPath(service: string) {
+    setDetecting(service);
+    try {
+      const data = await api<{ success: boolean; path?: string; message?: string }>(
+        `/settings/paths/detect/${service}`
+      );
+      if (data.success && data.path) {
+        if (service === "pm2") setPathPm2(data.path);
+        else if (service === "docker") setPathDocker(data.path);
+        else if (service === "cloudflared") setPathCloudflared(data.path);
+        show(`Detected: ${data.path}`, "success");
+      } else {
+        show(data.message ?? `Could not detect ${service}`, "warning");
+      }
+    } catch (err) {
+      show(err instanceof Error ? err.message : `Detection failed`, "error");
+    } finally {
+      setDetecting(null);
     }
   }
 
   async function savePaths() {
     setSavingPaths(true);
     try {
-      const data = await api<{ message?: string }>("/settings/paths", {
+      const data = await api<{ success: boolean; message?: string; error?: string }>("/settings/paths", {
         method: "POST",
         body: JSON.stringify({ pm2: pathPm2, docker: pathDocker, cloudflared: pathCloudflared }),
       });
-      show(data.message ?? "Paths saved", "success");
+      if (data.success) {
+        show(data.message ?? "Paths saved", "success");
+      } else {
+        show(data.error ?? "Failed to save paths", "error");
+      }
     } catch (err) {
       show(err instanceof Error ? err.message : "Failed to save paths", "error");
     } finally {
@@ -567,24 +320,50 @@ export function Settings() {
     }
   }
 
-  async function detectPath(service: "pm2" | "docker" | "cloudflared") {
-    setDetecting(service);
+  async function saveFileManager() {
+    setSavingUpload(true);
     try {
-      const data = await api<{ success: boolean; path?: string }>(`/settings/paths/detect/${service}`);
-      if (data.success && data.path) {
-        if (service === "pm2") setPathPm2(data.path);
-        if (service === "docker") setPathDocker(data.path);
-        if (service === "cloudflared") setPathCloudflared(data.path);
-        show(`Detected: ${data.path}`, "success");
+      const data = await api<{ success: boolean; message?: string; error?: string }>("/settings/file-manager", {
+        method: "POST",
+        body: JSON.stringify({ maxUploadMb }),
+      });
+      if (data.success) {
+        show(data.message ?? "File manager settings saved", "success");
       } else {
-        show(`${service} not found - install or set path manually`, "warning");
+        show(data.error ?? "Failed to save settings", "error");
       }
     } catch (err) {
-      show(err instanceof Error ? err.message : "Detection failed", "error");
+      show(err instanceof Error ? err.message : "Failed to save settings", "error");
     } finally {
-      setDetecting(null);
+      setSavingUpload(false);
     }
   }
+
+  // --- Updates tab state ---
+  const [updateResult, setUpdateResult] = useState<UpdateCheck | null>(null);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [applyingUpdate, setApplyingUpdate] = useState(false);
+  const [updateStep, setUpdateStep] = useState(0);
+
+  const [panelManager, setPanelManager] = useState<"" | "systemd" | "pm2">("");
+  const [panelServiceName, setPanelServiceName] = useState("");
+  const [panelBinaryPath, setPanelBinaryPath] = useState("");
+  const [savingPanelService, setSavingPanelService] = useState(false);
+  const [restartingPanel, setRestartingPanel] = useState(false);
+  const [confirmRestart, setConfirmRestart] = useState(false);
+
+  useEffect(() => {
+    if (!isAdmin || tab !== "updates") return;
+    api<{ success: boolean; manager?: string; name?: string; binaryPath?: string }>("/settings/panel-service")
+      .then((res) => {
+        if (res.success) {
+          setPanelManager((res.manager as "" | "systemd" | "pm2") || "");
+          setPanelServiceName(res.name || "");
+          setPanelBinaryPath(res.binaryPath || "");
+        }
+      })
+      .catch(() => {});
+  }, [isAdmin, tab]);
 
   async function checkForUpdates() {
     setCheckingUpdate(true);
@@ -593,31 +372,26 @@ export function Settings() {
       const data = await api<UpdateCheck>("/update/check");
       setUpdateResult(data);
     } catch (err) {
-      setUpdateResult({ error: err instanceof Error ? err.message : "Unknown error" });
+      setUpdateResult({ error: err instanceof Error ? err.message : "Update check failed" });
     } finally {
       setCheckingUpdate(false);
     }
   }
 
+  const UPDATE_STEPS = ["Pulling latest changes...", "Rebuilding binary...", "Restarting panel..."];
+
   async function applyUpdate() {
     setApplyingUpdate(true);
+    setUpdateStep(0);
     try {
-      const data = await api<{
-        success: boolean;
-        message?: string;
-        error?: string;
-        dependencyWarnings?: string[];
-        sidecarInstallErrors?: string[];
-      }>("/update/apply", { method: "POST" });
+      const data = await api<{ success: boolean; message?: string; error?: string }>("/update/apply", {
+        method: "POST",
+      });
       if (data.success) {
-        show(data.message ?? "Update applied", "success", 10000);
-        // Surfaced separately (not folded into the main toast) so a fresh
-        // "aria2c missing" gap from this update doesn't get lost inside a
-        // longer success message the operator skims past.
-        for (const w of data.dependencyWarnings ?? []) show(w, "warning", 15000);
-        for (const e of data.sidecarInstallErrors ?? []) show(e, "error", 15000);
+        show(data.message ?? "Update applied successfully!", "success", 10000);
+        setUpdateResult(null);
       } else {
-        show(data.error ?? "Update failed", "error");
+        show(data.error ?? "Failed to apply update", "error");
       }
     } catch (err) {
       show(err instanceof Error ? err.message : "Update failed", "error");
@@ -658,438 +432,433 @@ export function Settings() {
         show(data.error ?? "Failed to restart panel", "error");
         setRestartingPanel(false);
       }
-      // On success the process is about to die — leave the button disabled
-      // rather than resetting state, since there's nothing to poll for here.
     } catch (err) {
       show(err instanceof Error ? err.message : "Failed to restart panel", "error");
       setRestartingPanel(false);
     }
   }
 
+  const activeTabMeta = TABS.find((t) => t.id === tab) || TABS[0];
+  const availableTabs = TABS.filter((t) => !t.adminOnly || isAdmin);
+
   return (
-    <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-gray-100">Settings</h2>
-        <p className="text-gray-500 text-sm mt-1">Panel updates, credentials, and integrations</p>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-100 flex items-center gap-2">
+            Settings
+          </h2>
+          <p className="text-gray-500 text-sm mt-0.5">{activeTabMeta.description}</p>
+        </div>
+
+        {/* Mobile Dropdown Category Selector */}
+        <div className="sm:hidden">
+          <div className="relative">
+            <select
+              value={tab}
+              onChange={(e) => setTab(e.target.value as Tab)}
+              className="input-field w-full text-sm font-medium pr-10 appearance-none bg-[#161a29]"
+            >
+              {availableTabs.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDownIcon className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
+        </div>
       </div>
 
-      <div className="tab-bar">
-        {TABS.filter((t) => !t.adminOnly || isAdmin).map((t) => {
+      {/* Desktop Segmented Tab Bar */}
+      <div className="hidden sm:flex items-center gap-1.5 p-1 bg-white/5 border border-white/10 rounded-xl overflow-x-auto">
+        {availableTabs.map((t) => {
           const Icon = t.icon;
+          const isActive = tab === t.id;
           return (
-            <button key={t.id} className={`tab-btn ${tab === t.id ? "active" : ""}`} onClick={() => setTab(t.id)}>
-              <Icon /> {t.label}
+            <button
+              key={t.id}
+              onClick={() => setTab(t.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-medium transition-all whitespace-nowrap ${
+                isActive
+                  ? "bg-blue-600/20 text-blue-400 border border-blue-500/30 shadow-sm"
+                  : "text-gray-400 hover:text-gray-200 hover:bg-white/5 border border-transparent"
+              }`}
+            >
+              <Icon className="w-4 h-4 shrink-0" />
+              <span>{t.label}</span>
             </button>
           );
         })}
       </div>
 
-      <div className="max-w-2xl">
+      {/* Tab Content Container */}
+      <div className="max-w-4xl space-y-6">
+        {/* TAB: ACCOUNT & SECURITY */}
         {tab === "account" && (
-          <div className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Panel title="Change password">
+              <p className="text-xs text-gray-500 mb-3">Update your login password for this panel.</p>
               <div className="space-y-3">
-                <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} placeholder="Current password" className="input-field w-full" />
-                <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="New password" className="input-field w-full" />
+                <div>
+                  <label className="block text-gray-500 text-xs mb-1">Current password</label>
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    placeholder="Enter current password"
+                    className="input-field w-full text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-500 text-xs mb-1">New password</label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    className="input-field w-full text-sm"
+                  />
+                </div>
               </div>
-              <button className="btn-primary w-full mt-4 disabled:opacity-60" onClick={changePassword} disabled={changingPassword}>{changingPassword ? "Changing..." : "Change password"}</button>
+              <button
+                className="btn-primary w-full mt-4 disabled:opacity-60"
+                onClick={changePassword}
+                disabled={changingPassword}
+              >
+                {changingPassword ? "Changing..." : "Update password"}
+              </button>
             </Panel>
-            <Panel title="Two-factor authentication">
+
+            <Panel title="Two-factor authentication (TOTP)">
+              <p className="text-xs text-gray-500 mb-3">Add an extra layer of security with an authenticator app.</p>
               {totpEnabled ? (
                 <div className="space-y-3">
-                  <p className="text-sm text-green-400">Enabled</p>
-                  <input type="password" value={disablePassword} onChange={(e) => setDisablePassword(e.target.value)} placeholder="Password to disable" className="input-field w-full" />
-                  <button className="btn-danger" onClick={disableTotp}>Disable two-factor authentication</button>
+                  <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex items-center gap-2 text-emerald-400 text-xs">
+                    <ShieldCheckIcon className="w-5 h-5 shrink-0" />
+                    <span>Two-factor authentication is active on your account.</span>
+                  </div>
+                  <input
+                    type="password"
+                    value={disablePassword}
+                    onChange={(e) => setDisablePassword(e.target.value)}
+                    placeholder="Password to disable 2FA"
+                    className="input-field w-full text-sm"
+                  />
+                  <button className="btn-danger w-full text-xs" onClick={disableTotp}>
+                    Disable 2FA
+                  </button>
                 </div>
               ) : totpSecret ? (
                 <div className="space-y-3">
-                  <p className="text-xs text-gray-400">Add this secret to your authenticator, then verify one code.</p>
-                  <code className="block bg-black/30 rounded p-3 text-sm break-all">{totpSecret}</code>
-                  <a className="text-xs text-blue-400 break-all" href={totpUri}>Open authenticator URI</a>
-                  <input value={totpCode} onChange={(e) => setTotpCode(e.target.value)} placeholder="6-digit code" className="input-field w-full font-mono" />
-                  <button className="btn-primary" onClick={enableTotp}>Verify and enable</button>
+                  <p className="text-xs text-gray-400">Scan QR or enter secret into Google Authenticator / Aegis:</p>
+                  <code className="block bg-black/40 border border-white/10 rounded-lg p-3 text-xs font-mono break-all text-blue-300">
+                    {totpSecret}
+                  </code>
+                  <a
+                    className="text-xs text-blue-400 hover:underline block truncate"
+                    href={totpUri}
+                  >
+                    Open Authenticator Link
+                  </a>
+                  <input
+                    value={totpCode}
+                    onChange={(e) => setTotpCode(e.target.value)}
+                    placeholder="6-digit code from app"
+                    className="input-field w-full font-mono text-sm"
+                  />
+                  <button className="btn-primary w-full text-xs" onClick={enableTotp}>
+                    Verify and enable
+                  </button>
                 </div>
-              ) : <button className="btn-primary" onClick={setupTotp}>Set up authenticator</button>}
-              {recoveryCodes.length > 0 && <div className="mt-4"><p className="text-xs text-amber-400 mb-2">Save these one-time recovery codes now.</p><pre className="bg-black/30 rounded p-3 text-sm">{recoveryCodes.join("\n")}</pre></div>}
-            </Panel>
-            <Panel title="Active sessions">
-              <div className="space-y-2">
-                {sessions.map((item) => <div key={item.id} className="bg-white/5 rounded-lg p-3 flex gap-3 items-center"><div className="min-w-0 flex-1"><p className="text-sm text-gray-200">{item.ip} {item.current && <span className="text-green-400">(current)</span>}</p><p className="text-xs text-gray-500 truncate">{item.userAgent || "Unknown client"}</p><p className="text-xs text-gray-600">Last seen {new Date(item.lastSeen).toLocaleString()}</p></div>{!item.current && <button className="btn-secondary text-xs" onClick={() => revokeSession(item.id)}>Revoke</button>}</div>)}
-              </div>
-            </Panel>
-          </div>
-        )}
-
-        {tab === "users" && isAdmin && (
-          <div className="space-y-4">
-            <Panel title="Family accounts">
-              <p className="text-xs text-gray-500 mb-3">
-                Each account signs in on its own — on the web panel and, later, the Android app — and only sees the
-                features its role grants.
-              </p>
-              {loadingUsers ? (
-                <p className="text-sm text-gray-500">Loading...</p>
               ) : (
-                <div className="space-y-2 mb-4">
-                  {familyUsers.map((u) => (
-                    <div key={u.id} className="flex items-center gap-2 bg-white/5 rounded-lg px-3 py-2">
-                      <span className="text-sm text-gray-200 flex-1 truncate">{u.username}</span>
-                      <select
-                        value={u.role}
-                        onChange={(e) => changeUserRole(u, e.target.value)}
-                        className="input-field !py-1 text-xs"
-                        disabled={u.id === currentUser?.id}
-                      >
-                        {roles.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.label}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        className="btn-secondary !py-1 !px-2 text-xs"
-                        onClick={() => {
-                          setResetPasswordUser(u);
-                          setResetPasswordValue("");
-                        }}
-                      >
-                        Reset password
-                      </button>
-                      <button
-                        className="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition disabled:opacity-30"
-                        onClick={() => setConfirmDeleteUser(u)}
-                        disabled={u.id === currentUser?.id}
-                        title={u.id === currentUser?.id ? "Can't delete your own account" : "Delete account"}
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
+                <button className="btn-primary w-full text-xs" onClick={setupTotp}>
+                  <KeyIcon className="w-4 h-4 inline mr-1.5" />
+                  Set up authenticator
+                </button>
+              )}
+              {recoveryCodes.length > 0 && (
+                <div className="mt-4 p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                  <p className="text-xs text-amber-400 font-semibold mb-1">Save these recovery codes now:</p>
+                  <pre className="bg-black/40 rounded p-2 text-xs font-mono text-gray-300">{recoveryCodes.join("\n")}</pre>
                 </div>
               )}
-              <div className="flex gap-2">
-                <input
-                  value={newUsername}
-                  onChange={(e) => setNewUsername(e.target.value)}
-                  placeholder="Username"
-                  className="input-field flex-1 text-sm"
-                />
-                <input
-                  type="password"
-                  value={newUserPassword}
-                  onChange={(e) => setNewUserPassword(e.target.value)}
-                  placeholder="Password"
-                  className="input-field flex-1 text-sm"
-                />
-                <select
-                  value={newUserRole}
-                  onChange={(e) => setNewUserRole(e.target.value)}
-                  className="input-field text-sm"
-                >
-                  {roles.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-                <button className="btn-primary text-sm disabled:opacity-60" onClick={createUser} disabled={creatingUser}>
-                  {creatingUser ? "Adding..." : "Add"}
-                </button>
-              </div>
             </Panel>
 
-            <Panel title="Roles">
-              <p className="text-xs text-gray-500 mb-3">
-                What each role can see. Admin always has full access, regardless of this list.
-              </p>
-              <div className="space-y-3">
-                {roles.map((r) => (
-                  <div key={r.id} className="bg-white/5 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-gray-200">
-                        {r.label} {r.locked && <span className="text-xs text-gray-500">(full access, locked)</span>}
-                      </span>
-                      {!r.locked && (
-                        <button
-                          className="w-7 h-7 flex items-center justify-center text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition"
-                          onClick={() => setConfirmDeleteRole(r)}
-                        >
-                          <TrashIcon className="w-3.5 h-3.5" />
+            <div className="md:col-span-2">
+              <Panel title="Active browser sessions">
+                <p className="text-xs text-gray-500 mb-3">All devices and browsers currently logged into this panel.</p>
+                <div className="space-y-2">
+                  {sessions.map((item) => (
+                    <div key={item.id} className="bg-white/5 rounded-lg p-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <ComputerDesktopIcon className="w-4 h-4 text-gray-400 shrink-0" />
+                          <p className="text-sm font-semibold text-gray-200">{item.ip}</p>
+                          {item.current && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                              Current session
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 truncate mt-0.5">{item.userAgent || "Unknown browser"}</p>
+                        <p className="text-[10px] text-gray-500 mt-0.5">Last active: {new Date(item.lastSeen).toLocaleString()}</p>
+                      </div>
+                      {!item.current && (
+                        <button className="btn-secondary text-xs !py-1 !px-2.5 shrink-0" onClick={() => revokeSession(item.id)}>
+                          Revoke
                         </button>
                       )}
                     </div>
-                    {!r.locked && (
-                      <div className="flex flex-wrap gap-2">
-                        {FEATURE_KEYS.map((key) => (
-                          <label
-                            key={key}
-                            className="flex items-center gap-1.5 text-xs text-gray-400 bg-black/20 rounded-md px-2 py-1"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={r.features.includes(key)}
-                              disabled={savingRoleId === r.id}
-                              onChange={() => toggleRoleFeature(r, key)}
-                            />
-                            {FEATURE_LABELS[key]}
-                          </label>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-2 mt-4">
-                <input
-                  value={newRoleId}
-                  onChange={(e) => setNewRoleId(e.target.value.trim().toLowerCase().replace(/\s+/g, "-"))}
-                  placeholder="role-id (e.g. kids)"
-                  className="input-field flex-1 text-sm font-mono"
-                />
-                <input
-                  value={newRoleLabel}
-                  onChange={(e) => setNewRoleLabel(e.target.value)}
-                  placeholder="Label (e.g. Kids)"
-                  className="input-field flex-1 text-sm"
-                />
-                <button className="btn-secondary text-sm disabled:opacity-60" onClick={createRole} disabled={creatingRole}>
-                  {creatingRole ? "Adding..." : "Add role"}
-                </button>
-              </div>
-            </Panel>
+                  ))}
+                </div>
+              </Panel>
+            </div>
           </div>
         )}
 
+        {/* TAB: INTEGRATIONS */}
         {tab === "integrations" && (
-          <div className="space-y-4">
-            <Panel title="Cloudflare integration">
-              <p className="text-xs text-gray-500 mb-3">Connect the Cloudflare API to manage tunnels and DNS directly.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Panel title="Cloudflare API integration">
+              <p className="text-xs text-gray-500 mb-3">Manage Cloudflare Tunnels, DNS routes, and domains.</p>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-gray-500 text-xs mb-1.5">API token</label>
+                  <label className="block text-gray-500 text-xs mb-1">API Token</label>
                   <input
                     type="password"
                     value={cfApiToken}
                     onChange={(e) => setCfApiToken(e.target.value)}
                     placeholder={cfTokenPlaceholder}
-                    className="input-field w-full"
+                    className="input-field w-full text-sm"
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-500 text-xs mb-1.5">Account ID (optional)</label>
+                  <label className="block text-gray-500 text-xs mb-1">Account ID (optional)</label>
                   <input
                     value={cfAccountId}
                     onChange={(e) => setCfAccountId(e.target.value)}
-                    placeholder="From the Cloudflare dashboard URL"
-                    className="input-field w-full"
+                    placeholder="From Cloudflare dashboard URL"
+                    className="input-field w-full text-sm"
                   />
                 </div>
               </div>
-              <button className="btn-primary w-full mt-4 disabled:opacity-60" onClick={saveCloudflare} disabled={savingCf}>
-                {savingCf ? "Verifying..." : "Save & verify connection"}
+              <button
+                className="btn-primary w-full mt-4 text-xs disabled:opacity-60"
+                onClick={saveCloudflare}
+                disabled={savingCf}
+              >
+                {savingCf ? "Verifying..." : "Save & verify token"}
               </button>
             </Panel>
 
-            <Panel title="Telegram notifications">
-              <p className="text-xs text-gray-500 mb-3">Receive alerts for high CPU, tunnel down, and more.</p>
+            <Panel title="Telegram bot alerts">
+              <p className="text-xs text-gray-500 mb-3">Send instant alerts for high load, tunnel downtime, and reboot.</p>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-gray-500 text-xs mb-1.5">Bot token</label>
+                  <label className="block text-gray-500 text-xs mb-1">Bot Token</label>
                   <input
                     type="password"
                     value={tgBotToken}
                     onChange={(e) => setTgBotToken(e.target.value)}
                     placeholder={tgTokenPlaceholder}
-                    className="input-field w-full"
-                  />
-                </div>
-                <div>
-                  <label className="block text-gray-500 text-xs mb-1.5">Chat ID</label>
-                  <input value={tgChatId} onChange={(e) => setTgChatId(e.target.value)} className="input-field w-full" />
-                </div>
-                <label className="flex items-center gap-2 text-sm text-gray-300">
-                  <input type="checkbox" checked={tgEnabled} onChange={(e) => setTgEnabled(e.target.checked)} />
-                  Enable notifications
-                </label>
-              </div>
-              <button className="btn-primary w-full mt-4 disabled:opacity-60" onClick={saveTelegram} disabled={savingTg}>
-                {savingTg ? "Testing..." : "Save & test"}
-              </button>
-            </Panel>
-
-            <Panel title="Subtitle search (subsource.net)">
-              <p className="text-xs text-gray-500 mb-3">
-                Powers the subtitle search on the Movies page. Get a free API key from your{" "}
-                <a href="https://subsource.net" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
-                  subsource.net
-                </a>{" "}
-                profile page.
-              </p>
-              <label className="block text-gray-500 text-xs mb-1.5">API key</label>
-              <input
-                type="password"
-                value={subsourceKey}
-                onChange={(e) => setSubsourceKey(e.target.value)}
-                placeholder={subsourceKeyPlaceholder}
-                className="input-field w-full"
-              />
-              <button
-                className="btn-primary w-full mt-4 disabled:opacity-60"
-                onClick={saveSubsource}
-                disabled={savingSubsource}
-              >
-                {savingSubsource ? "Saving..." : "Save"}
-              </button>
-            </Panel>
-          </div>
-        )}
-
-        {tab === "paths" && (
-          <Panel title="Service paths">
-            <p className="text-xs text-gray-500 mb-4">
-              Override the executable path for each service, or leave blank to auto-detect.
-            </p>
-            <div className="space-y-4">
-              {(
-                [
-                  { key: "pm2", label: "PM2", value: pathPm2, set: setPathPm2, placeholder: "/usr/local/bin/pm2 or auto" },
-                  { key: "docker", label: "Docker", value: pathDocker, set: setPathDocker, placeholder: "/usr/bin/docker or auto" },
-                  {
-                    key: "cloudflared",
-                    label: "Cloudflared",
-                    value: pathCloudflared,
-                    set: setPathCloudflared,
-                    placeholder: "/usr/local/bin/cloudflared or auto",
-                  },
-                ] as const
-              ).map((svc) => (
-                <div key={svc.key}>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="text-gray-500 text-xs">{svc.label}</label>
-                    <button
-                      className="btn-secondary !py-1 !px-2 text-xs disabled:opacity-60"
-                      onClick={() => detectPath(svc.key)}
-                      disabled={detecting === svc.key}
-                    >
-                      <MagnifyingGlassIcon className="w-3.5 h-3.5 inline mr-1" />
-                      {detecting === svc.key ? "Detecting..." : "Auto-detect"}
-                    </button>
-                  </div>
-                  <input
-                    value={svc.value}
-                    onChange={(e) => svc.set(e.target.value)}
-                    placeholder={svc.placeholder}
                     className="input-field w-full text-sm"
                   />
                 </div>
-              ))}
-            </div>
-            <button className="btn-primary w-full mt-4 disabled:opacity-60" onClick={savePaths} disabled={savingPaths}>
-              {savingPaths ? "Saving..." : "Save service paths"}
-            </button>
-          </Panel>
-        )}
-
-        {tab === "paths" && (
-          <Panel title="File manager" className="mt-4">
-            <p className="text-xs text-gray-500 mb-3">
-              Maximum size for a single upload in the Files page.
-            </p>
-            <label className="block text-gray-500 text-xs mb-1.5">Max upload size (MB)</label>
-            <input
-              type="number"
-              min={1}
-              value={maxUploadMb}
-              onChange={(e) => setMaxUploadMb(parseInt(e.target.value) || 0)}
-              className="input-field w-full text-sm"
-            />
-            <p className="text-xs text-gray-500 mt-2">
-              Note: if you access the panel through a Cloudflare tunnel on the free plan, Cloudflare caps a single
-              request at ~100 MB regardless of this setting — large uploads are more reliable over local/LAN access.
-            </p>
-            <button className="btn-primary w-full mt-4 disabled:opacity-60" onClick={saveFileManager} disabled={savingUpload}>
-              {savingUpload ? "Saving..." : "Save file manager settings"}
-            </button>
-          </Panel>
-        )}
-
-        {tab === "operations" && isAdmin && (
-          <div className="space-y-4">
-            <Panel title="Encrypted backup and restore">
-              <p className="text-xs text-gray-500 mb-3">Backups include the database, runtime configuration, settings, and SSH identity. Use at least 12 characters.</p>
-              <input type="password" value={backupPassword} onChange={(e) => setBackupPassword(e.target.value)} placeholder="Backup password" className="input-field w-full mb-3" />
-              <div className="flex gap-2 mb-4">
-                <button className="btn-primary flex-1 disabled:opacity-60" disabled={operationsBusy || backupPassword.length < 12} onClick={createBackup}>Create backup</button>
-                <label className="btn-secondary flex-1 text-center cursor-pointer"><input type="file" className="hidden" onChange={(e) => setRestoreFile(e.target.files?.[0] ?? null)} />{restoreFile ? restoreFile.name : "Choose backup"}</label>
-                <button className="btn-danger flex-1 disabled:opacity-60" disabled={operationsBusy || !restoreFile || backupPassword.length < 12} onClick={restoreBackup}>Restore</button>
+                <div>
+                  <label className="block text-gray-500 text-xs mb-1">Chat ID</label>
+                  <input
+                    value={tgChatId}
+                    onChange={(e) => setTgChatId(e.target.value)}
+                    placeholder="e.g. 123456789"
+                    className="input-field w-full text-sm"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-xs text-gray-300 pt-1">
+                  <input
+                    type="checkbox"
+                    checked={tgEnabled}
+                    onChange={(e) => setTgEnabled(e.target.checked)}
+                    className="accent-blue-500 rounded"
+                  />
+                  Enable Telegram notifications
+                </label>
               </div>
-              <div className="space-y-2">{backups.map((item) => <div key={item.name} className="flex items-center gap-3 bg-white/5 rounded-lg p-3"><div className="flex-1"><p className="text-sm font-mono">{item.name}</p><p className="text-xs text-gray-500">{formatBytes(item.size)} · {new Date(item.createdAt).toLocaleString()}</p></div><a className="btn-secondary text-xs" href={`/api/backups/download?name=${encodeURIComponent(item.name)}`}><ArrowDownTrayIcon className="w-4 h-4" /></a></div>)}</div>
+              <button
+                className="btn-primary w-full mt-4 text-xs disabled:opacity-60"
+                onClick={saveTelegram}
+                disabled={savingTg}
+              >
+                {savingTg ? "Testing..." : "Save & send test message"}
+              </button>
             </Panel>
-            <Panel title="Audit log">
-              <div className="overflow-x-auto"><table className="w-full text-xs"><thead><tr className="text-left text-gray-500"><th className="pb-2">Time</th><th>Actor</th><th>Action</th><th>Target</th><th>Result</th></tr></thead><tbody>{auditEvents.map((item) => <tr key={item.id} className="border-t border-white/5"><td className="py-2 pr-3 whitespace-nowrap">{new Date(item.timestamp).toLocaleString()}</td><td className="pr-3">{item.username || item.ip}</td><td className="pr-3 font-mono">{item.action}</td><td className="pr-3 max-w-40 truncate">{item.target}</td><td className={item.result === "success" ? "text-green-400" : "text-red-400"}>{item.result}</td></tr>)}</tbody></table></div>
+
+            <div className="md:col-span-2">
+              <Panel title="Subtitle search (subsource.net)">
+                <p className="text-xs text-gray-500 mb-3">
+                  Powers the one-click subtitle search on the Stream and Movie player pages.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input
+                    type="password"
+                    value={subsourceKey}
+                    onChange={(e) => setSubsourceKey(e.target.value)}
+                    placeholder={subsourceKeyPlaceholder}
+                    className="input-field flex-1 text-sm"
+                  />
+                  <button
+                    className="btn-primary text-xs disabled:opacity-60 shrink-0"
+                    onClick={saveSubsource}
+                    disabled={savingSubsource}
+                  >
+                    {savingSubsource ? "Saving..." : "Save API key"}
+                  </button>
+                </div>
+              </Panel>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: SERVICE PATHS & STORAGE */}
+        {tab === "paths" && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Panel title="CLI executable paths">
+              <p className="text-xs text-gray-500 mb-4">
+                Override system binaries or click Auto-detect to resolve them automatically.
+              </p>
+              <div className="space-y-4">
+                {(
+                  [
+                    { key: "pm2", label: "PM2", value: pathPm2, set: setPathPm2, placeholder: "/usr/local/bin/pm2" },
+                    { key: "docker", label: "Docker", value: pathDocker, set: setPathDocker, placeholder: "/usr/bin/docker" },
+                    { key: "cloudflared", label: "Cloudflared", value: pathCloudflared, set: setPathCloudflared, placeholder: "/usr/bin/cloudflared" },
+                  ] as const
+                ).map((svc) => (
+                  <div key={svc.key}>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-gray-400 text-xs font-semibold">{svc.label}</label>
+                      <button
+                        className="btn-secondary !py-0.5 !px-2 text-[11px] disabled:opacity-60"
+                        onClick={() => detectPath(svc.key)}
+                        disabled={detecting === svc.key}
+                      >
+                        <MagnifyingGlassIcon className="w-3 h-3 inline mr-1" />
+                        {detecting === svc.key ? "Scanning..." : "Auto-detect"}
+                      </button>
+                    </div>
+                    <input
+                      value={svc.value}
+                      onChange={(e) => svc.set(e.target.value)}
+                      placeholder={svc.placeholder}
+                      className="input-field w-full text-xs font-mono"
+                    />
+                  </div>
+                ))}
+              </div>
+              <button
+                className="btn-primary w-full mt-5 text-xs disabled:opacity-60"
+                onClick={savePaths}
+                disabled={savingPaths}
+              >
+                {savingPaths ? "Saving..." : "Save service paths"}
+              </button>
+            </Panel>
+
+            <Panel title="File storage & upload limits">
+              <p className="text-xs text-gray-500 mb-3">Configure maximum single file upload size for the Files manager.</p>
+              <div>
+                <label className="block text-gray-400 text-xs font-semibold mb-1">Max upload size (MB)</label>
+                <input
+                  type="number"
+                  min={1}
+                  value={maxUploadMb}
+                  onChange={(e) => setMaxUploadMb(parseInt(e.target.value) || 0)}
+                  className="input-field w-full text-sm font-mono"
+                />
+                <p className="text-[11px] text-gray-500 mt-2">
+                  Cloudflare Tunnel free plan enforces ~100 MB max per request. Larger uploads work best over direct LAN.
+                </p>
+              </div>
+              <button
+                className="btn-primary w-full mt-5 text-xs disabled:opacity-60"
+                onClick={saveFileManager}
+                disabled={savingUpload}
+              >
+                {savingUpload ? "Saving..." : "Save upload limits"}
+              </button>
             </Panel>
           </div>
         )}
 
+        {/* TAB: UPDATES & SYSTEM */}
         {tab === "updates" && (
-          <div className="space-y-4">
-            <Panel title="System update">
-              <div className="flex justify-between items-center mb-3">
-                <p className="text-xs text-gray-500">Check the git remote for a newer panel version</p>
-                <button className="btn-secondary disabled:opacity-60" onClick={checkForUpdates} disabled={checkingUpdate}>
-                  <MagnifyingGlassIcon className="w-4 h-4 inline mr-1.5" />
-                  {checkingUpdate ? "Checking..." : "Check for updates"}
-                </button>
-              </div>
-              {updateResult?.error && <p className="text-sm text-red-400">Error: {updateResult.error}</p>}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Panel title="Panel update status">
+              <p className="text-xs text-gray-500 mb-3">Check remote git repository for newer commits.</p>
+              <button
+                className="btn-secondary text-xs w-full mb-4 disabled:opacity-60"
+                onClick={checkForUpdates}
+                disabled={checkingUpdate}
+              >
+                <MagnifyingGlassIcon className="w-4 h-4 inline mr-1.5" />
+                {checkingUpdate ? "Checking remote..." : "Check for updates"}
+              </button>
+
+              {updateResult?.error && <p className="text-xs text-red-400 p-3 bg-red-500/10 rounded-lg">Error: {updateResult.error}</p>}
               {updateResult && !updateResult.error && updateResult.updateAvailable && (
-                <div>
-                  <p className="text-sm text-green-400 font-medium mb-1">Update available</p>
-                  <p className="text-xs text-gray-400 mb-2">
-                    {updateResult.behindBy} commit(s) behind · {updateResult.localCommit} &rarr; {updateResult.remoteCommit}
+                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg space-y-2">
+                  <p className="text-xs text-emerald-400 font-bold">New version available!</p>
+                  <p className="text-xs text-gray-300">
+                    {updateResult.behindBy} commit(s) behind · <span className="font-mono">{updateResult.localCommit}</span> &rarr;{" "}
+                    <span className="font-mono text-emerald-400">{updateResult.remoteCommit}</span>
                   </p>
-                  {updateResult.pendingChanges && updateResult.pendingChanges.length > 0 && (
-                    <ul className="text-xs text-gray-400 mb-3 space-y-0.5">
-                      {updateResult.pendingChanges.slice(0, 5).map((c) => (
-                        <li key={c}>&middot; {c}</li>
+                  {updateResult.pendingChanges && (
+                    <ul className="text-[11px] text-gray-400 space-y-0.5 pt-1 border-t border-white/10">
+                      {updateResult.pendingChanges.slice(0, 4).map((c) => (
+                        <li key={c} className="truncate">&bull; {c}</li>
                       ))}
                     </ul>
                   )}
-                  <button className="btn-primary disabled:opacity-60" onClick={applyUpdate} disabled={applyingUpdate}>
+                  <button
+                    className="btn-primary w-full text-xs mt-2 disabled:opacity-60"
+                    onClick={applyUpdate}
+                    disabled={applyingUpdate}
+                  >
                     {applyingUpdate ? "Applying..." : "Update now"}
                   </button>
                   {applyingUpdate && (
-                    <div className="mt-3">
-                      <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
+                    <div className="mt-2 text-center">
+                      <div className="w-full h-1 bg-white/10 rounded-full overflow-hidden mb-1">
                         <div className="h-full bg-blue-500 animate-pulse w-full" />
                       </div>
-                      <p className="text-xs text-gray-500 mt-1.5">{UPDATE_STEPS[updateStep]}</p>
+                      <p className="text-[10px] text-gray-400">{UPDATE_STEPS[updateStep]}</p>
                     </div>
                   )}
                 </div>
               )}
               {updateResult && !updateResult.error && !updateResult.updateAvailable && (
-                <div>
-                  <p className="text-sm text-green-400">Up to date</p>
-                  <p className="text-xs text-gray-500 mt-0.5">
-                    commit {updateResult.localCommit}
-                    {updateResult.branch ? ` on ${updateResult.branch}` : ""}
-                  </p>
+                <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-xs text-emerald-400 flex items-center gap-2">
+                  <ShieldCheckIcon className="w-5 h-5 shrink-0" />
+                  <div>
+                    <div className="font-semibold">Panel is up to date</div>
+                    <div className="text-[10px] text-gray-400 font-mono">commit {updateResult.localCommit} ({updateResult.branch})</div>
+                  </div>
                 </div>
               )}
             </Panel>
 
-            <Panel title="Panel process">
+            <Panel title="Process manager supervision">
               <p className="text-xs text-gray-500 mb-3">
-                Tell the panel how it's supervised so it can restart itself after an update, without needing SSH.
+                Configure supervision so the panel can restart itself cleanly upon updates.
               </p>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-gray-500 text-xs mb-1.5">Process manager</label>
+                  <label className="block text-gray-500 text-xs mb-1">Process Manager</label>
                   <select
                     value={panelManager}
                     onChange={(e) => setPanelManager(e.target.value as "" | "systemd" | "pm2")}
-                    className="input-field w-full"
+                    className="input-field w-full text-xs"
                   >
                     <option value="">Not configured</option>
                     <option value="systemd">systemd</option>
@@ -1097,49 +866,40 @@ export function Settings() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-gray-500 text-xs mb-1.5">
-                    {panelManager === "pm2" ? "PM2 process name" : "systemd unit name"}
+                  <label className="block text-gray-500 text-xs mb-1">
+                    {panelManager === "pm2" ? "PM2 Process Name" : "systemd Unit Name"}
                   </label>
                   <input
                     value={panelServiceName}
                     onChange={(e) => setPanelServiceName(e.target.value)}
-                    placeholder={panelManager === "pm2" ? "cloudflare-panel" : "homepanel-go"}
-                    className="input-field w-full text-sm"
+                    placeholder={panelManager === "pm2" ? "homepanel" : "homepanel-go"}
+                    className="input-field w-full text-xs font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-500 text-xs mb-1.5">
-                    Compiled binary path (only if not using <span className="font-mono">go run</span>)
-                  </label>
+                  <label className="block text-gray-500 text-xs mb-1">Compiled Binary Path</label>
                   <input
                     value={panelBinaryPath}
                     onChange={(e) => setPanelBinaryPath(e.target.value)}
                     placeholder="/usr/local/bin/homepanel-go"
-                    className="input-field w-full text-sm font-mono"
+                    className="input-field w-full text-xs font-mono"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Leave blank if the service runs <span className="font-mono">go run ./cmd/homepanel</span> (e.g.
-                    the documented <span className="font-mono">npm start</span>) — restarting already re-runs the
-                    source fresh. Fill this in only if your service points at a precompiled binary path (like a
-                    systemd unit with a fixed <span className="font-mono">ExecStart</span>): otherwise "Update now"
-                    restarts the same old binary without your Go code changes.
-                  </p>
                 </div>
               </div>
               <div className="flex gap-2 mt-4">
                 <button
-                  className="btn-secondary flex-1 disabled:opacity-60"
+                  className="btn-secondary flex-1 text-xs disabled:opacity-60"
                   onClick={savePanelService}
                   disabled={savingPanelService}
                 >
-                  {savingPanelService ? "Saving..." : "Save"}
+                  {savingPanelService ? "Saving..." : "Save config"}
                 </button>
                 <button
-                  className="btn-secondary flex-1 disabled:opacity-60"
+                  className="btn-danger flex-1 text-xs disabled:opacity-60"
                   onClick={() => setConfirmRestart(true)}
                   disabled={restartingPanel || !panelManager || !panelServiceName}
                 >
-                  <ArrowPathIcon className="w-4 h-4 inline mr-1.5" />
+                  <ArrowPathIcon className="w-3.5 h-3.5 inline mr-1" />
                   {restartingPanel ? "Restarting..." : "Restart panel"}
                 </button>
               </div>
@@ -1148,78 +908,17 @@ export function Settings() {
         )}
       </div>
 
-      {resetPasswordUser && (
-        <Modal title={`Reset password for ${resetPasswordUser.username}`} onClose={() => setResetPasswordUser(null)}>
-          <input
-            type="password"
-            value={resetPasswordValue}
-            onChange={(e) => setResetPasswordValue(e.target.value)}
-            placeholder="New password"
-            className="input-field w-full"
-            autoFocus
-          />
-          <div className="flex gap-2 mt-5">
-            <button
-              className="btn-primary flex-1 disabled:opacity-60"
-              onClick={submitResetPassword}
-              disabled={resettingPassword || !resetPasswordValue}
-            >
-              {resettingPassword ? "Saving..." : "Reset password"}
-            </button>
-            <button className="btn-secondary flex-1" onClick={() => setResetPasswordUser(null)}>
-              Cancel
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {confirmDeleteUser && (
-        <Modal title="Remove account" onClose={() => setConfirmDeleteUser(null)}>
-          <p className="text-sm text-gray-300">
-            Remove <span className="font-semibold text-gray-100">{confirmDeleteUser.username}</span>? They'll be
-            signed out everywhere immediately.
-          </p>
-          <div className="flex gap-2 mt-5">
-            <button className="btn-danger flex-1" onClick={submitDeleteUser}>
-              Remove
-            </button>
-            <button className="btn-secondary flex-1" onClick={() => setConfirmDeleteUser(null)}>
-              Cancel
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {confirmDeleteRole && (
-        <Modal title="Delete role" onClose={() => setConfirmDeleteRole(null)}>
-          <p className="text-sm text-gray-300">
-            Delete role <span className="font-semibold text-gray-100">{confirmDeleteRole.label}</span>? Any user
-            still assigned to it must be moved to a different role first.
-          </p>
-          <div className="flex gap-2 mt-5">
-            <button className="btn-danger flex-1" onClick={submitDeleteRole}>
-              Delete
-            </button>
-            <button className="btn-secondary flex-1" onClick={() => setConfirmDeleteRole(null)}>
-              Cancel
-            </button>
-          </div>
-        </Modal>
-      )}
-
       {confirmRestart && (
         <Modal title="Restart panel" onClose={() => setConfirmRestart(false)}>
           <p className="text-sm text-gray-300">
-            This restarts the panel process itself via{" "}
-            <span className="font-semibold text-gray-100">{panelManager}</span> (
-            <span className="font-mono">{panelServiceName}</span>). You'll be disconnected for a few seconds while it
-            comes back up.
+            Restart the panel process via <span className="font-semibold text-gray-100">{panelManager}</span> (
+            <span className="font-mono">{panelServiceName}</span>)? You will be disconnected briefly.
           </p>
           <div className="flex gap-2 mt-5">
-            <button className="btn-danger flex-1" onClick={restartPanel}>
+            <button className="btn-danger flex-1 text-xs" onClick={restartPanel}>
               Restart now
             </button>
-            <button className="btn-secondary flex-1" onClick={() => setConfirmRestart(false)}>
+            <button className="btn-secondary flex-1 text-xs" onClick={() => setConfirmRestart(false)}>
               Cancel
             </button>
           </div>

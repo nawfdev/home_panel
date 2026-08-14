@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
@@ -38,11 +38,11 @@ const TTL_OPTIONS: { label: string; seconds: number }[] = [
   { label: "7 days", seconds: 604800 },
 ];
 
-// Full-page watch view (not a modal) so playing, downloading, and sharing a
-// finished download is a real navigable page — link to it, bookmark it,
-// come back to it, instead of losing state the moment a modal closes.
+// Full-page watch view so playing, downloading, and sharing a finished
+// download is a real navigable page.
 export function Watch() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const { show } = useToast();
   const [job, setJob] = useState<Job | null | undefined>(undefined); // undefined = loading, null = not found
   const [subtitles, setSubtitles] = useState<{ name: string; label: string }[]>([]);
@@ -142,9 +142,12 @@ export function Watch() {
   if (job === null) {
     return (
       <div>
-        <Link to="/downloads" className="btn-secondary inline-flex items-center gap-1.5 mb-4">
-          <ArrowLeftIcon className="w-4 h-4" /> Back to Downloads
-        </Link>
+        <button
+          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/stream"))}
+          className="btn-secondary inline-flex items-center gap-1.5 mb-4 cursor-pointer"
+        >
+          <ArrowLeftIcon className="w-4 h-4" /> Back
+        </button>
         <p className="text-sm text-gray-500">This download isn't available (still in progress, or was removed).</p>
       </div>
     );
@@ -158,9 +161,12 @@ export function Watch() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <Link to="/downloads" className="btn-secondary inline-flex items-center gap-1.5 mb-4">
-        <ArrowLeftIcon className="w-4 h-4" /> Back to Downloads
-      </Link>
+      <button
+        onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/stream"))}
+        className="btn-secondary inline-flex items-center gap-1.5 mb-4 cursor-pointer"
+      >
+        <ArrowLeftIcon className="w-4 h-4" /> Back
+      </button>
 
       <h2 className="text-xl font-bold text-gray-100 mb-4">{job.title}</h2>
 
