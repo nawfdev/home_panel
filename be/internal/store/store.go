@@ -16,15 +16,26 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+type Passkey struct {
+	ID        string `json:"id"`
+	Nickname  string `json:"nickname"`
+	CredID    string `json:"cred_id"`
+	PublicKey string `json:"public_key"`
+	Counter   uint32 `json:"counter"`
+	CreatedAt string `json:"created_at"`
+	LastUsed  string `json:"last_used,omitempty"`
+}
+
 type User struct {
-	ID            int      `json:"id"`
-	Username      string   `json:"username"`
-	Password      string   `json:"password"`
-	Role          string   `json:"role"`
-	TokenHash     string   `json:"token_hash,omitempty"`
-	TOTPSecret    string   `json:"totp_secret,omitempty"`
-	RecoveryCodes []string `json:"recovery_codes,omitempty"`
-	CreatedAt     string   `json:"created_at,omitempty"`
+	ID            int       `json:"id"`
+	Username      string    `json:"username"`
+	Password      string    `json:"password"`
+	Role          string    `json:"role"`
+	TokenHash     string    `json:"token_hash,omitempty"`
+	TOTPSecret    string    `json:"totp_secret,omitempty"`
+	RecoveryCodes []string  `json:"recovery_codes,omitempty"`
+	Passkeys      []Passkey `json:"passkeys,omitempty"`
+	CreatedAt     string    `json:"created_at,omitempty"`
 }
 
 // Role is an admin-configurable preset of which feature keys its members may

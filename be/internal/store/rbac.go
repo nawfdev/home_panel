@@ -1,3 +1,4 @@
+// Package store: role-based access control (RBAC), multi-user management, and TOTP 2FA.
 package store
 
 import (
@@ -162,6 +163,63 @@ func (s *Store) ConsumeRecoveryCode(id int, codeHash string) bool {
 	return false
 }
 
+// Passkeys methods
+func (s *Store) AddUserPasskey(userID int, p Passkey) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.d.Users {
+		if s.d.Users[i].ID == userID {
+			s.d.Users[i].Passkeys = append(s.d.Users[i].Passkeys, p)
+			return s.save()
+		}
+	}
+	return ErrNotFound
+}
+
+func (s *Store) DeleteUserPasskey(userID int, passkeyID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.d.Users {
+		if s.d.Users[i].ID == userID {
+			var updated []Passkey
+			for _, pk := range s.d.Users[i].Passkeys {
+				if pk.ID != passkeyID {
+					updated = append(updated, pk)
+				}
+			}
+			s.d.Users[i].Passkeys = updated
+			return s.save()
+		}
+	}
+	return ErrNotFound
+}
+
+func (s *Store) ListUserPasskeys(userID int) []Passkey {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.d.Users {
+		if u.ID == userID {
+			out := make([]Passkey, len(u.Passkeys))
+			copy(out, u.Passkeys)
+			return out
+		}
+	}
+	return []Passkey{}
+}
+
+func (s *Store) GetUserByPasskeyCredID(credID string) (User, Passkey, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, u := range s.d.Users {
+		for _, pk := range u.Passkeys {
+			if pk.CredID == credID {
+				return u, pk, true
+			}
+		}
+	}
+	return User{}, Passkey{}, false
+}
+
 func (s *Store) ListRoles() []Role {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -186,7 +244,7 @@ func (s *Store) CreateRole(id, label string, features []string) (Role, error) {
 	defer s.mu.Unlock()
 	for _, r := range s.d.Roles {
 		if r.ID == id {
-			return Role{}, ErrUsernameTaken // reuse "already taken" semantics for a duplicate role id
+			return Role{}, ErrUsernameTaken
 		}
 	}
 	r := Role{ID: id, Label: label, Features: features, Locked: false}
