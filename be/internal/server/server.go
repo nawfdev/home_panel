@@ -25,9 +25,11 @@ import (
 	moviesvc "github.com/nawfdev/home-panel/internal/movies"
 	"github.com/nawfdev/home-panel/internal/networkhistory"
 	pm2svc "github.com/nawfdev/home-panel/internal/pm2"
+	"github.com/nawfdev/home-panel/internal/prober"
 	"github.com/nawfdev/home-panel/internal/projects"
 	"github.com/nawfdev/home-panel/internal/remotedesktop"
 	"github.com/nawfdev/home-panel/internal/session"
+	"github.com/nawfdev/home-panel/internal/smartdisk"
 	"github.com/nawfdev/home-panel/internal/sshmgr"
 	"github.com/nawfdev/home-panel/internal/store"
 	"github.com/nawfdev/home-panel/internal/telegram"
@@ -50,6 +52,8 @@ type Deps struct {
 	Health         *hosthealth.Service
 	Movies         *moviesvc.Service
 	NetworkHistory *networkhistory.Collector
+	Prober         *prober.Manager
+	Storage        *smartdisk.Service
 	TorrentSearch  *torrentsearch.Service
 	Paths          config.Paths
 	Hosts          *sshmgr.Manager
@@ -77,12 +81,13 @@ func New(d Deps) http.Handler {
 	r.Use(httpx.CSRFProtection)
 
 	auth := &handlers.Auth{Store: d.Store, Session: d.Sessions, Audit: d.Audit}
+	passkeysH := &handlers.Passkeys{Store: d.Store, Session: d.Sessions, Audit: d.Audit}
 	system := handlers.System{Store: d.Store, PM2: d.PM2}
 	services := handlers.Services{Audit: d.Audit}
 	metricsH := &handlers.Metrics{Collector: d.Metrics}
 	logsH := &handlers.Logs{Svc: d.Logs}
 	pm2H := &handlers.PM2{Svc: d.PM2}
-	dockerH := &handlers.Docker{Svc: d.Docker}
+	dockerH := &handlers.Docker{Svc: d.Docker, RootDir: d.Paths.Root}
 	filesH := &handlers.Files{Svc: d.Files, Audit: d.Audit}
 	tunnelH := &handlers.Tunnel{Svc: d.Tunnel}
 	projectsH := &handlers.Projects{Mgr: d.Projects}
@@ -106,6 +111,9 @@ func New(d Deps) http.Handler {
 	backupH := &handlers.Backups{Service: d.Backups, Audit: d.Audit}
 	healthH := &handlers.Health{Service: d.Health}
 	networkHistoryH := &handlers.NetworkHistory{Collector: d.NetworkHistory}
+	monitorsH := &handlers.Monitors{Prober: d.Prober, Store: d.Store}
+	storageH := &handlers.Storage{Svc: d.Storage}
+	terminalExtraH := &handlers.TerminalExtra{Store: d.Store, SSH: d.Hosts}
 
 	// Rate limiters mirror express-rate-limit windows from server.js.
 	apiLimiter := httpx.NewRateLimiter(15*time.Minute, 500, false,
@@ -114,10 +122,6 @@ func New(d Deps) http.Handler {
 		"Too many login attempts, please try again later.")
 
 	r.With(auth.RequireAuth, auth.RequireFeature("terminal")).Get("/terminal/ws", d.Terminal.Handler)
-	// Segment/manifest/license proxy for the Live TV player — high-frequency,
-	// non-JSON traffic, so it's mounted outside /api's apiLimiter like /terminal/ws
-	// above and /share below. POST is needed too: Widevine license requests
-	// carry a binary challenge in the body.
 	tvProxy := r.With(auth.RequireAuth, auth.RequireFeature("tv"))
 	tvProxy.Get("/tv-proxy", tvH.Proxy)
 	tvProxy.Post("/tv-proxy", tvH.Proxy)
@@ -136,6 +140,14 @@ func New(d Deps) http.Handler {
 			ar.With(auth.RequireAuth).Post("/totp/disable", auth.TOTPDisable)
 			ar.With(auth.RequireAuth).Get("/sessions", auth.ListSessions)
 			ar.With(auth.RequireAuth).Delete("/sessions/{id}", auth.RevokeSession)
+
+			// WebAuthn Passkeys & Biometric Auth
+			ar.With(auth.RequireAuth).Get("/passkeys", passkeysH.List)
+			ar.With(auth.RequireAuth).Post("/passkeys/register/begin", passkeysH.RegisterBegin)
+			ar.With(auth.RequireAuth).Post("/passkeys/register/finish", passkeysH.RegisterFinish)
+			ar.With(auth.RequireAuth).Delete("/passkeys/{id}", passkeysH.Delete)
+			ar.With(loginLimiter.Middleware).Post("/passkeys/login/begin", passkeysH.LoginBegin)
+			ar.With(loginLimiter.Middleware).Post("/passkeys/login/finish", passkeysH.LoginFinish)
 		})
 
 		api.Route("/system", func(sr chi.Router) {
@@ -162,6 +174,36 @@ func New(d Deps) http.Handler {
 		})
 
 		api.With(auth.RequireAuth).Get("/health/hosts", healthH.List)
+
+		// Uptime Kuma SLA Prober & Monitors
+		api.Route("/monitors", func(mr chi.Router) {
+			mr.Use(auth.RequireAuth)
+			mr.Get("/", monitorsH.List)
+			mr.With(auth.RequireRole("admin")).Post("/", monitorsH.Create)
+			mr.With(auth.RequireRole("admin")).Put("/{id}", monitorsH.Update)
+			mr.With(auth.RequireRole("admin")).Delete("/{id}", monitorsH.Delete)
+			mr.Post("/{id}/check", monitorsH.Check)
+		})
+		api.With(auth.RequireAuth).Post("/wol/wake", monitorsH.WakeOnLAN)
+
+		// S.M.A.R.T. Disk Health & Storage Overview
+		api.Route("/storage", func(sr chi.Router) {
+			sr.Use(auth.RequireAuth)
+			sr.Get("/disks", storageH.Disks)
+		})
+
+		// Terminal SFTP Upload & Custom Snippets
+		api.Route("/terminal", func(tr chi.Router) {
+			tr.Use(auth.RequireAuth, auth.RequireFeature("terminal"))
+			tr.Post("/upload", terminalExtraH.Upload)
+		})
+		api.Route("/snippets", func(sr chi.Router) {
+			sr.Use(auth.RequireAuth)
+			sr.Get("/", terminalExtraH.ListSnippets)
+			sr.Post("/", terminalExtraH.SaveSnippet)
+			sr.Delete("/{id}", terminalExtraH.DeleteSnippet)
+		})
+
 		api.Route("/audit", func(ar chi.Router) {
 			ar.Use(auth.RequireAuth, auth.RequireRole("admin"))
 			ar.Get("/", auditH.List)
@@ -193,9 +235,6 @@ func New(d Deps) http.Handler {
 
 		api.Route("/hosts", func(hr chi.Router) {
 			hr.Use(auth.RequireAuth)
-			// Any authenticated user needs the host list to populate the
-			// Terminal/Files host-switcher; the Host struct carries no
-			// secrets. Adding/removing SSH targets stays admin-only.
 			hr.Get("/", hostsH.List)
 			hr.With(auth.RequireRole("admin")).Post("/", hostsH.Create)
 			hr.With(auth.RequireRole("admin")).Patch("/{id}", hostsH.Update)
@@ -356,6 +395,16 @@ func New(d Deps) http.Handler {
 			dr.Get("/containers/{id}/logs", dockerH.Logs)
 			dr.Get("/containers/{id}/stats", dockerH.Stats)
 			dr.Get("/status", dockerH.Status)
+
+			// Docker Compose Stacks & App Templates
+			dr.Get("/compose/stacks", dockerH.ListStacks)
+			dr.Get("/compose/stacks/{name}", dockerH.GetStack)
+			dr.With(auth.RequireRole("admin")).Post("/compose/stacks", dockerH.SaveStack)
+			dr.With(auth.RequireRole("admin")).Post("/compose/stacks/{name}/up", dockerH.UpStack)
+			dr.With(auth.RequireRole("admin")).Post("/compose/stacks/{name}/down", dockerH.DownStack)
+			dr.With(auth.RequireRole("admin")).Post("/compose/stacks/{name}/restart", dockerH.RestartStack)
+			dr.With(auth.RequireRole("admin")).Delete("/compose/stacks/{name}", dockerH.DeleteStack)
+			dr.Get("/compose/templates", dockerH.Templates)
 		})
 
 		api.Route("/files", func(fr chi.Router) {
@@ -373,9 +422,6 @@ func New(d Deps) http.Handler {
 			fr.Get("/subtitle", filesH.Subtitle)
 		})
 
-		// Movie section: scrape pahe.ink + server-side download queue. Finished
-		// files land under the SafePath allowlist, so they reuse the /files
-		// player, streaming and share endpoints above with no extra wiring.
 		api.Route("/movies", func(mr chi.Router) {
 			mr.Use(auth.RequireAuth, auth.RequireFeature("movies"))
 			mr.Post("/search", moviesH.Search)
@@ -386,57 +432,35 @@ func New(d Deps) http.Handler {
 			mr.Delete("/downloads/{id}", moviesH.CancelDownload)
 			mr.Post("/downloads/{id}/pause", moviesH.PauseDownload)
 			mr.Post("/downloads/{id}/resume", moviesH.ResumeDownload)
-			// Stream library management: add a file manually, rename, re-thumbnail,
-			// or delete a finished movie outright (unlike CancelDownload above,
-			// which only stops an in-flight download).
 			mr.Post("/manual", moviesH.ManualAdd)
 			mr.Patch("/library/{id}", moviesH.UpdateLibraryItem)
 			mr.Post("/library/{id}/thumbnail", moviesH.UploadThumbnail)
 			mr.Delete("/library/{id}", moviesH.DeleteLibraryItem)
-			// Subtitle search/download (subsource.net) — saves sidecars next to a
-			// downloaded movie so the player's existing subtitle detection picks
-			// them up with no extra wiring.
 			mr.Post("/subtitles/search", subtitlesH.Search)
 			mr.Post("/subtitles/download", subtitlesH.Download)
-			// Torrent search (torrent-search-api sidecar) + magnet download via
-			// aria2, tracked through the same Job list/SSE stream as above.
 			mr.Post("/torrents/search", moviesH.TorrentSearch)
 			mr.Post("/torrents/download", moviesH.StartTorrentDownload)
 		})
 
-		// Live TV: channel list parsed from dhanytv's public M3U playlists.
-		// Playback itself goes through /tv-proxy (mounted below, outside this
-		// group) since it needs to be exempt from apiLimiter — a single HLS/DASH
-		// stream alone can burn through the JSON-API request budget in minutes.
 		api.Route("/tv", func(tr chi.Router) {
 			tr.Use(auth.RequireAuth, auth.RequireFeature("tv"))
 			tr.Get("/channels", tvH.Channels)
 		})
 	})
 
-	// Public file share links: intentionally OUTSIDE /api and its auth — anyone
-	// with the link can fetch the shared file/folder, which is the whole point.
-	// Mounted on r directly, like /terminal/ws and the ai-gateway proxy.
 	r.Get("/share/{token}", filesH.ServePublicShare)
 	r.Get("/share/{token}/*", filesH.ServePublicShare)
 
-	// AI Gateway proxy: called by an external client app (not the browser),
-	// so it deliberately sits outside apiLimiter's per-IP human-traffic budget
-	// and uses its own gateway-key auth instead of the cookie session — same
-	// reasoning as /terminal/ws being mounted directly on r instead of under /api.
 	r.Route("/api/ai-gateway/v1", func(gwr chi.Router) {
 		gwr.Use(gatewayAuth.RequireGatewayKey)
 		gwr.Post("/chat/completions", aigatewayH.ChatCompletions)
 	})
 
-	// Static frontend + SPA fallback (replaces express.static + app.get("*"))
 	r.NotFound(spaHandler(d.Paths.Frontend))
 
 	return r
 }
 
-// spaHandler serves files from the frontend dir, falling back to index.html for
-// any unmatched path, matching the Node catch-all behavior.
 func spaHandler(dir string) http.HandlerFunc {
 	fileServer := http.FileServer(http.Dir(dir))
 	indexPath := filepath.Join(dir, "index.html")

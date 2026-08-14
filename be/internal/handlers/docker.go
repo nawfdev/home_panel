@@ -5,28 +5,16 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	dockersvc "github.com/nawfdev/home-panel/internal/docker"
 	"github.com/nawfdev/home-panel/internal/httpx"
 )
 
-type dockerService interface {
-	Check(ctx context.Context) dockersvc.Status
-	List(ctx context.Context, all bool) ([]dockersvc.Container, error)
-	Get(ctx context.Context, nameOrID string) (map[string]any, error)
-	Start(ctx context.Context, id string) (dockersvc.Result, error)
-	Stop(ctx context.Context, id string) (dockersvc.Result, error)
-	Restart(ctx context.Context, id string) (dockersvc.Result, error)
-	Remove(ctx context.Context, id string) (dockersvc.Result, error)
-	Logs(ctx context.Context, id string, lines int) (string, error)
-	Stats(ctx context.Context, id string) (dockersvc.Stats, error)
-	Run(ctx context.Context, name, image, ports string) (dockersvc.Result, error)
-}
-
-// Docker ports backend/routes/docker-routes.js.
 type Docker struct {
-	Svc dockerService
+	Svc     *dockersvc.Service
+	RootDir string
 }
 
 func (d *Docker) Containers(w http.ResponseWriter, r *http.Request) {
@@ -116,6 +104,90 @@ func (d *Docker) Stats(w http.ResponseWriter, r *http.Request) {
 
 func (d *Docker) Status(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, d.Svc.Check(r.Context()))
+}
+
+// --- Compose Stacks & App Templates Handlers ---
+
+func (d *Docker) ListStacks(w http.ResponseWriter, r *http.Request) {
+	stacks, err := d.Svc.ListStacks(r.Context(), d.RootDir)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "stacks": stacks})
+}
+
+func (d *Docker) GetStack(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	stack, err := d.Svc.GetStack(d.RootDir, name)
+	if err != nil {
+		httpx.Error(w, http.StatusNotFound, err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "stack": stack})
+}
+
+func (d *Docker) SaveStack(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Name    string `json:"name"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if strings.TrimSpace(body.Name) == "" || strings.TrimSpace(body.Content) == "" {
+		httpx.Error(w, http.StatusBadRequest, "Stack name and compose YAML content are required")
+		return
+	}
+	if err := d.Svc.SaveStack(d.RootDir, body.Name, body.Content); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Compose stack saved"})
+}
+
+func (d *Docker) UpStack(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	out, err := d.Svc.UpStack(r.Context(), d.RootDir, name)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Stack deployed successfully", "output": out})
+}
+
+func (d *Docker) DownStack(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	out, err := d.Svc.DownStack(r.Context(), d.RootDir, name)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Stack stopped", "output": out})
+}
+
+func (d *Docker) RestartStack(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	out, err := d.Svc.RestartStack(r.Context(), d.RootDir, name)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Stack restarted", "output": out})
+}
+
+func (d *Docker) DeleteStack(w http.ResponseWriter, r *http.Request) {
+	name := chi.URLParam(r, "name")
+	if err := d.Svc.DeleteStack(r.Context(), d.RootDir, name); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Stack deleted"})
+}
+
+func (d *Docker) Templates(w http.ResponseWriter, r *http.Request) {
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "templates": d.Svc.ListTemplates()})
 }
 
 func (d *Docker) action(w http.ResponseWriter, r *http.Request, fn func(context.Context, string) (dockersvc.Result, error), message string) {

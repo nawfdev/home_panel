@@ -29,10 +29,12 @@ import (
 	"github.com/nawfdev/home-panel/internal/movies"
 	"github.com/nawfdev/home-panel/internal/networkhistory"
 	"github.com/nawfdev/home-panel/internal/pm2"
+	"github.com/nawfdev/home-panel/internal/prober"
 	"github.com/nawfdev/home-panel/internal/projects"
 	"github.com/nawfdev/home-panel/internal/remotedesktop"
 	"github.com/nawfdev/home-panel/internal/server"
 	"github.com/nawfdev/home-panel/internal/session"
+	"github.com/nawfdev/home-panel/internal/smartdisk"
 	"github.com/nawfdev/home-panel/internal/sshmgr"
 	"github.com/nawfdev/home-panel/internal/store"
 	"github.com/nawfdev/home-panel/internal/subtitles"
@@ -44,11 +46,6 @@ import (
 	"github.com/nawfdev/home-panel/internal/updater"
 )
 
-// setupLogging makes internal/logs' "Panel Application" source actually show
-// something: log.Printf only ever wrote to stderr, and nothing wrote to the
-// logs/panel.log file that source reads, so it was permanently empty since
-// the Go rewrite. Logs still go to stderr too (so journalctl/pm2 log capture
-// keeps working exactly as before) via io.MultiWriter.
 func setupLogging(root string) {
 	dir := filepath.Join(root, "logs")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -79,9 +76,7 @@ func main() {
 	if err := st.InitDefaultAdmin(cfg.DefaultAdmin.Username, cfg.DefaultAdmin.Password); err != nil {
 		log.Fatalf("failed to init default admin: %v", err)
 	}
-	// A subsource.net API key saved via Settings survives a restart without
-	// needing SUBSOURCE_API_KEY re-set — the env var is only the initial
-	// default (see internal/subtitles.SetAPIKey).
+
 	if v, ok := st.GetSetting("subsource"); ok {
 		if m, ok := v.(map[string]interface{}); ok {
 			if key, ok := m["apiKey"].(string); ok && key != "" {
@@ -106,14 +101,24 @@ func main() {
 	backupSvc := backup.New(paths.Root)
 	backupSvc.StartRetention(context.Background())
 	healthSvc := hosthealth.New(st, hostsSvc)
+	storageSvc := smartdisk.New(st, hostsSvc)
 
-	// Background metrics collection retains the full 24-hour graph across restarts.
 	mc, err := metrics.Open(filepath.Join(paths.Root, "data", "metrics-history.jsonl"))
 	if err != nil {
 		log.Fatalf("failed to open metrics history: %v", err)
 	}
 	mc.Start(context.Background())
 	log.Println("Starting metrics collection (every 60s)...")
+
+	proberMgr, err := prober.New(filepath.Join(paths.Root, "data"))
+	if err != nil {
+		log.Printf("prober init failed: %v", err)
+	}
+	defer func() {
+		if proberMgr != nil {
+			proberMgr.Close()
+		}
+	}()
 
 	tun := tunnel.New()
 	cloudflareSvc := cloudflare.New(st)
@@ -140,6 +145,8 @@ func main() {
 		TorrentSearch:  ts,
 		TV:             tvSvc,
 		NetworkHistory: traffic,
+		Prober:         proberMgr,
+		Storage:        storageSvc,
 		Hosts:          hostsSvc,
 		Paths:          paths,
 		Store:          st,
