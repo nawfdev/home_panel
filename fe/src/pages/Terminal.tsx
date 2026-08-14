@@ -1,1025 +1,679 @@
-import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, forwardRef } from "react";
+import { Terminal as XTerm } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
+import "@xterm/xterm/css/xterm.css";
 import {
   ArrowPathIcon,
-  TrashIcon,
-  PlusIcon,
-  XMarkIcon,
-  CommandLineIcon,
-  Squares2X2Icon,
-  Square2StackIcon,
-  ArrowsPointingOutIcon,
-  ArrowsPointingInIcon,
-  ClipboardDocumentIcon,
+  ArrowUpIcon,
+  ClipboardIcon,
   Cog6ToothIcon,
-  ServerIcon,
-  PlayIcon,
-  SparklesIcon,
-  ChevronDownIcon,
-  ArrowUpTrayIcon,
-  BookmarkIcon,
+  DocumentIcon,
+  FolderIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  Squares2X2Icon,
+  StarIcon,
+  TrashIcon,
+  XMarkIcon,
 } from "@heroicons/react/24/outline";
 import { api } from "../lib/api";
-import { useToast } from "../context/ToastContext";
-import { Modal } from "../components/ui/Modal";
+import { copyText } from "../lib/clipboard";
+import { formatBytes } from "../lib/format";
 import type { Host } from "../lib/hosts";
 
-// Termius-inspired color palettes
-interface Theme {
-  id: string;
-  name: string;
-  bg: string;
-  headerBg: string;
-  text: string;
-  prompt: string;
-  cursor: string;
-  border: string;
-  selection: string;
-}
+const textEncoder = new TextEncoder();
+const LOCAL_HOST: Host = { id: 0, name: "Local host", address: "localhost", port: 0, user: "", created_at: "" };
 
-const THEMES: Record<string, Theme> = {
-  termius: {
-    id: "termius",
-    name: "Termius Dark",
-    bg: "#111625",
-    headerBg: "#0b0e17",
-    text: "#d1d5db",
-    prompt: "#38bdf8",
-    cursor: "#38bdf8",
-    border: "#1e293b",
-    selection: "#334155",
+const TERMINAL_THEMES = {
+  nestcore: {
+    label: "Nestcore",
+    background: "#090b10",
+    foreground: "#d1d5db",
+    cursor: "#a78bfa",
+    selectionBackground: "#6d28d980",
+    black: "#111827",
+    brightBlack: "#6b7280",
   },
   dracula: {
-    id: "dracula",
-    name: "Dracula",
-    bg: "#282a36",
-    headerBg: "#1e1f29",
-    text: "#f8f8f2",
-    prompt: "#50fa7b",
+    label: "Dracula",
+    background: "#282a36",
+    foreground: "#f8f8f2",
     cursor: "#f8f8f2",
-    border: "#44475a",
-    selection: "#44475a",
+    selectionBackground: "#44475a",
+    black: "#21222c",
+    brightBlack: "#6272a4",
   },
-  nord: {
-    id: "nord",
-    name: "Nord",
-    bg: "#2e3440",
-    headerBg: "#242933",
-    text: "#eceff4",
-    prompt: "#88c0d0",
-    cursor: "#88c0d0",
-    border: "#3b4252",
-    selection: "#434c5e",
+  solarized: {
+    label: "Solarized Dark",
+    background: "#002b36",
+    foreground: "#839496",
+    cursor: "#93a1a1",
+    selectionBackground: "#073642",
+    black: "#073642",
+    brightBlack: "#586e75",
   },
-  tokyo: {
-    id: "tokyo",
-    name: "Tokyo Night",
-    bg: "#1a1b26",
-    headerBg: "#16161e",
-    text: "#a9b1d6",
-    prompt: "#7aa2f7",
-    cursor: "#c0caf5",
-    border: "#292e42",
-    selection: "#33467c",
-  },
-  catppuccin: {
-    id: "catppuccin",
-    name: "Catppuccin Mocha",
-    bg: "#1e1e2e",
-    headerBg: "#181825",
-    text: "#cdd6f4",
-    prompt: "#a6e3a1",
-    cursor: "#f5e0dc",
-    border: "#313244",
-    selection: "#45475a",
-  },
-  onedark: {
-    id: "onedark",
-    name: "One Dark",
-    bg: "#1e2227",
-    headerBg: "#181a1f",
-    text: "#abb2bf",
-    prompt: "#61afef",
-    cursor: "#528bff",
-    border: "#282c34",
-    selection: "#3e4451",
-  },
+} as const;
+
+type ThemeName = keyof typeof TERMINAL_THEMES;
+type FontName = "mono" | "jetbrains" | "system";
+
+const FONT_FAMILIES: Record<FontName, { label: string; value: string }> = {
+  mono: { label: "System mono", value: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" },
+  jetbrains: { label: "JetBrains Mono", value: "'JetBrains Mono', 'Cascadia Code', Consolas, monospace" },
+  system: { label: "Cascadia", value: "'Cascadia Code', 'Cascadia Mono', Consolas, monospace" },
 };
 
-const DEFAULT_SNIPPETS = [
-  { id: "def-1", label: "System overview", cmd: "top -bn1 | head -15" },
-  { id: "def-2", label: "Docker containers", cmd: "docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'" },
-  { id: "def-3", label: "Disk usage", cmd: "df -h" },
-  { id: "def-4", label: "Memory free", cmd: "free -h" },
-  { id: "def-5", label: "Network interfaces", cmd: "ip -brief address" },
-  { id: "def-6", label: "System logs", cmd: "journalctl -n 25 --no-pager" },
-  { id: "def-7", label: "Open ports", cmd: "ss -tulpn | grep LISTEN" },
-  { id: "def-8", label: "Kernel info", cmd: "uname -a && uptime" },
-];
-
-const ANSI_COLORS: Record<string, string> = {
-  "30": "#2e3436",
-  "31": "#ef4444",
-  "32": "#22c55e",
-  "33": "#eab308",
-  "34": "#3b82f6",
-  "35": "#a855f7",
-  "36": "#06b6d4",
-  "37": "#f3f4f6",
-  "90": "#6b7280",
-  "91": "#f87171",
-  "92": "#4ade80",
-  "93": "#facc15",
-  "94": "#60a5fa",
-  "95": "#c084fc",
-  "96": "#22d3ee",
-  "97": "#ffffff",
-};
-
-function escapeHtml(text: string): string {
-  const div = document.createElement("div");
-  div.textContent = text;
-  let escaped = div.innerHTML;
-  escaped = escaped.replace(/\x1b\[(\d+)m|&#x1b;\[(\d+)m|\[(\d+)m/g, (_match, c1, c2, c3) => {
-    const code = c1 || c2 || c3;
-    if (code === "0" || code === "00") return "</span>";
-    const color = ANSI_COLORS[code];
-    return color ? `<span style="color:${color}">` : "";
-  });
-  escaped = escaped.replace(/\x1b\[\d*;?\d*m/g, "");
-  escaped = escaped.replace(/&#x1b;\[\d*;?\d*m/g, "");
-  return escaped;
+interface Appearance {
+  theme: ThemeName;
+  font: FontName;
+  fontSize: number;
 }
 
-interface Session {
-  id: string;
-  hostId: number;
+interface SessionState {
+  id: number;
   title: string;
+  hostId: number;
   connected: boolean;
-  history: string[];
-  historyIndex: number;
 }
 
-interface CustomSnippet {
-  id: string;
-  label: string;
-  cmd: string;
-  category?: string;
-  description?: string;
+interface TerminalHandle {
+  reconnect: () => void;
+  clear: () => void;
+  find: (query: string, previous: boolean) => boolean;
+  copySelection: () => Promise<boolean>;
+  focus: () => void;
+}
+
+interface SessionTerminalProps {
+  session: SessionState;
+  appearance: Appearance;
+  visible: boolean;
+  focused: boolean;
+  hostName: string;
+  onFocus: () => void;
+  onStatus: (connected: boolean) => void;
+  onTitle: (title: string) => void;
+}
+
+const SessionTerminal = forwardRef<TerminalHandle, SessionTerminalProps>(function SessionTerminal(
+  { session, appearance, visible, focused, hostName, onFocus, onStatus, onTitle },
+  ref,
+) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<XTerm | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
+  const searchRef = useRef<SearchAddon | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const statusRef = useRef(onStatus);
+  statusRef.current = onStatus;
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+
+  const sendResize = useCallback(() => {
+    const terminal = terminalRef.current;
+    const ws = wsRef.current;
+    if (!terminal || !ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows }));
+  }, []);
+
+  const connect = useCallback(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+
+    const current = wsRef.current;
+    wsRef.current = null;
+    current?.close();
+    statusRef.current(false);
+    terminal.reset();
+    terminal.writeln("\x1b[90mConnecting to terminal...\x1b[0m");
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const params = new URLSearchParams({ cols: String(terminal.cols), rows: String(terminal.rows) });
+    if (session.hostId !== 0) params.set("host", String(session.hostId));
+    const ws = new WebSocket(`${protocol}//${window.location.host}/terminal/ws?${params}`);
+    ws.binaryType = "arraybuffer";
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      if (wsRef.current !== ws) return;
+      terminal.reset();
+      statusRef.current(true);
+      sendResize();
+      if (visibleRef.current) terminal.focus();
+    };
+    ws.onmessage = async (event) => {
+      if (wsRef.current !== ws) return;
+      if (event.data instanceof ArrayBuffer) terminal.write(new Uint8Array(event.data));
+      else if (event.data instanceof Blob) terminal.write(new Uint8Array(await event.data.arrayBuffer()));
+      else terminal.write(event.data);
+    };
+    ws.onerror = () => {
+      if (wsRef.current === ws) terminal.writeln("\r\n\x1b[31mTerminal connection failed.\x1b[0m");
+    };
+    ws.onclose = () => {
+      if (wsRef.current !== ws) return;
+      wsRef.current = null;
+      statusRef.current(false);
+      terminal.writeln("\r\n\x1b[90mTerminal disconnected.\x1b[0m");
+    };
+  }, [sendResize, session.hostId]);
+
+  useImperativeHandle(ref, () => ({
+    reconnect: connect,
+    clear: () => {
+      terminalRef.current?.clear();
+      terminalRef.current?.focus();
+    },
+    find: (query, previous) => {
+      if (!query) return false;
+      return previous ? searchRef.current?.findPrevious(query) ?? false : searchRef.current?.findNext(query) ?? false;
+    },
+    copySelection: async () => {
+      const terminal = terminalRef.current;
+      return terminal ? copyText(terminal.getSelection()) : false;
+    },
+    focus: () => terminalRef.current?.focus(),
+  }), [connect]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const theme = TERMINAL_THEMES[appearance.theme];
+    const terminal = new XTerm({
+      cursorBlink: true,
+      convertEol: false,
+      fontFamily: FONT_FAMILIES[appearance.font].value,
+      fontSize: appearance.fontSize,
+      scrollback: 5000,
+      theme,
+    });
+    const fit = new FitAddon();
+    const search = new SearchAddon();
+    terminal.loadAddon(fit);
+    terminal.loadAddon(search);
+    terminal.open(container);
+    terminalRef.current = terminal;
+    fitRef.current = fit;
+    searchRef.current = search;
+
+    const fitTerminal = () => {
+      if (!visible) return;
+      try {
+        fit.fit();
+        sendResize();
+      } catch {
+        // Hidden tabs temporarily report zero dimensions.
+      }
+    };
+    const observer = new ResizeObserver(fitTerminal);
+    observer.observe(container);
+    const input = terminal.onData((data) => {
+      const ws = wsRef.current;
+      if (ws?.readyState === WebSocket.OPEN) ws.send(textEncoder.encode(data));
+    });
+    const resize = terminal.onResize(sendResize);
+
+    return () => {
+      observer.disconnect();
+      input.dispose();
+      resize.dispose();
+      const ws = wsRef.current;
+      wsRef.current = null;
+      ws?.close();
+      terminal.dispose();
+      terminalRef.current = null;
+      fitRef.current = null;
+      searchRef.current = null;
+    };
+    // Terminal instances stay alive across tab switches; appearance updates below.
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => connect(), [connect]);
+
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    const container = containerRef.current;
+    if (!terminal || !container) return;
+    terminal.options.theme = TERMINAL_THEMES[appearance.theme];
+    terminal.options.fontFamily = FONT_FAMILIES[appearance.font].value;
+    terminal.options.fontSize = appearance.fontSize;
+    container.style.backgroundColor = TERMINAL_THEMES[appearance.theme].background;
+    if (visible) requestAnimationFrame(() => {
+      try {
+        fitRef.current?.fit();
+        sendResize();
+      } catch {
+        // The pane may have been hidden again before the animation frame.
+      }
+    });
+  }, [appearance, sendResize, visible]);
+
+  return (
+    <section
+      className={`${visible ? "flex" : "hidden"} min-w-0 flex-col overflow-hidden rounded-lg border ${focused ? "border-violet-500/60" : "border-white/10"}`}
+      onMouseDown={onFocus}
+    >
+      <header className="flex h-10 items-center gap-2 border-b border-white/10 bg-gray-950/70 px-3">
+        <span className={`metric-dot shrink-0 ${session.connected ? "text-green-400" : "text-red-400"}`} />
+        <input
+          value={session.title}
+          onChange={(event) => onTitle(event.target.value)}
+          aria-label="Session title"
+          className="min-w-0 flex-1 bg-transparent text-sm font-medium text-gray-200 outline-none focus:text-white"
+        />
+        <span className="max-w-40 truncate text-xs text-gray-500" title={hostName}>{hostName}</span>
+      </header>
+      <div
+        ref={containerRef}
+        className="h-[min(58vh,610px)] min-h-[420px] overflow-hidden p-2"
+        style={{ backgroundColor: TERMINAL_THEMES[appearance.theme].background }}
+        aria-label={`Interactive terminal ${session.title}`}
+      />
+    </section>
+  );
+});
+
+interface FileItem {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  size: number;
+}
+
+function parentPath(path: string): string {
+  if (!path || path === "/") return "/";
+  const normalized = path.replace(/\\/g, "/").replace(/\/$/, "");
+  const end = normalized.lastIndexOf("/");
+  if (end < 1) return normalized.match(/^[A-Za-z]:/) ? `${normalized.slice(0, 2)}/` : "/";
+  return normalized.slice(0, end);
+}
+
+function loadAppearance(): Appearance {
+  try {
+    const saved = JSON.parse(localStorage.getItem("nestcore-terminal-appearance") ?? "null") as Partial<Appearance> | null;
+    return {
+      theme: saved?.theme && saved.theme in TERMINAL_THEMES ? saved.theme : "nestcore",
+      font: saved?.font && saved.font in FONT_FAMILIES ? saved.font : "mono",
+      fontSize: typeof saved?.fontSize === "number" && saved.fontSize >= 10 && saved.fontSize <= 20 ? saved.fontSize : 13,
+    };
+  } catch {
+    return { theme: "nestcore", font: "mono", fontSize: 13 };
+  }
 }
 
 export function Terminal() {
-  const { show } = useToast();
+  const nextIdRef = useRef(2);
+  const terminalRefs = useRef(new Map<number, TerminalHandle>());
   const [hosts, setHosts] = useState<Host[]>([]);
-  const [sessions, setSessions] = useState<Session[]>([
-    { id: "s-local", hostId: 0, title: "Local Host", connected: false, history: [], historyIndex: -1 },
+  const [sessions, setSessions] = useState<SessionState[]>([
+    { id: 1, title: "Local shell", hostId: 0, connected: false },
   ]);
-  const [activeSessionId, setActiveSessionId] = useState<string>("s-local");
-  const [splitView, setSplitView] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [activeId, setActiveId] = useState(1);
+  const [splitId, setSplitId] = useState<number | null>(null);
+  const [focusedId, setFocusedId] = useState(1);
+  const [favorites, setFavorites] = useState<number[]>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("nestcore-terminal-favorites") ?? "[]") as number[];
+    } catch {
+      return [];
+    }
+  });
+  const [appearance, setAppearance] = useState<Appearance>(loadAppearance);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [themeId, setThemeId] = useState<string>(() => localStorage.getItem("hp_term_theme") || "termius");
-  const [fontSize, setFontSize] = useState<number>(() => Number(localStorage.getItem("hp_term_size")) || 13);
-  const [fontFamily, setFontFamily] = useState<string>(() => localStorage.getItem("hp_term_font") || "monospace");
-  const [command, setCommand] = useState("");
-  const [showHostPicker, setShowHostPicker] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [copyResult, setCopyResult] = useState("");
+  const [sftpPath, setSftpPath] = useState("/");
+  const [sftpItems, setSftpItems] = useState<FileItem[]>([]);
+  const [sftpLoading, setSftpLoading] = useState(false);
+  const [sftpError, setSftpError] = useState("");
 
-  // Drag & Drop SFTP Upload State
-  const [isDragging, setIsDragging] = useState(false);
-  const [uploadingFile, setUploadingFile] = useState(false);
-
-  // Custom Snippets State
-  const [customSnippets, setCustomSnippets] = useState<CustomSnippet[]>([]);
-  const [snippetModalOpen, setSnippetModalOpen] = useState(false);
-  const [newSnipLabel, setNewSnipLabel] = useState("");
-  const [newSnipCmd, setNewSnipCmd] = useState("");
-
-  const outputRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const wsRefs = useRef<Map<string, WebSocket>>(new Map());
-  const inputRef = useRef<HTMLInputElement>(null);
-  const terminalContainerRef = useRef<HTMLDivElement>(null);
-
-  const activeTheme = THEMES[themeId] || THEMES.termius;
-
-  // Load hosts & custom snippets
   useEffect(() => {
     api<Host[]>("/hosts").then(setHosts).catch(() => setHosts([]));
-    api<{ success: boolean; snippets: CustomSnippet[] }>("/snippets")
-      .then((res) => setCustomSnippets(res.snippets || []))
-      .catch(() => {});
   }, []);
 
-  // Save settings to localStorage
-  useEffect(() => {
-    localStorage.setItem("hp_term_theme", themeId);
-    localStorage.setItem("hp_term_size", String(fontSize));
-    localStorage.setItem("hp_term_font", fontFamily);
-  }, [themeId, fontSize, fontFamily]);
+  const allHosts = useMemo(() => [LOCAL_HOST, ...hosts], [hosts]);
+  const focusedSession = sessions.find((item) => item.id === focusedId) ?? sessions[0];
+  const focusedHost = allHosts.find((host) => host.id === focusedSession.hostId) ?? LOCAL_HOST;
 
-  const appendOutput = useCallback((sessionId: string, html: string) => {
-    const el = outputRefs.current.get(sessionId);
-    if (el) {
-      el.innerHTML += html;
-      el.scrollTop = el.scrollHeight;
-    }
+  const updateSession = useCallback((id: number, patch: Partial<SessionState>) => {
+    setSessions((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
   }, []);
 
-  const connectSession = useCallback((sessionId: string, hostId: number) => {
-    const existingWs = wsRefs.current.get(sessionId);
-    if (existingWs) {
-      existingWs.close();
-      wsRefs.current.delete(sessionId);
-    }
-
-    appendOutput(sessionId, '<div style="color:#60a5fa" class="py-1">⚡ Connecting to shell...</div>');
-
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const query = hostId === 0 ? "" : `?host=${hostId}`;
-    const ws = new WebSocket(`${protocol}//${window.location.host}/terminal/ws${query}`);
-    wsRefs.current.set(sessionId, ws);
-
-    ws.onopen = () => {
-      setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, connected: true } : s))
-      );
-    };
-
-    ws.onmessage = (event) => {
-      if (event.data === "AUTH_FAILED") {
-        ws.close(4001);
-        return;
-      }
-      appendOutput(sessionId, escapeHtml(event.data));
-    };
-
-    ws.onclose = () => {
-      setSessions((prev) =>
-        prev.map((s) => (s.id === sessionId ? { ...s, connected: false } : s))
-      );
-      appendOutput(sessionId, '<div style="color:#f87171" class="py-1">✕ Terminal disconnected</div>');
-    };
-  }, [appendOutput]);
-
-  // Connect active session when created
-  useEffect(() => {
-    sessions.forEach((s) => {
-      if (!wsRefs.current.has(s.id)) {
-        connectSession(s.id, s.hostId);
-      }
-    });
-  }, [sessions, connectSession]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    const currentWs = wsRefs.current;
-    return () => {
-      currentWs.forEach((ws) => ws.close());
-      currentWs.clear();
-    };
-  }, []);
-
-  function sendCommandToSession(sessionId: string, cmdToSend?: string) {
-    const text = cmdToSend !== undefined ? cmdToSend : command;
-    if (!text.trim()) return;
-
-    const ws = wsRefs.current.get(sessionId);
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      const sess = sessions.find((s) => s.id === sessionId);
-      if (sess) {
-        appendOutput(sessionId, '<div style="color:#f87171">✕ Not connected. Reconnecting...</div>\n');
-        connectSession(sessionId, sess.hostId);
-      }
-      return;
-    }
-
-    ws.send(text + "\n");
-
-    setSessions((prev) =>
-      prev.map((s) => {
-        if (s.id === sessionId) {
-          const newHist = [text, ...s.history.filter((h) => h !== text)].slice(0, 50);
-          return { ...s, history: newHist, historyIndex: -1 };
-        }
-        return s;
-      })
-    );
-
-    if (cmdToSend === undefined) {
-      setCommand("");
-    }
+  function addSession(hostId = 0): number {
+    const id = nextIdRef.current++;
+    const host = allHosts.find((item) => item.id === hostId) ?? LOCAL_HOST;
+    setSessions((current) => [...current, { id, title: hostId === 0 ? `Local shell ${id}` : host.name, hostId, connected: false }]);
+    setActiveId(id);
+    setFocusedId(id);
+    return id;
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    const sess = sessions.find((s) => s.id === activeSessionId);
-    if (!sess) return;
-
-    if (e.key === "Enter") {
-      sendCommandToSession(activeSessionId);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      if (sess.history.length === 0) return;
-      const nextIdx = Math.min(sess.historyIndex + 1, sess.history.length - 1);
-      setSessions((prev) =>
-        prev.map((s) => (s.id === activeSessionId ? { ...s, historyIndex: nextIdx } : s))
-      );
-      setCommand(sess.history[nextIdx] || "");
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
-      if (sess.historyIndex <= 0) {
-        setSessions((prev) =>
-          prev.map((s) => (s.id === activeSessionId ? { ...s, historyIndex: -1 } : s))
-        );
-        setCommand("");
-      } else {
-        const nextIdx = sess.historyIndex - 1;
-        setSessions((prev) =>
-          prev.map((s) => (s.id === activeSessionId ? { ...s, historyIndex: nextIdx } : s))
-        );
-        setCommand(sess.history[nextIdx] || "");
-      }
-    }
-  }
-
-  function addSession(hostId: number) {
-    const targetHost = hosts.find((h) => h.id === hostId);
-    const newId = `s-${Date.now()}`;
-    const title = hostId === 0 ? `Local (${sessions.length + 1})` : targetHost?.name || `Host #${hostId}`;
-    const newSession: Session = {
-      id: newId,
-      hostId,
-      title,
-      connected: false,
-      history: [],
-      historyIndex: -1,
-    };
-    setSessions((prev) => [...prev, newSession]);
-    setActiveSessionId(newId);
-    setShowHostPicker(false);
-    show(`Session created: ${title}`, "success", 2000);
-  }
-
-  function closeSession(sessionId: string) {
-    if (sessions.length <= 1) {
-      show("Cannot close the only open session", "warning");
-      return;
-    }
-    const ws = wsRefs.current.get(sessionId);
-    if (ws) {
-      ws.close();
-      wsRefs.current.delete(sessionId);
-    }
-    const remaining = sessions.filter((s) => s.id !== sessionId);
+  function closeSession(id: number) {
+    if (sessions.length === 1) return;
+    const remaining = sessions.filter((item) => item.id !== id);
     setSessions(remaining);
-    if (activeSessionId === sessionId) {
-      setActiveSessionId(remaining[0].id);
-    }
+    terminalRefs.current.delete(id);
+    if (splitId === id) setSplitId(null);
+    if (activeId === id) setActiveId(remaining.find((item) => item.id !== splitId)?.id ?? remaining[0].id);
+    if (focusedId === id) setFocusedId(remaining[0].id);
   }
 
-  function clearOutput(sessionId: string) {
-    const el = outputRefs.current.get(sessionId);
-    if (el) el.innerHTML = "";
-    const ws = wsRefs.current.get(sessionId);
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send("clear\n");
-    }
-  }
-
-  function copyBuffer(sessionId: string) {
-    const el = outputRefs.current.get(sessionId);
-    if (el) {
-      const text = el.innerText || el.textContent || "";
-      navigator.clipboard.writeText(text).then(() => {
-        show("Terminal output copied to clipboard", "success", 2000);
-      });
-    }
-  }
-
-  function toggleFullscreen() {
-    if (!terminalContainerRef.current) return;
-    if (!document.fullscreenElement) {
-      terminalContainerRef.current.requestFullscreen().then(() => setIsFullscreen(true)).catch(() => {});
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false)).catch(() => {});
-    }
-  }
-
-  // --- Drag & Drop SFTP Upload Handler ---
-
-  function handleDragOver(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    setIsDragging(true);
-  }
-
-  function handleDragLeave(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    setIsDragging(false);
-  }
-
-  async function handleDrop(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    setIsDragging(false);
-
-    const files = e.dataTransfer?.files;
-    if (!files || files.length === 0) return;
-
-    const file = files[0];
-    const sess = sessions.find((s) => s.id === activeSessionId) || sessions[0];
-
-    const fd = new FormData();
-    fd.append("file", file);
-    fd.append("hostId", String(sess.hostId));
-
-    setUploadingFile(true);
-    show(`Uploading ${file.name} to ${sess.title}...`, "info", 3000);
-
-    try {
-      const res = await fetch("/api/terminal/upload", {
-        method: "POST",
-        body: fd,
-        credentials: "same-origin",
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-
-      show(`File ${file.name} uploaded successfully!`, "success", 4000);
-      appendOutput(
-        sess.id,
-        `<div style="color:#4ade80" class="py-1">✓ File "${data.fileName}" uploaded to ${data.path} (${data.size} bytes)</div>\n`
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Upload failed";
-      show(msg, "error");
-      appendOutput(sess.id, `<div style="color:#f87171" class="py-1">✕ File upload failed: ${msg}</div>\n`);
-    } finally {
-      setUploadingFile(false);
-    }
-  }
-
-  // --- Custom Snippet Handlers ---
-
-  async function addCustomSnippet() {
-    if (!newSnipLabel.trim() || !newSnipCmd.trim()) {
-      show("Label and command are required", "warning");
+  function toggleSplit() {
+    if (splitId !== null) {
+      setSplitId(null);
+      setFocusedId(activeId);
+      requestAnimationFrame(() => terminalRefs.current.get(activeId)?.focus());
       return;
     }
+    const existing = sessions.find((item) => item.id !== activeId);
+    if (existing) {
+      setSplitId(existing.id);
+      setFocusedId(existing.id);
+    } else {
+      const id = addSession(focusedSession.hostId);
+      setActiveId(activeId);
+      setSplitId(id);
+      setFocusedId(id);
+    }
+  }
+
+  function selectTab(id: number) {
+    if (id === splitId) {
+      setFocusedId(id);
+    } else {
+      setActiveId(id);
+      setFocusedId(id);
+    }
+    requestAnimationFrame(() => terminalRefs.current.get(id)?.focus());
+  }
+
+  function selectHost(hostId: number) {
+    const host = allHosts.find((item) => item.id === hostId) ?? LOCAL_HOST;
+    updateSession(focusedId, { hostId, title: hostId === 0 ? "Local shell" : host.name, connected: false });
+  }
+
+  function toggleFavorite(hostId: number) {
+    setFavorites((current) => {
+      const next = current.includes(hostId) ? current.filter((id) => id !== hostId) : [...current, hostId];
+      localStorage.setItem("nestcore-terminal-favorites", JSON.stringify(next));
+      return next;
+    });
+  }
+
+  function saveAppearance(patch: Partial<Appearance>) {
+    setAppearance((current) => {
+      const next = { ...current, ...patch };
+      localStorage.setItem("nestcore-terminal-appearance", JSON.stringify(next));
+      return next;
+    });
+  }
+
+  const loadSftp = useCallback(async (path: string, hostId: number) => {
+    setSftpLoading(true);
+    setSftpError("");
     try {
-      const res = await api<{ success: boolean; snippet: CustomSnippet }>("/snippets", {
+      const data = await api<{ success: boolean; path: string; items: FileItem[] }>("/files/list", {
         method: "POST",
-        body: JSON.stringify({ label: newSnipLabel.trim(), cmd: newSnipCmd.trim() }),
+        body: JSON.stringify({ path, host: hostId }),
       });
-      setCustomSnippets((prev) => [...prev, res.snippet]);
-      setNewSnipLabel("");
-      setNewSnipCmd("");
-      show("Snippet saved", "success");
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to save snippet", "error");
+      setSftpPath(data.path || path);
+      setSftpItems(data.items ?? []);
+    } catch (error) {
+      setSftpItems([]);
+      setSftpError(error instanceof Error ? error.message : "Unable to list files");
+    } finally {
+      setSftpLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    setSftpPath("/");
+    void loadSftp("/", focusedSession.hostId);
+  }, [focusedSession.hostId, loadSftp]);
+
+  async function copySelection() {
+    const ok = await terminalRefs.current.get(focusedId)?.copySelection();
+    setCopyResult(ok ? "Copied" : "Select terminal text first");
+    window.setTimeout(() => setCopyResult(""), 1800);
   }
 
-  async function deleteCustomSnippet(id: string) {
-    try {
-      await api(`/snippets/${id}`, { method: "DELETE" });
-      setCustomSnippets((prev) => prev.filter((s) => s.id !== id));
-      show("Snippet deleted", "success");
-    } catch (err) {
-      show(err instanceof Error ? err.message : "Failed to delete snippet", "error");
-    }
-  }
-
-  const allSnippets = [...customSnippets, ...DEFAULT_SNIPPETS];
-  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
-  const activeHost = hosts.find((h) => h.id === activeSession?.hostId);
+  const visibleIds = new Set([activeId, ...(splitId === null ? [] : [splitId])]);
+  const favoriteHosts = allHosts.filter((host) => host.id === 0 || favorites.includes(host.id));
 
   return (
-    <div className={`space-y-4 ${isFullscreen ? "p-4 bg-[#0a0d14] fixed inset-0 z-50 overflow-hidden" : ""}`}>
-      {/* Top Header */}
-      {!isFullscreen && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400">
-                <CommandLineIcon className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-gray-100 flex items-center gap-2">
-                  Terminal
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-mono font-normal">
-                    Termius Edition
-                  </span>
-                </h2>
-                <p className="text-gray-500 text-xs mt-0.5">
-                  Multi-host remote SSH console &middot; Drag-and-drop SFTP uploads &middot; Custom Snippets
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Snippets Manager Button */}
-            <button
-              className="btn-secondary text-xs !py-1.5 !px-2.5 flex items-center gap-1.5"
-              onClick={() => setSnippetModalOpen(true)}
-              title="Manage custom command snippets"
-            >
-              <BookmarkIcon className="w-4 h-4 text-amber-400" />
-              <span className="hidden sm:inline">Snippets</span>
-            </button>
-
-            {/* Split view toggle */}
-            <button
-              className={`btn-secondary text-xs !py-1.5 !px-2.5 flex items-center gap-1.5 ${
-                splitView ? "!bg-blue-500/20 !border-blue-500/40 text-blue-300" : ""
-              }`}
-              onClick={() => setSplitView(!splitView)}
-              title="Toggle side-by-side split view"
-            >
-              {splitView ? <Squares2X2Icon className="w-4 h-4" /> : <Square2StackIcon className="w-4 h-4" />}
-              <span className="hidden sm:inline">{splitView ? "Single view" : "Split view"}</span>
-            </button>
-
-            {/* Appearance Settings */}
-            <button
-              className="btn-secondary text-xs !py-1.5 !px-2.5 flex items-center gap-1.5"
-              onClick={() => setSettingsOpen(!settingsOpen)}
-              title="Terminal appearance & themes"
-            >
-              <Cog6ToothIcon className="w-4 h-4" />
-              <span className="hidden sm:inline">Theme & font</span>
-            </button>
-
-            {/* Fullscreen */}
-            <button
-              className="btn-secondary text-xs !py-1.5 !px-2.5 flex items-center gap-1.5"
-              onClick={toggleFullscreen}
-              title="Toggle fullscreen terminal"
-            >
-              {isFullscreen ? <ArrowsPointingInIcon className="w-4 h-4" /> : <ArrowsPointingOutIcon className="w-4 h-4" />}
-              <span className="hidden sm:inline">Fullscreen</span>
-            </button>
-          </div>
+    <div>
+      <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-100">Terminal</h2>
+          <p className="mt-1 text-sm text-gray-500">Multi-session shell and SFTP workspace</p>
         </div>
-      )}
-
-      {/* Settings Drawer / Popover */}
-      {settingsOpen && (
-        <div className="bg-[#121624] border border-white/10 rounded-xl p-4 shadow-2xl grid grid-cols-1 sm:grid-cols-3 gap-4 animate-in fade-in duration-200">
-          <div>
-            <label className="block text-xs font-semibold text-gray-400 mb-1.5">Color theme</label>
-            <select
-              value={themeId}
-              onChange={(e) => setThemeId(e.target.value)}
-              className="input-field w-full text-xs"
-            >
-              {Object.values(THEMES).map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-400 mb-1.5">Font family</label>
-            <select
-              value={fontFamily}
-              onChange={(e) => setFontFamily(e.target.value)}
-              className="input-field w-full text-xs font-mono"
-            >
-              <option value="'JetBrains Mono', Consolas, monospace">JetBrains Mono</option>
-              <option value="'Cascadia Code', Consolas, monospace">Cascadia Code</option>
-              <option value="'Fira Code', Consolas, monospace">Fira Code</option>
-              <option value="Consolas, monospace">Consolas</option>
-              <option value="monospace">Default Monospace</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-400 mb-1.5">
-              Font size: <span className="text-blue-400">{fontSize}px</span>
-            </label>
-            <div className="flex items-center gap-2">
-              <input
-                type="range"
-                min={11}
-                max={18}
-                step={1}
-                value={fontSize}
-                onChange={(e) => setFontSize(Number(e.target.value))}
-                className="w-full accent-blue-500"
-              />
-              <span className="text-xs text-gray-400 w-6 text-right">{fontSize}</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Main Termius Window Container */}
-      <div
-        ref={terminalContainerRef}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        className={`rounded-xl overflow-hidden border shadow-2xl flex flex-col relative transition-all duration-200 ${
-          isFullscreen ? "h-full" : "h-[620px]"
-        }`}
-        style={{
-          backgroundColor: activeTheme.bg,
-          borderColor: activeTheme.border,
-        }}
-      >
-        {/* Drag & Drop SFTP Upload Overlay */}
-        {isDragging && (
-          <div className="absolute inset-0 z-30 bg-blue-900/80 backdrop-blur-sm border-2 border-dashed border-blue-400 flex flex-col items-center justify-center space-y-3 pointer-events-none animate-in fade-in duration-150">
-            <ArrowUpTrayIcon className="w-12 h-12 text-blue-200 animate-bounce" />
-            <p className="text-base font-bold text-white">Drop file to upload via SFTP</p>
-            <p className="text-xs text-blue-200">
-              Uploading to active host: <span className="font-mono font-bold">{activeSession.title}</span>
-            </p>
-          </div>
-        )}
-
-        {/* Termius Window Title Bar / Tabs Header */}
-        <div
-          className="flex items-center justify-between px-3 py-2 border-b select-none overflow-x-auto gap-2"
-          style={{
-            backgroundColor: activeTheme.headerBg,
-            borderColor: activeTheme.border,
-          }}
-        >
-          {/* macOS / Termius Traffic Light Window Buttons */}
-          <div className="flex items-center gap-1.5 shrink-0 pr-2">
-            <span className="w-3 h-3 rounded-full bg-[#ff5f56] inline-block shadow-sm" />
-            <span className="w-3 h-3 rounded-full bg-[#ffbd2e] inline-block shadow-sm" />
-            <span className="w-3 h-3 rounded-full bg-[#27c93f] inline-block shadow-sm" />
-          </div>
-
-          {/* Session Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none flex-1">
-            {sessions.map((s) => {
-              const isActive = s.id === activeSessionId;
-              const host = hosts.find((h) => h.id === s.hostId);
-              return (
-                <div
-                  key={s.id}
-                  onClick={() => setActiveSessionId(s.id)}
-                  className={`group flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-150 border shrink-0 ${
-                    isActive
-                      ? "bg-white/10 text-white border-white/20 shadow-md"
-                      : "bg-transparent text-gray-400 hover:text-gray-200 hover:bg-white/5 border-transparent"
-                  }`}
-                >
-                  <span
-                    className={`w-2 h-2 rounded-full shrink-0 ${
-                      s.connected ? "bg-emerald-400 animate-pulse" : "bg-rose-400"
-                    }`}
-                  />
-                  <ServerIcon className="w-3.5 h-3.5 opacity-70 shrink-0" />
-                  <span className="truncate max-w-32 font-mono">
-                    {s.title}
-                  </span>
-                  {host && (
-                    <span className="text-[10px] text-gray-500 font-mono hidden md:inline">
-                      ({host.user}@{host.address})
-                    </span>
-                  )}
-                  {sessions.length > 1 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeSession(s.id);
-                      }}
-                      className="p-0.5 rounded hover:bg-white/20 text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <XMarkIcon className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* New Session Button */}
-            <div className="relative shrink-0">
-              <button
-                onClick={() => setShowHostPicker(!showHostPicker)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white border border-white/10 transition-colors"
-                title="Open new terminal session"
-              >
-                <PlusIcon className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">New tab</span>
-                <ChevronDownIcon className="w-3 h-3 ml-0.5 opacity-60" />
-              </button>
-
-              {/* Host Picker Dropdown */}
-              {showHostPicker && (
-                <div className="absolute top-full left-0 mt-1.5 w-60 bg-[#151928] border border-white/15 rounded-xl shadow-2xl p-1.5 z-30 space-y-1 animate-in fade-in duration-150">
-                  <div className="px-2 py-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">
-                    Select target host
-                  </div>
-                  <button
-                    onClick={() => addSession(0)}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-left text-gray-200 hover:bg-blue-600/20 hover:text-blue-300 transition-colors"
-                  >
-                    <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold truncate">Local Host (Server)</div>
-                      <div className="text-[10px] text-gray-500 font-mono">localhost (direct bash)</div>
-                    </div>
-                  </button>
-                  {hosts.map((h) => (
-                    <button
-                      key={h.id}
-                      onClick={() => addSession(h.id)}
-                      className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-left text-gray-200 hover:bg-blue-600/20 hover:text-blue-300 transition-colors"
-                    >
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className="font-semibold truncate">{h.name}</div>
-                        <div className="text-[10px] text-gray-500 font-mono truncate">
-                          {h.user}@{h.address}:{h.port}
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                  {hosts.length === 0 && (
-                    <p className="px-2.5 py-2 text-[11px] text-gray-500 italic">No remote SSH hosts configured</p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Quick Actions in Header */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              onClick={() => copyBuffer(activeSessionId)}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-              title="Copy output to clipboard"
-            >
-              <ClipboardDocumentIcon className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => clearOutput(activeSessionId)}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-              title="Clear terminal buffer"
-            >
-              <TrashIcon className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => connectSession(activeSessionId, activeSession.hostId)}
-              className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-              title="Reconnect active session"
-            >
-              <ArrowPathIcon className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Quick Snippets Bar (Termius Quick Actions) */}
-        <div
-          className="flex items-center gap-1.5 px-3 py-1.5 overflow-x-auto border-b scrollbar-none text-xs"
-          style={{
-            backgroundColor: activeTheme.headerBg,
-            borderColor: activeTheme.border,
-          }}
-        >
-          <span className="text-[11px] font-semibold text-gray-500 shrink-0 flex items-center gap-1 mr-1">
-            <SparklesIcon className="w-3.5 h-3.5 text-blue-400" />
-            Snippets:
-          </span>
-          {allSnippets.map((snip) => (
-            <button
-              key={snip.id || snip.label}
-              onClick={() => sendCommandToSession(activeSessionId, snip.cmd)}
-              className="px-2.5 py-1 rounded-md text-[11px] font-mono bg-white/5 hover:bg-blue-500/20 text-gray-300 hover:text-blue-300 border border-white/5 hover:border-blue-500/30 transition-all shrink-0 flex items-center gap-1"
-              title={`Execute: ${snip.cmd}`}
-            >
-              <PlayIcon className="w-2.5 h-2.5 opacity-60" />
-              {snip.label}
-            </button>
-          ))}
-          <button
-            onClick={() => setSnippetModalOpen(true)}
-            className="px-2 py-1 rounded-md text-[11px] text-gray-400 hover:text-white hover:bg-white/10 border border-dashed border-white/15 transition shrink-0 flex items-center gap-1"
-            title="Create custom snippet"
-          >
-            <PlusIcon className="w-3 h-3" />
-            Add snippet
+        <div className="flex flex-wrap items-center gap-2">
+          <button className="btn-secondary" onClick={() => addSession(focusedSession.hostId)}>
+            <PlusIcon className="mr-1.5 inline h-4 w-4" />New session
           </button>
-        </div>
-
-        {/* Terminal Screen Windows (Single or Split View) */}
-        <div
-          className={`flex-1 overflow-hidden grid ${
-            splitView && sessions.length > 1
-              ? "grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-white/10"
-              : "grid-cols-1"
-          }`}
-        >
-          {sessions
-            .filter((s) => (!splitView ? s.id === activeSessionId : true))
-            .slice(0, splitView ? 2 : 1)
-            .map((s) => (
-              <div
-                key={s.id}
-                className="h-full flex flex-col relative overflow-hidden"
-                style={{ backgroundColor: activeTheme.bg }}
-                onClick={() => {
-                  setActiveSessionId(s.id);
-                  inputRef.current?.focus();
-                }}
-              >
-                {/* Host session sub-header in split view */}
-                {splitView && (
-                  <div className="px-3 py-1 bg-black/40 text-[11px] font-mono text-gray-400 flex items-center justify-between border-b border-white/5">
-                    <span className="flex items-center gap-1.5">
-                      <span className={`w-2 h-2 rounded-full ${s.connected ? "bg-emerald-400" : "bg-rose-400"}`} />
-                      {s.title}
-                    </span>
-                    <button onClick={() => clearOutput(s.id)} className="text-gray-500 hover:text-gray-300 text-[10px]">
-                      Clear
-                    </button>
-                  </div>
-                )}
-
-                {/* Output Screen */}
-                <div
-                  ref={(el) => {
-                    if (el) outputRefs.current.set(s.id, el);
-                    else outputRefs.current.delete(s.id);
-                  }}
-                  className="flex-1 p-4 overflow-y-auto font-mono whitespace-pre-wrap select-text focus:outline-none scrollbar-thin scrollbar-thumb-white/10"
-                  style={{
-                    fontSize: `${fontSize}px`,
-                    fontFamily: fontFamily,
-                    color: activeTheme.text,
-                    lineHeight: "1.45",
-                  }}
-                />
-              </div>
-            ))}
-        </div>
-
-        {/* Termius Interactive Virtual Keys Bar */}
-        <div
-          className="flex items-center gap-1 px-3 py-1.5 border-t overflow-x-auto scrollbar-none"
-          style={{
-            backgroundColor: activeTheme.headerBg,
-            borderColor: activeTheme.border,
-          }}
-        >
-          <span className="text-[10px] uppercase font-bold text-gray-500 shrink-0 mr-1">Keys:</span>
-          {[
-            { label: "Ctrl+C", cmd: "\x03" },
-            { label: "Tab", key: "Tab" },
-            { label: "Esc", key: "Escape" },
-            { label: "↑ Prev", key: "ArrowUp" },
-            { label: "↓ Next", key: "ArrowDown" },
-            { label: "Clear", cmd: "clear" },
-            { label: "Exit", cmd: "exit" },
-          ].map((k) => (
-            <button
-              key={k.label}
-              onClick={() => {
-                if (k.cmd) {
-                  sendCommandToSession(activeSessionId, k.cmd);
-                } else if (k.key === "ArrowUp" || k.key === "ArrowDown") {
-                  handleKeyDown({
-                    key: k.key,
-                    preventDefault: () => {},
-                  } as KeyboardEvent<HTMLInputElement>);
-                }
-              }}
-              className="px-2 py-1 rounded bg-white/5 hover:bg-white/15 text-gray-300 text-[11px] font-mono border border-white/5 transition-colors shrink-0 shadow-sm"
-            >
-              {k.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Command Input Prompt Bar */}
-        <div
-          className="p-3 border-t flex items-center gap-2"
-          style={{
-            backgroundColor: activeTheme.headerBg,
-            borderColor: activeTheme.border,
-          }}
-        >
-          <div className="flex items-center gap-1 text-xs font-mono shrink-0 select-none">
-            <span style={{ color: activeTheme.prompt }} className="font-bold">
-              {activeHost ? `${activeHost.user}@${activeHost.name}` : "admin@localhost"}
-            </span>
-            <span className="text-gray-500">:</span>
-            <span className="text-emerald-400">~</span>
-            <span style={{ color: activeTheme.prompt }} className="font-bold">
-              $
-            </span>
-          </div>
-
-          <input
-            ref={inputRef}
-            type="text"
-            value={command}
-            onChange={(e) => setCommand(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={
-              uploadingFile
-                ? "Uploading file via SFTP..."
-                : "Type a command, drag & drop a file here, or click a snippet above..."
-            }
-            className="flex-1 bg-transparent border-none text-gray-100 placeholder-gray-600 focus:outline-none font-mono text-sm"
-            style={{
-              fontFamily: fontFamily,
-              fontSize: `${fontSize}px`,
-              caretColor: activeTheme.cursor,
-            }}
-            disabled={uploadingFile}
-            autoFocus
-          />
-
-          <button
-            onClick={() => sendCommandToSession(activeSessionId)}
-            className="btn-primary text-xs !py-1.5 !px-4 shrink-0 flex items-center gap-1"
-          >
-            <span>Send</span>
-            <span className="text-[10px] opacity-60 font-mono hidden sm:inline">↵</span>
+          <button className={`btn-secondary ${splitId !== null ? "border-violet-500/60 text-violet-300" : ""}`} onClick={toggleSplit}>
+            <Squares2X2Icon className="mr-1.5 inline h-4 w-4" />{splitId === null ? "Split" : "Unsplit"}
           </button>
         </div>
       </div>
 
-      {/* Snippets Manager Modal */}
-      {snippetModalOpen && (
-        <Modal title="Custom Snippets Manager" onClose={() => setSnippetModalOpen(false)} wide>
-          <div className="space-y-4">
-            <p className="text-xs text-gray-400">
-              Save your frequently used shell commands and one-liners for instant execution across all terminal sessions.
-            </p>
+      <div className="grid gap-3 xl:grid-cols-[190px_minmax(0,1fr)_290px]">
+        <aside className="panel order-2 p-3 xl:order-1">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">Favorites</h3>
+          <div className="space-y-1">
+            {favoriteHosts.map((host) => (
+              <HostButton
+                key={`favorite-${host.id}`}
+                host={host}
+                active={focusedSession.hostId === host.id}
+                favorite={host.id === 0 || favorites.includes(host.id)}
+                onSelect={() => selectHost(host.id)}
+                onFavorite={host.id === 0 ? undefined : () => toggleFavorite(host.id)}
+              />
+            ))}
+          </div>
+          {hosts.length > 0 && <>
+            <div className="my-3 border-t border-white/10" />
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">All SSH hosts</h3>
+            <div className="space-y-1">
+              {hosts.map((host) => (
+                <HostButton
+                  key={host.id}
+                  host={host}
+                  active={focusedSession.hostId === host.id}
+                  favorite={favorites.includes(host.id)}
+                  onSelect={() => selectHost(host.id)}
+                  onFavorite={() => toggleFavorite(host.id)}
+                />
+              ))}
+            </div>
+          </>}
+        </aside>
 
-            {/* Add Snippet Form */}
-            <div className="p-3.5 bg-white/5 border border-white/10 rounded-xl space-y-3">
-              <p className="text-xs font-bold text-gray-200">Create new snippet</p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <input
-                  value={newSnipLabel}
-                  onChange={(e) => setNewSnipLabel(e.target.value)}
-                  placeholder="Snippet label (e.g. Restart Nginx)"
-                  className="input-field text-xs sm:col-span-1"
-                />
-                <input
-                  value={newSnipCmd}
-                  onChange={(e) => setNewSnipCmd(e.target.value)}
-                  placeholder="Command (e.g. systemctl restart nginx)"
-                  className="input-field text-xs font-mono sm:col-span-2"
-                />
-              </div>
-              <button
-                className="btn-primary text-xs flex items-center gap-1"
-                onClick={addCustomSnippet}
-              >
-                <PlusIcon className="w-3.5 h-3.5" />
-                Save snippet
+        <main className="order-1 min-w-0 xl:order-2">
+          <div className="panel overflow-hidden p-0">
+            <div className="flex min-h-11 items-end gap-1 overflow-x-auto border-b border-white/10 px-2 pt-2">
+              {sessions.map((session) => (
+                <button
+                  key={session.id}
+                  onClick={() => selectTab(session.id)}
+                  className={`group flex max-w-52 shrink-0 items-center gap-2 rounded-t-md border border-b-0 px-3 py-2 text-xs ${visibleIds.has(session.id) ? "border-white/15 bg-gray-900 text-gray-100" : "border-transparent text-gray-500 hover:text-gray-300"}`}
+                >
+                  <span className={`metric-dot ${session.connected ? "text-green-400" : "text-gray-600"}`} />
+                  <span className="truncate">{session.title}</span>
+                  {sessions.length > 1 && (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Close ${session.title}`}
+                      onClick={(event) => { event.stopPropagation(); closeSession(session.id); }}
+                      onKeyDown={(event) => { if (event.key === "Enter") closeSession(session.id); }}
+                      className="rounded p-0.5 opacity-0 hover:bg-white/10 group-hover:opacity-100"
+                    >
+                      <XMarkIcon className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+                </button>
+              ))}
+              <button title="New session" className="mb-1 rounded p-2 text-gray-500 hover:bg-white/5 hover:text-gray-200" onClick={() => addSession(focusedSession.hostId)}>
+                <PlusIcon className="h-4 w-4" />
               </button>
             </div>
 
-            {/* Custom Snippets List */}
-            <div className="space-y-2 max-h-72 overflow-y-auto">
-              <p className="text-xs font-semibold text-gray-400">Saved snippets ({customSnippets.length})</p>
-              {customSnippets.map((s) => (
-                <div
-                  key={s.id}
-                  className="flex items-center justify-between gap-3 bg-white/5 rounded-xl p-3 border border-white/5 hover:bg-white/7 transition"
+            <div className="relative flex min-h-12 flex-wrap items-center gap-2 border-b border-white/10 bg-gray-950/40 px-3 py-2">
+              <button className="btn-secondary" onClick={() => terminalRefs.current.get(focusedId)?.reconnect()} title="Reconnect focused session">
+                <ArrowPathIcon className="h-4 w-4" />
+              </button>
+              <button className="btn-secondary" onClick={() => terminalRefs.current.get(focusedId)?.clear()} title="Clear focused session">
+                <TrashIcon className="h-4 w-4" />
+              </button>
+              <button className="btn-secondary" onClick={() => setSearchOpen((value) => !value)} title="Search scrollback">
+                <MagnifyingGlassIcon className="h-4 w-4" />
+              </button>
+              <button className="btn-secondary" onClick={() => void copySelection()} title="Copy selection">
+                <ClipboardIcon className="h-4 w-4" />
+              </button>
+              {copyResult && <span className="text-xs text-gray-400">{copyResult}</span>}
+              <div className="ml-auto flex items-center gap-2">
+                <span className="hidden text-xs text-gray-500 sm:inline">Focused: {focusedSession.title}</span>
+                <button className="btn-secondary" onClick={() => setSettingsOpen((value) => !value)} title="Terminal appearance">
+                  <Cog6ToothIcon className="h-4 w-4" />
+                </button>
+              </div>
+
+              {searchOpen && (
+                <form
+                  className="flex w-full items-center gap-2 border-t border-white/10 pt-2"
+                  onSubmit={(event) => { event.preventDefault(); terminalRefs.current.get(focusedId)?.find(search, false); }}
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-gray-200">{s.label}</p>
-                    <code className="text-[11px] text-blue-300 font-mono truncate block mt-0.5">{s.cmd}</code>
+                  <MagnifyingGlassIcon className="h-4 w-4 text-gray-500" />
+                  <input autoFocus value={search} onChange={(event) => setSearch(event.target.value)} className="input-field min-w-0 flex-1 text-sm" placeholder="Search terminal output" />
+                  <button type="button" className="btn-secondary" onClick={() => terminalRefs.current.get(focusedId)?.find(search, true)}>Previous</button>
+                  <button type="submit" className="btn-secondary">Next</button>
+                  <button type="button" className="rounded p-1 text-gray-500 hover:text-gray-200" onClick={() => setSearchOpen(false)}><XMarkIcon className="h-4 w-4" /></button>
+                </form>
+              )}
+
+              {settingsOpen && (
+                <div className="absolute right-3 top-12 z-30 w-72 rounded-lg border border-white/10 bg-gray-900 p-4 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-200">Appearance</h3>
+                    <button onClick={() => setSettingsOpen(false)} className="text-gray-500 hover:text-gray-200"><XMarkIcon className="h-4 w-4" /></button>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      className="btn-secondary text-xs !py-1 !px-2.5"
-                      onClick={() => {
-                        sendCommandToSession(activeSessionId, s.cmd);
-                        setSnippetModalOpen(false);
-                      }}
-                      title="Run now in active terminal"
-                    >
-                      <PlayIcon className="w-3.5 h-3.5 inline mr-1" />
-                      Run
-                    </button>
-                    <button
-                      className="btn-danger text-xs !py-1 !px-2"
-                      onClick={() => deleteCustomSnippet(s.id)}
-                      title="Delete snippet"
-                    >
-                      <TrashIcon className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  <label className="mb-3 block text-xs text-gray-400">
+                    Theme
+                    <select className="input-field mt-1 w-full text-sm" value={appearance.theme} onChange={(event) => saveAppearance({ theme: event.target.value as ThemeName })}>
+                      {Object.entries(TERMINAL_THEMES).map(([id, theme]) => <option key={id} value={id}>{theme.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="mb-3 block text-xs text-gray-400">
+                    Font
+                    <select className="input-field mt-1 w-full text-sm" value={appearance.font} onChange={(event) => saveAppearance({ font: event.target.value as FontName })}>
+                      {Object.entries(FONT_FAMILIES).map(([id, font]) => <option key={id} value={id}>{font.label}</option>)}
+                    </select>
+                  </label>
+                  <label className="block text-xs text-gray-400">
+                    Font size <span className="float-right text-gray-300">{appearance.fontSize}px</span>
+                    <input className="mt-2 w-full accent-violet-500" type="range" min={10} max={20} value={appearance.fontSize} onChange={(event) => saveAppearance({ fontSize: Number(event.target.value) })} />
+                  </label>
                 </div>
-              ))}
-              {customSnippets.length === 0 && (
-                <p className="text-xs text-gray-500 italic py-2">No custom snippets created yet.</p>
               )}
             </div>
+
+            <div className={`grid gap-2 p-2 ${splitId === null ? "grid-cols-1" : "grid-cols-1 lg:grid-cols-2"}`}>
+              {sessions.map((session) => (
+                <SessionTerminal
+                  key={session.id}
+                  ref={(handle) => { if (handle) terminalRefs.current.set(session.id, handle); else terminalRefs.current.delete(session.id); }}
+                  session={session}
+                  appearance={appearance}
+                  visible={visibleIds.has(session.id)}
+                  focused={focusedId === session.id}
+                  hostName={allHosts.find((host) => host.id === session.hostId)?.name ?? "Unknown host"}
+                  onFocus={() => setFocusedId(session.id)}
+                  onStatus={(connected) => updateSession(session.id, { connected })}
+                  onTitle={(title) => updateSession(session.id, { title })}
+                />
+              ))}
+            </div>
           </div>
-        </Modal>
-      )}
+        </main>
+
+        <aside className="panel order-3 flex min-h-72 min-w-0 flex-col p-3">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="min-w-0">
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-200"><FolderIcon className="h-4 w-4 text-violet-400" />SFTP files</h3>
+              <p className="mt-0.5 truncate text-xs text-gray-500">{focusedHost.name}</p>
+            </div>
+            <button className="rounded p-1.5 text-gray-500 hover:bg-white/5 hover:text-gray-200" title="Refresh files" onClick={() => void loadSftp(sftpPath, focusedSession.hostId)}>
+              <ArrowPathIcon className={`h-4 w-4 ${sftpLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+          <div className="mb-2 flex gap-1">
+            <button className="btn-secondary shrink-0" title="Parent folder" onClick={() => void loadSftp(parentPath(sftpPath), focusedSession.hostId)}><ArrowUpIcon className="h-4 w-4" /></button>
+            <input
+              value={sftpPath}
+              onChange={(event) => setSftpPath(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") void loadSftp(sftpPath, focusedSession.hostId); }}
+              aria-label="SFTP path"
+              className="input-field min-w-0 flex-1 font-mono text-xs"
+            />
+          </div>
+          {sftpError ? (
+            <p className="rounded bg-red-500/10 p-2 text-xs text-red-300">{sftpError}</p>
+          ) : (
+            <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+              {sftpLoading && sftpItems.length === 0 && <p className="p-2 text-xs text-gray-500">Loading...</p>}
+              {!sftpLoading && sftpItems.length === 0 && <p className="p-2 text-xs text-gray-500">Folder is empty</p>}
+              {sftpItems.map((item) => (
+                <button
+                  key={item.path}
+                  title={item.path}
+                  onClick={() => item.isDirectory ? void loadSftp(item.path, focusedSession.hostId) : void copyText(item.path)}
+                  className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-white/5"
+                >
+                  {item.isDirectory ? <FolderIcon className="h-4 w-4 shrink-0 text-amber-400" /> : <DocumentIcon className="h-4 w-4 shrink-0 text-gray-500" />}
+                  <span className="min-w-0 flex-1 truncate text-xs text-gray-300">{item.name}</span>
+                  {!item.isDirectory && <span className="shrink-0 text-[10px] text-gray-600">{formatBytes(item.size)}</span>}
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="mt-2 border-t border-white/10 pt-2 text-[10px] text-gray-600">Click a folder to open it. Click a file to copy its path.</p>
+        </aside>
+      </div>
     </div>
+  );
+}
+
+function HostButton({ host, active, favorite, onSelect, onFavorite }: {
+  host: Host;
+  active: boolean;
+  favorite: boolean;
+  onSelect: () => void;
+  onFavorite?: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`group flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs ${active ? "bg-violet-500/15 text-violet-200" : "text-gray-400 hover:bg-white/5 hover:text-gray-200"}`}
+    >
+      <span className={`metric-dot shrink-0 ${active ? "text-violet-400" : "text-gray-600"}`} />
+      <span className="min-w-0 flex-1 truncate">{host.name}</span>
+      {onFavorite && (
+        <span
+          role="button"
+          tabIndex={0}
+          title={favorite ? "Remove favorite" : "Add favorite"}
+          onClick={(event) => { event.stopPropagation(); onFavorite(); }}
+          onKeyDown={(event) => { if (event.key === "Enter") onFavorite(); }}
+          className={`rounded p-0.5 ${favorite ? "text-amber-400" : "text-gray-700 opacity-0 group-hover:opacity-100"}`}
+        >
+          <StarIcon className={`h-3.5 w-3.5 ${favorite ? "fill-current" : ""}`} />
+        </span>
+      )}
+    </button>
   );
 }
