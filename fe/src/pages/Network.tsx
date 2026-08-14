@@ -7,6 +7,7 @@ import { TrafficChart } from "../components/network/TrafficChart";
 import { formatBytes } from "../lib/format";
 import { ArrowPathIcon, GlobeAltIcon, CloudIcon, ServerIcon } from "@heroicons/react/24/outline";
 import type { Host } from "../lib/hosts";
+
 interface NetInterface {
   name: string;
   ip4?: string | null;
@@ -22,7 +23,6 @@ interface NetStat {
   tx_sec: number;
 }
 
-
 interface TrafficPoint {
   timestamp: number;
   rxSec: number;
@@ -34,6 +34,7 @@ interface TrafficTotal {
   download: number;
   upload: number;
 }
+
 interface CloudflareInfo {
   domain?: string;
   tunnelId?: string;
@@ -63,7 +64,14 @@ export function Network() {
     try {
       const query = targetHostId === 0 ? "" : `?host=${targetHostId}`;
       const data = await api<{ success: boolean; network: NetworkInfo }>(`/network/info${query}`);
-      setInfo(data.network);
+      if (data && data.network) {
+        setInfo({
+          ...data.network,
+          interfaces: data.network.interfaces || [],
+          stats: data.network.stats || [],
+          dns: data.network.dns || [],
+        });
+      }
     } catch (err) {
       show(err instanceof Error ? err.message : "Failed to load network info", "error");
     }
@@ -73,7 +81,9 @@ export function Network() {
     try {
       const query = hostId === 0 ? "" : `?host=${hostId}`;
       const data = await api<{ success: boolean; stats: NetStat[] }>(`/network/stats${query}`);
-      setInfo((current) => current === null ? current : { ...current, stats: data.stats });
+      if (data && data.stats) {
+        setInfo((current) => (current === null ? current : { ...current, stats: data.stats || [] }));
+      }
     } catch {
       // The full refresh reports errors; keep background traffic polling quiet.
     }
@@ -82,19 +92,20 @@ export function Network() {
   async function loadHistory(targetHostId = hostId, targetPeriod = period) {
     try {
       const data = await api<{ series: TrafficPoint[]; totals: TrafficTotal[] }>(
-        `/network/history?host=${targetHostId}&period=${targetPeriod}`,
+        `/network/history?host=${targetHostId}&period=${targetPeriod}`
       );
-      setHistory(data.series);
-      setTotals(data.totals);
+      setHistory(data.series || []);
+      setTotals(data.totals || []);
     } catch (err) {
       show(err instanceof Error ? err.message : "Failed to load traffic history", "error");
     }
   }
 
-  useInterval(loadStats, 1000);
+  useInterval(loadStats, 2000);
   useInterval(loadHistory, 60000);
+
   useEffect(() => {
-    api<Host[]>("/hosts").then(setHosts).catch(() => setHosts([]));
+    api<Host[]>("/hosts").then((res) => setHosts(res || [])).catch(() => setHosts([]));
   }, []);
 
   useEffect(() => {
@@ -119,7 +130,11 @@ export function Network() {
             aria-label="Network host"
           >
             <option value={0}>Local panel</option>
-            {hosts.map((host) => <option key={host.id} value={host.id}>{host.name}</option>)}
+            {hosts.map((host) => (
+              <option key={host.id} value={host.id}>
+                {host.name}
+              </option>
+            ))}
           </select>
           <button className="btn-secondary shrink-0" onClick={() => load(hostId)}>
             <ArrowPathIcon className="w-4 h-4 inline mr-1.5" />Refresh
@@ -173,7 +188,7 @@ export function Network() {
         <Panel title="Local interfaces" icon={ServerIcon}>
           {info === null ? (
             <p className="text-sm text-gray-500">Loading...</p>
-          ) : info.interfaces.length === 0 ? (
+          ) : !info.interfaces || info.interfaces.length === 0 ? (
             <p className="text-sm text-gray-500">No interfaces found</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -206,7 +221,7 @@ export function Network() {
         <Panel title="DNS & gateway">
           {info === null ? (
             <p className="text-sm text-gray-500">Loading...</p>
-          ) : !info.gateway && info.dns.length === 0 ? (
+          ) : !info.gateway && (!info.dns || info.dns.length === 0) ? (
             <p className="text-sm text-gray-500">Information not available</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -216,7 +231,7 @@ export function Network() {
                   <p className="font-mono text-sm text-gray-100">{info.gateway}</p>
                 </div>
               )}
-              {info.dns.length > 0 && (
+              {info.dns && info.dns.length > 0 && (
                 <div className="bg-white/5 rounded-lg p-3">
                   <p className="text-gray-500 text-xs mb-1">DNS servers</p>
                   {info.dns.map((dns) => (
@@ -233,7 +248,7 @@ export function Network() {
         <Panel title="Traffic">
           {info === null ? (
             <p className="text-sm text-gray-500">Loading...</p>
-          ) : info.stats.length === 0 ? (
+          ) : !info.stats || info.stats.length === 0 ? (
             <p className="text-sm text-gray-500">No statistics available</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -279,14 +294,24 @@ export function Network() {
               ))}
             </div>
           </div>
-          {history.length > 0 ? <TrafficChart data={history} /> : <p className="text-sm text-gray-500 py-8 text-center">History appears after two collection intervals.</p>}
+          {history.length > 0 ? (
+            <TrafficChart data={history} />
+          ) : (
+            <p className="text-sm text-gray-500 py-8 text-center">History appears after two collection intervals.</p>
+          )}
           {totals.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
               {totals.map((total) => (
                 <div key={total.interface} className="bg-white/5 rounded-lg p-3">
                   <p className="text-sm font-medium text-gray-200 mb-2">{total.interface}</p>
-                  <div className="flex justify-between text-xs"><span className="text-gray-500">Downloaded</span><span className="font-mono text-green-400">{formatBytes(total.download)}</span></div>
-                  <div className="flex justify-between text-xs mt-1"><span className="text-gray-500">Uploaded</span><span className="font-mono text-blue-400">{formatBytes(total.upload)}</span></div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Downloaded</span>
+                    <span className="font-mono text-green-400">{formatBytes(total.download)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs mt-1">
+                    <span className="text-gray-500">Uploaded</span>
+                    <span className="font-mono text-blue-400">{formatBytes(total.upload)}</span>
+                  </div>
                 </div>
               ))}
             </div>

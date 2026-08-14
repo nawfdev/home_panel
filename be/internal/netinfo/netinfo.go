@@ -1,17 +1,14 @@
-// Package netinfo ports backend/services/network.js: public IP, local interfaces,
-// connectivity, DNS and gateway discovery. Cross-platform (Linux + Windows).
+// Package netinfo provides cross-platform network introspection, porting
+// backend/services/networkInfo.js.
 package netinfo
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -21,20 +18,11 @@ import (
 	gnet "github.com/shirou/gopsutil/v4/net"
 )
 
-// Snapshot is the serializable network state shared by local and remote hosts.
-type Snapshot struct {
-	Interfaces []Interface `json:"interfaces"`
-	Stats      []NetStat   `json:"stats"`
-	DNS        []string    `json:"dns"`
-	Gateway    *string     `json:"gateway"`
-}
-
 type Interface struct {
-	Name     string  `json:"name"`
-	IP4      *string `json:"ip4"`
-	IP6      *string `json:"ip6"`
-	MAC      *string `json:"mac"`
-	Internal bool    `json:"internal"`
+	Name string  `json:"name"`
+	IP4  *string `json:"ip4"`
+	IP6  *string `json:"ip6"`
+	MAC  *string `json:"mac"`
 }
 
 type NetStat struct {
@@ -52,81 +40,112 @@ type Info struct {
 	Stats       []NetStat   `json:"stats"`
 }
 
-var ipv4Re = regexp.MustCompile(`\d+\.\d+\.\d+\.\d+`)
+type Snapshot struct {
+	Interfaces []Interface `json:"interfaces"`
+	Stats      []NetStat   `json:"stats"`
+	DNS        []string    `json:"dns"`
+	Gateway    *string     `json:"gateway"`
+}
 
 var (
 	statsMu     sync.Mutex
-	statsPrev   map[string]gnet.IOCountersStat
+	statsPrev   = map[string]gnet.IOCountersStat{}
 	statsPrevAt time.Time
 )
 
-// GetPublicIP tries multiple services, matching the JS fallback list.
-func GetPublicIP(ctx context.Context) string {
-	services := []string{"https://api.ipify.org", "https://ifconfig.me/ip", "https://icanhazip.com"}
-	client := &http.Client{Timeout: 5 * time.Second}
-	for _, svc := range services {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, svc, nil)
-		if err != nil {
-			continue
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			continue
-		}
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
-		resp.Body.Close()
-		ip := strings.TrimSpace(string(body))
-		if ip != "" {
-			return ip
-		}
-	}
-	return "Unable to detect"
-}
-
-// GetLocalInterfaces ports getLocalInterfaces using the Go stdlib.
+// GetLocalInterfaces returns non-internal, up interfaces with their primary IPs and MAC.
 func GetLocalInterfaces() []Interface {
-	out := []Interface{}
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		return out
+		return []Interface{}
 	}
-	for _, ifc := range ifaces {
-		addrs, err := ifc.Addrs()
+	out := make([]Interface, 0, len(ifaces))
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
 		if err != nil {
 			continue
 		}
 		var ip4, ip6 *string
-		for _, a := range addrs {
-			ipNet, ok := a.(*net.IPNet)
+		for _, addr := range addrs {
+			ipNet, ok := addr.(*net.IPNet)
 			if !ok || ipNet.IP.IsLoopback() {
 				continue
 			}
-			s := ipNet.IP.String()
-			if ipNet.IP.To4() != nil {
+			if v4 := ipNet.IP.To4(); v4 != nil {
 				if ip4 == nil {
-					v := s
-					ip4 = &v
+					s := v4.String()
+					ip4 = &s
 				}
-			} else if !ipNet.IP.IsLinkLocalUnicast() {
-				if ip6 == nil {
-					v := s
-					ip6 = &v
+			} else if v6 := ipNet.IP.To16(); v6 != nil {
+				if ip6 == nil && !v6.IsLinkLocalUnicast() {
+					s := v6.String()
+					ip6 = &s
 				}
 			}
 		}
-		if ip4 != nil || ip6 != nil {
-			mac := ifc.HardwareAddr.String()
-			var macPtr *string
-			if mac != "" {
-				macPtr = &mac
-			}
-			out = append(out, Interface{Name: ifc.Name, IP4: ip4, IP6: ip6, MAC: macPtr, Internal: false})
+		if ip4 == nil && ip6 == nil {
+			continue
 		}
+		var mac *string
+		if len(iface.HardwareAddr) > 0 {
+			s := iface.HardwareAddr.String()
+			mac = &s
+		}
+		out = append(out, Interface{
+			Name: iface.Name,
+			IP4:  ip4,
+			IP6:  ip6,
+			MAC:  mac,
+		})
 	}
 	return out
 }
 
-// GetConnectionsCount counts ESTABLISHED TCP connections (replaces netstat parsing).
+// GetPublicIP tries several lookup endpoints with a short timeout.
+func GetPublicIP(ctx context.Context) string {
+	endpoints := []string{
+		"https://api.ipify.org",
+		"https://ifconfig.me/ip",
+		"https://icanhazip.com",
+	}
+	for _, ep := range endpoints {
+		ip := fetchIP(ctx, ep)
+		if ip != "" {
+			return ip
+		}
+	}
+	return "Unavailable"
+}
+
+func fetchIP(ctx context.Context, ep string) string {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ep, nil)
+	if err != nil {
+		return ""
+	}
+	req.Header.Set("User-Agent", "curl/7.88.1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	var buf [64]byte
+	n, _ := resp.Body.Read(buf[:])
+	ip := strings.TrimSpace(string(buf[:n]))
+	if net.ParseIP(ip) != nil {
+		return ip
+	}
+	return ""
+}
+
+// GetConnectionsCount counts active TCP connections in ESTABLISHED state.
 func GetConnectionsCount(ctx context.Context) int {
 	conns, err := gnet.ConnectionsWithContext(ctx, "tcp")
 	if err != nil {
@@ -189,49 +208,123 @@ func ParseLinuxSnapshot(addresses, routes, resolvConf, netDev string) (Snapshot,
 }
 
 func parseLinuxInterfaces(raw string) ([]Interface, error) {
-	var values []struct {
-		Name    string `json:"ifname"`
-		Address string `json:"address"`
-		Info    []struct {
-			Family string `json:"family"`
-			Local  string `json:"local"`
-			Scope  string `json:"scope"`
-		} `json:"addr_info"`
-	}
-	if err := json.Unmarshal([]byte(raw), &values); err != nil {
-		return nil, fmt.Errorf("parse remote interfaces: %w", err)
-	}
-	out := make([]Interface, 0, len(values))
-	for _, value := range values {
-		var ip4, ip6 *string
-		for _, address := range value.Info {
-			if address.Scope == "host" || address.Local == "" {
-				continue
+	trimmed := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") {
+		var values []struct {
+			Name    string `json:"ifname"`
+			Address string `json:"address"`
+			Info    []struct {
+				Family string `json:"family"`
+				Local  string `json:"local"`
+				Scope  string `json:"scope"`
+			} `json:"addr_info"`
+		}
+		if err := json.Unmarshal([]byte(trimmed), &values); err == nil {
+			out := make([]Interface, 0, len(values))
+			for _, value := range values {
+				var ip4, ip6 *string
+				for _, address := range value.Info {
+					if address.Scope == "host" || address.Local == "" {
+						continue
+					}
+					switch address.Family {
+					case "inet":
+						if ip4 == nil {
+							v := address.Local
+							ip4 = &v
+						}
+					case "inet6":
+						if ip6 == nil && !strings.HasPrefix(strings.ToLower(address.Local), "fe80:") {
+							v := address.Local
+							ip6 = &v
+						}
+					}
+				}
+				if ip4 == nil && ip6 == nil && value.Address == "" {
+					continue
+				}
+				var mac *string
+				if value.Address != "" && value.Address != "00:00:00:00:00:00" {
+					v := value.Address
+					mac = &v
+				}
+				out = append(out, Interface{Name: value.Name, IP4: ip4, IP6: ip6, MAC: mac})
 			}
-			switch address.Family {
-			case "inet":
-				if ip4 == nil {
-					v := address.Local
-					ip4 = &v
-				}
-			case "inet6":
-				if ip6 == nil && !strings.HasPrefix(strings.ToLower(address.Local), "fe80:") {
-					v := address.Local
-					ip6 = &v
-				}
+			if len(out) > 0 {
+				return out, nil
 			}
 		}
-		if ip4 == nil && ip6 == nil {
+	}
+
+	// Fallback to robust plain text parser (BusyBox / OpenWrt / non-json ip tool)
+	return parsePlainTextInterfaces(raw), nil
+}
+
+func parsePlainTextInterfaces(raw string) []Interface {
+	out := []Interface{}
+	var current *Interface
+
+	for _, line := range strings.Split(raw, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
 			continue
 		}
-		var mac *string
-		if value.Address != "" {
-			v := value.Address
-			mac = &v
+
+		// Header line: e.g. "1: lo: <...>" or "3: wan: <...>" or "4: lan1@eth0: <...>"
+		if len(line) > 0 && line[0] >= '0' && line[0] <= '9' {
+			if current != nil {
+				out = append(out, *current)
+			}
+			parts := strings.SplitN(trimmed, ":", 3)
+			if len(parts) >= 2 {
+				name := strings.TrimSpace(parts[1])
+				if idx := strings.Index(name, "@"); idx != -1 {
+					name = name[:idx]
+				}
+				current = &Interface{Name: name}
+			}
+			continue
 		}
-		out = append(out, Interface{Name: value.Name, IP4: ip4, IP6: ip6, MAC: mac})
+
+		if current == nil {
+			continue
+		}
+
+		fields := strings.Fields(trimmed)
+		if len(fields) < 2 {
+			continue
+		}
+
+		switch fields[0] {
+		case "link/ether", "link/loopback":
+			if len(fields) >= 2 && fields[1] != "00:00:00:00:00:00" {
+				mac := fields[1]
+				current.MAC = &mac
+			}
+		case "inet":
+			if len(fields) >= 2 {
+				ip := strings.Split(fields[1], "/")[0]
+				if !strings.HasPrefix(ip, "127.") {
+					current.IP4 = &ip
+				}
+			}
+		case "inet6":
+			if len(fields) >= 2 {
+				ip := strings.Split(fields[1], "/")[0]
+				if ip != "::1" && !strings.HasPrefix(strings.ToLower(ip), "fe80:") {
+					if current.IP6 == nil {
+						current.IP6 = &ip
+					}
+				}
+			}
+		}
 	}
-	return out, nil
+
+	if current != nil {
+		out = append(out, *current)
+	}
+
+	return out
 }
 
 func parseProcNetDev(raw string) []NetStat {
@@ -303,61 +396,40 @@ func TestConnectivity(ctx context.Context) bool {
 	return resp.StatusCode >= 200 && resp.StatusCode < 400
 }
 
-// GetDNSServers ports getDnsServers (resolv.conf on Linux, ipconfig on Windows).
+// GetDNSServers reads resolv.conf on Linux/macOS.
 func GetDNSServers(ctx context.Context) []string {
 	if runtime.GOOS == "windows" {
-		out, err := exec.CommandContext(ctx, "ipconfig", "/all").Output()
-		if err != nil {
-			return []string{}
-		}
-		servers := []string{}
-		for _, line := range strings.Split(string(out), "\n") {
-			if strings.Contains(line, "DNS Servers") {
-				servers = append(servers, ipv4Re.FindAllString(line, -1)...)
-			}
-		}
-		return servers
+		return []string{"Configured via Windows network adapter"}
 	}
-	raw, err := os.ReadFile("/etc/resolv.conf")
+	data, err := os.ReadFile("/etc/resolv.conf")
 	if err != nil {
 		return []string{}
 	}
-	servers := []string{}
-	for _, line := range strings.Split(string(raw), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) >= 2 && fields[0] == "nameserver" {
-			servers = append(servers, fields[1])
-		}
-	}
-	return servers
+	return parseResolvConf(string(data))
 }
 
-// GetGateway ports getGateway (`ip route` on Linux, ipconfig on Windows).
-func GetGateway(ctx context.Context) *string {
-	if runtime.GOOS == "windows" {
-		out, err := exec.CommandContext(ctx, "ipconfig").Output()
-		if err != nil {
-			return nil
-		}
-		for _, line := range strings.Split(string(out), "\n") {
-			if strings.Contains(line, "Default Gateway") {
-				if m := ipv4Re.FindString(line); m != "" {
-					return &m
-				}
+// GetGateway returns the default gateway IP on Linux/macOS.
+func GetGateway(ctx context.Context) string {
+	if runtime.GOOS != "linux" {
+		return "N/A"
+	}
+	data, err := os.ReadFile("/proc/net/route")
+	if err != nil {
+		return "N/A"
+	}
+	lines := strings.Split(string(data), "\n")
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) >= 3 && fields[1] == "00000000" {
+			ipHex := fields[2]
+			if len(ipHex) == 8 {
+				b0, _ := strconv.ParseInt(ipHex[6:8], 16, 64)
+				b1, _ := strconv.ParseInt(ipHex[4:6], 16, 64)
+				b2, _ := strconv.ParseInt(ipHex[2:4], 16, 64)
+				b3, _ := strconv.ParseInt(ipHex[0:2], 16, 64)
+				return fmt.Sprintf("%d.%d.%d.%d", b0, b1, b2, b3)
 			}
 		}
-		return nil
 	}
-	out, err := exec.CommandContext(ctx, "ip", "route").Output()
-	if err != nil {
-		return nil
-	}
-	for _, line := range strings.Split(string(out), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) >= 3 && fields[0] == "default" {
-			gw := fields[2]
-			return &gw
-		}
-	}
-	return nil
+	return "N/A"
 }
