@@ -177,7 +177,7 @@ func New(d Deps) http.Handler {
 
 		// Uptime Kuma SLA Prober & Monitors
 		api.Route("/monitors", func(mr chi.Router) {
-			mr.Use(auth.RequireAuth)
+			mr.Use(auth.RequireAuth, auth.RequireFeature("monitoring"))
 			mr.Get("/", monitorsH.List)
 			mr.With(auth.RequireRole("admin")).Post("/", monitorsH.Create)
 			mr.With(auth.RequireRole("admin")).Put("/{id}", monitorsH.Update)
@@ -188,7 +188,7 @@ func New(d Deps) http.Handler {
 
 		// S.M.A.R.T. Disk Health & Storage Overview
 		api.Route("/storage", func(sr chi.Router) {
-			sr.Use(auth.RequireAuth)
+			sr.Use(auth.RequireAuth, auth.RequireFeature("storage"))
 			sr.Get("/disks", storageH.Disks)
 		})
 

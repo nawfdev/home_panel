@@ -32,6 +32,8 @@ import { Operations } from "./pages/Operations";
 import { Integrations } from "./pages/Integrations";
 import { Updates } from "./pages/Updates";
 import { Account } from "./pages/Account";
+import { Monitoring } from "./pages/Monitoring";
+import { Storage } from "./pages/Storage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -90,6 +92,8 @@ function AppRoutes() {
         <Route path="/remote-desktop" element={<RequireFeature><RemoteDesktop /></RequireFeature>} />
         <Route path="/remote-desktop/:id/view" element={<RequireFeature><RemoteDesktopView /></RequireFeature>} />
         <Route path="/projects" element={<RequireFeature><Projects /></RequireFeature>} />
+        <Route path="/monitoring" element={<RequireFeature><Monitoring /></RequireFeature>} />
+        <Route path="/storage" element={<RequireFeature><Storage /></RequireFeature>} />
         <Route path="/system" element={<Navigate to="/dashboard" replace />} />
         <Route path="/ai-gateway" element={<RequireFeature><AiGateway /></RequireFeature>} />
         <Route path="/hosts" element={user?.role === "admin" ? <Hosts /> : <Navigate to="/dashboard" replace />} />

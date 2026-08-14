@@ -33,6 +33,7 @@ import {
   PuzzlePieceIcon,
   ArrowPathIcon,
   UserCircleIcon,
+  SignalIcon,
 } from "@heroicons/react/24/outline";
 import type { ComponentType, SVGProps } from "react";
 
@@ -55,6 +56,14 @@ type NavEntry = (NavLeaf & { children?: undefined }) | NavGroup;
 
 const NAV_ITEMS: NavEntry[] = [
   { to: "/dashboard", label: "Dashboard", icon: HomeIcon },
+  {
+    label: "Monitoring",
+    icon: SignalIcon,
+    children: [
+      { to: "/monitoring", label: "Uptime & SLA", icon: SignalIcon },
+      { to: "/storage", label: "Disk Health", icon: CircleStackIcon },
+    ],
+  },
   {
     label: "Networking",
     icon: ArrowsRightLeftIcon,

@@ -1,5 +1,5 @@
 // Mirrors store.FeatureKeys in be/internal/store/store.go — keep both lists
-// in sync by hand (14 keys, small enough not to warrant codegen).
+// in sync by hand (16 keys, small enough not to warrant codegen).
 export const FEATURE_KEYS = [
   "tunnel",
   "cloudflare",
@@ -16,6 +16,8 @@ export const FEATURE_KEYS = [
   "telegram",
   "movies",
   "tv",
+  "monitoring",
+  "storage",
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -36,6 +38,8 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   telegram: "Telegram",
   movies: "Movies (incl. Downloads & Stream)",
   tv: "Live TV",
+  monitoring: "Uptime Monitoring & SLA",
+  storage: "Disk Health & Storage",
 };
 
 // Route path -> gating feature key. Routes absent from this map (dashboard,
@@ -60,6 +64,8 @@ const ROUTE_FEATURE: Record<string, FeatureKey> = {
   "/remote-desktop": "remote-desktop",
   "/projects": "projects",
   "/ai-gateway": "ai-gateway",
+  "/monitoring": "monitoring",
+  "/storage": "storage",
 };
 
 export function featureForPath(path: string): FeatureKey | null {
