@@ -60,21 +60,21 @@ func hostID(r *http.Request) (int, error) {
 	return id, nil
 }
 
-func (n *Network) remoteSnapshot(ctx context.Context, hostID int) (netinfo.Snapshot, error) {
+func (n *Network) remoteSnapshot(ctx context.Context, hostID int) (netinfo.Snapshot, store.Host, error) {
 	host, ok := n.Store.GetHost(hostID)
 	if !ok {
-		return netinfo.Snapshot{}, fmt.Errorf("host not found")
+		return netinfo.Snapshot{}, store.Host{}, fmt.Errorf("host not found")
 	}
 	addresses, routes, resolvConf, netDev, err := n.SSH.NetworkInfo(ctx, host)
 	if err != nil {
-		return netinfo.Snapshot{}, err
+		return netinfo.Snapshot{}, host, err
 	}
 	snapshot, err := netinfo.ParseLinuxSnapshot(addresses, routes, resolvConf, netDev)
 	if err != nil {
-		return netinfo.Snapshot{}, err
+		return netinfo.Snapshot{}, host, err
 	}
 	n.applyRemoteRates(hostID, snapshot.Stats)
-	return snapshot, nil
+	return snapshot, host, nil
 }
 
 func (n *Network) applyRemoteRates(hostID int, stats []netinfo.NetStat) {
@@ -110,7 +110,7 @@ func (n *Network) Info(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if id != 0 {
-		snapshot, err := n.remoteSnapshot(ctx, id)
+		snapshot, host, err := n.remoteSnapshot(ctx, id)
 		if err != nil {
 			httpx.Error(w, http.StatusBadGateway, err.Error())
 			return
@@ -118,7 +118,7 @@ func (n *Network) Info(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusOK, map[string]interface{}{
 			"success": true,
 			"network": map[string]interface{}{
-				"publicIp":     "Remote host",
+				"publicIp":     fmt.Sprintf("%s (%s:%d)", host.Name, host.Address, host.Port),
 				"interfaces":   snapshot.Interfaces,
 				"connections":  0,
 				"stats":        snapshot.Stats,
@@ -155,7 +155,7 @@ func (n *Network) Stats(w http.ResponseWriter, r *http.Request) {
 	if id != 0 {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
-		snapshot, err := n.remoteSnapshot(ctx, id)
+		snapshot, _, err := n.remoteSnapshot(ctx, id)
 		if err != nil {
 			httpx.Error(w, http.StatusBadGateway, err.Error())
 			return

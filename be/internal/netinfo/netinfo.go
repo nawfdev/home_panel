@@ -175,6 +175,9 @@ func GetNetworkStats(ctx context.Context) []NetStat {
 	current := make(map[string]gnet.IOCountersStat, len(counters))
 	out := make([]NetStat, 0, len(counters))
 	for _, c := range counters {
+		if c.Name == "lo" || strings.HasPrefix(c.Name, "Loopback") {
+			continue
+		}
 		current[c.Name] = c
 		stat := NetStat{Interface: c.Name, RxBytes: c.BytesRecv, TxBytes: c.BytesSent}
 		if previous, ok := statsPrev[c.Name]; ok && elapsed > 0 {
@@ -207,6 +210,18 @@ func ParseLinuxSnapshot(addresses, routes, resolvConf, netDev string) (Snapshot,
 	}, nil
 }
 
+func isValidMAC(mac string) bool {
+	if mac == "" || mac == "00:00:00:00:00:00" || mac == "0.0.0.0" || mac == "::" {
+		return false
+	}
+	return true
+}
+
+func isVirtualTunnel(name string) bool {
+	lower := strings.ToLower(name)
+	return lower == "lo" || strings.HasPrefix(lower, "sit") || strings.HasPrefix(lower, "ip6tnl") || strings.HasPrefix(lower, "tunl0") || strings.HasPrefix(lower, "gre0") || strings.HasPrefix(lower, "gretap0")
+}
+
 func parseLinuxInterfaces(raw string) ([]Interface, error) {
 	trimmed := strings.TrimSpace(raw)
 	if strings.HasPrefix(trimmed, "[") || strings.HasPrefix(trimmed, "{") {
@@ -222,29 +237,40 @@ func parseLinuxInterfaces(raw string) ([]Interface, error) {
 		if err := json.Unmarshal([]byte(trimmed), &values); err == nil {
 			out := make([]Interface, 0, len(values))
 			for _, value := range values {
-				var ip4, ip6 *string
+				if isVirtualTunnel(value.Name) {
+					continue
+				}
+				var ip4List, ip6List []string
 				for _, address := range value.Info {
 					if address.Scope == "host" || address.Local == "" {
 						continue
 					}
 					switch address.Family {
 					case "inet":
-						if ip4 == nil {
-							v := address.Local
-							ip4 = &v
+						if !strings.HasPrefix(address.Local, "127.") {
+							ip4List = append(ip4List, address.Local)
 						}
 					case "inet6":
-						if ip6 == nil && !strings.HasPrefix(strings.ToLower(address.Local), "fe80:") {
-							v := address.Local
-							ip6 = &v
+						if !strings.HasPrefix(strings.ToLower(address.Local), "fe80:") && address.Local != "::1" {
+							ip6List = append(ip6List, address.Local)
 						}
 					}
 				}
-				if ip4 == nil && ip6 == nil && value.Address == "" {
+
+				if len(ip4List) == 0 && len(ip6List) == 0 && !isValidMAC(value.Address) {
 					continue
 				}
-				var mac *string
-				if value.Address != "" && value.Address != "00:00:00:00:00:00" {
+
+				var ip4, ip6, mac *string
+				if len(ip4List) > 0 {
+					s := strings.Join(ip4List, ", ")
+					ip4 = &s
+				}
+				if len(ip6List) > 0 {
+					s := strings.Join(ip6List, ", ")
+					ip6 = &s
+				}
+				if isValidMAC(value.Address) {
 					v := value.Address
 					mac = &v
 				}
@@ -263,6 +289,28 @@ func parseLinuxInterfaces(raw string) ([]Interface, error) {
 func parsePlainTextInterfaces(raw string) []Interface {
 	out := []Interface{}
 	var current *Interface
+	var ip4List, ip6List []string
+
+	flushCurrent := func() {
+		if current != nil {
+			if !isVirtualTunnel(current.Name) {
+				if len(ip4List) > 0 {
+					s := strings.Join(ip4List, ", ")
+					current.IP4 = &s
+				}
+				if len(ip6List) > 0 {
+					s := strings.Join(ip6List, ", ")
+					current.IP6 = &s
+				}
+				if current.IP4 != nil || current.IP6 != nil || current.MAC != nil {
+					out = append(out, *current)
+				}
+			}
+		}
+		current = nil
+		ip4List = nil
+		ip6List = nil
+	}
 
 	for _, line := range strings.Split(raw, "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -271,10 +319,8 @@ func parsePlainTextInterfaces(raw string) []Interface {
 		}
 
 		// Header line: e.g. "1: lo: <...>" or "3: wan: <...>" or "4: lan1@eth0: <...>"
-		if len(line) > 0 && line[0] >= '0' && line[0] <= '9' {
-			if current != nil {
-				out = append(out, *current)
-			}
+		if len(line) > 0 && (line[0] >= '0' && line[0] <= '9') {
+			flushCurrent()
 			parts := strings.SplitN(trimmed, ":", 3)
 			if len(parts) >= 2 {
 				name := strings.TrimSpace(parts[1])
@@ -297,7 +343,7 @@ func parsePlainTextInterfaces(raw string) []Interface {
 
 		switch fields[0] {
 		case "link/ether", "link/loopback":
-			if len(fields) >= 2 && fields[1] != "00:00:00:00:00:00" {
+			if len(fields) >= 2 && isValidMAC(fields[1]) {
 				mac := fields[1]
 				current.MAC = &mac
 			}
@@ -305,25 +351,20 @@ func parsePlainTextInterfaces(raw string) []Interface {
 			if len(fields) >= 2 {
 				ip := strings.Split(fields[1], "/")[0]
 				if !strings.HasPrefix(ip, "127.") {
-					current.IP4 = &ip
+					ip4List = append(ip4List, ip)
 				}
 			}
 		case "inet6":
 			if len(fields) >= 2 {
 				ip := strings.Split(fields[1], "/")[0]
 				if ip != "::1" && !strings.HasPrefix(strings.ToLower(ip), "fe80:") {
-					if current.IP6 == nil {
-						current.IP6 = &ip
-					}
+					ip6List = append(ip6List, ip)
 				}
 			}
 		}
 	}
 
-	if current != nil {
-		out = append(out, *current)
-	}
-
+	flushCurrent()
 	return out
 }
 
@@ -332,6 +373,10 @@ func parseProcNetDev(raw string) []NetStat {
 	for _, line := range strings.Split(raw, "\n") {
 		name, fields, ok := strings.Cut(line, ":")
 		if !ok {
+			continue
+		}
+		ifaceName := strings.TrimSpace(name)
+		if isVirtualTunnel(ifaceName) {
 			continue
 		}
 		values := strings.Fields(fields)
@@ -343,7 +388,10 @@ func parseProcNetDev(raw string) []NetStat {
 		if rxErr != nil || txErr != nil {
 			continue
 		}
-		out = append(out, NetStat{Interface: strings.TrimSpace(name), RxBytes: rx, TxBytes: tx})
+		// Only include interfaces that have seen traffic or are physical
+		if rx > 0 || tx > 0 || strings.HasPrefix(ifaceName, "eth") || strings.HasPrefix(ifaceName, "wlan") || strings.HasPrefix(ifaceName, "en") || strings.HasPrefix(ifaceName, "wl") || strings.HasPrefix(ifaceName, "br") || strings.HasPrefix(ifaceName, "wan") || strings.HasPrefix(ifaceName, "lan") {
+			out = append(out, NetStat{Interface: ifaceName, RxBytes: rx, TxBytes: tx})
+		}
 	}
 	return out
 }
