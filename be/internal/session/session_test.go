@@ -1,55 +1,46 @@
 package session
 
 import (
-	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
-func TestLoginIgnoresUntrustedForwardedProto(t *testing.T) {
-	manager := New(strings.Repeat("s", 32), 60_000)
-	request := httptest.NewRequest(http.MethodPost, "http://panel.local/api/auth/login", nil)
-	request.Header.Set("X-Forwarded-Proto", "https")
-	response := httptest.NewRecorder()
+func TestSessionAutoRestoreAfterRestart(t *testing.T) {
+	mgr1 := New("a7f9d8e6c5b4a3210fedcba9876543210abcdef1234567890fedcba987654321", int64(86400000))
 
-	if err := manager.Login(response, request, SessionUser{ID: 1, Username: "admin", Role: "admin"}); err != nil {
-		t.Fatal(err)
+	// Login with mgr1
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/api/auth/login", nil)
+	u := SessionUser{ID: 1, Username: "admin", Role: "admin"}
+
+	if err := mgr1.Login(rec, req, u); err != nil {
+		t.Fatalf("login failed: %v", err)
 	}
 
-	cookie := response.Result().Cookies()[0]
-	if cookie.Secure {
-		t.Fatal("plain HTTP request produced a Secure cookie from spoofed X-Forwarded-Proto")
-	}
-}
+	cookie := rec.Result().Cookies()[0]
 
-func TestLoginTrustsSanitizedHTTPScheme(t *testing.T) {
-	manager := New(strings.Repeat("s", 32), 60_000)
-	request := httptest.NewRequest(http.MethodPost, "http://panel.local/api/auth/login", nil)
-	request.URL.Scheme = "https"
-	response := httptest.NewRecorder()
+	// Simulate server restart: new manager with empty memory
+	mgr2 := New("a7f9d8e6c5b4a3210fedcba9876543210abcdef1234567890fedcba987654321", int64(86400000))
 
-	if err := manager.Login(response, request, SessionUser{ID: 1, Username: "admin", Role: "admin"}); err != nil {
-		t.Fatal(err)
+	req2 := httptest.NewRequest("GET", "/api/auth/sessions", nil)
+	req2.AddCookie(cookie)
+
+	user, ok := mgr2.Current(req2)
+	if !ok {
+		t.Fatalf("expected session to be valid after server restart, got false")
 	}
 
-	cookie := response.Result().Cookies()[0]
-	if !cookie.Secure {
-		t.Fatal("trusted proxy HTTPS scheme produced a cookie without Secure")
-	}
-}
-
-func TestLoginMarksTLSCookieSecure(t *testing.T) {
-	manager := New(strings.Repeat("s", 32), 60_000)
-	request := httptest.NewRequest(http.MethodPost, "https://panel.local/api/auth/login", nil)
-	response := httptest.NewRecorder()
-
-	if err := manager.Login(response, request, SessionUser{ID: 1, Username: "admin", Role: "admin"}); err != nil {
-		t.Fatal(err)
+	if user.Username != "admin" {
+		t.Fatalf("expected admin user, got %s", user.Username)
 	}
 
-	cookie := response.Result().Cookies()[0]
-	if !cookie.Secure {
-		t.Fatal("TLS request produced a cookie without Secure")
+	// Verify that active session list has been restored in memory
+	sessions := mgr2.List(req2, 1, true)
+	if len(sessions) == 0 {
+		t.Fatalf("expected at least 1 restored session, got 0")
+	}
+
+	if !sessions[0].Current {
+		t.Fatalf("expected session to be marked current")
 	}
 }

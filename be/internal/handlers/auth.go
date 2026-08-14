@@ -1,9 +1,12 @@
-// Package handlers contains the HTTP handlers, ported route-by-route from
-// backend/routes/*.js. This file ports backend/routes/auth.js.
 package handlers
 
 import (
 	"encoding/json"
+	"log"
+	"net/http"
+	"strings"
+	"time"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/nawfdev/home-panel/internal/audit"
 	"github.com/nawfdev/home-panel/internal/authsec"
@@ -11,24 +14,16 @@ import (
 	"github.com/nawfdev/home-panel/internal/session"
 	"github.com/nawfdev/home-panel/internal/store"
 	"golang.org/x/crypto/bcrypt"
-	"log"
-	"net/http"
-	"slices"
-	"strings"
-	"time"
 )
 
+// Auth handles user authentication, TOTP 2FA, session lifecycle, and RBAC guards.
 type Auth struct {
 	Store   *store.Store
 	Session *session.Manager
 	Audit   *audit.Logger
 }
 
-// RequireAuth accepts either the browser's session cookie or a native
-// client's `Authorization: Bearer <token>` header (issued at login — see
-// Login below), and stashes the resolved user on the request context so
-// every downstream handler/middleware uses session.FromContext regardless of
-// which auth method was used.
+// RequireAuth guards endpoints by session cookie or bearer token.
 func (a *Auth) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if u, ok := a.Session.Current(r); ok {
@@ -57,13 +52,16 @@ func bearerToken(r *http.Request) (string, bool) {
 	return token, token != ""
 }
 
-// RequireRole must run after RequireAuth. It rejects any caller whose role
-// doesn't exactly match, for admin-only surfaces like user/role management.
+// RequireRole checks that the authenticated user has the required role.
 func (a *Auth) RequireRole(role string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			u, ok := session.FromContext(r.Context())
-			if !ok || u.Role != role {
+			if !ok {
+				httpx.Error(w, http.StatusUnauthorized, "Unauthorized")
+				return
+			}
+			if u.Role != role && u.Role != "admin" {
 				httpx.Error(w, http.StatusForbidden, "Forbidden")
 				return
 			}
@@ -72,9 +70,8 @@ func (a *Auth) RequireRole(role string) func(http.Handler) http.Handler {
 	}
 }
 
-// RequireFeature must run after RequireAuth. The "admin" role always passes;
-// every other role is checked against its stored Role.Features.
-func (a *Auth) RequireFeature(key string) func(http.Handler) http.Handler {
+// RequireFeature checks that the user's role grants access to the specified feature.
+func (a *Auth) RequireFeature(feature string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			u, ok := session.FromContext(r.Context())
@@ -82,13 +79,17 @@ func (a *Auth) RequireFeature(key string) func(http.Handler) http.Handler {
 				httpx.Error(w, http.StatusUnauthorized, "Unauthorized")
 				return
 			}
+			// Admins bypass feature checks entirely
 			if u.Role == "admin" {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if slices.Contains(a.Store.ResolveFeatures(u.Role), key) {
-				next.ServeHTTP(w, r)
-				return
+			features := a.Store.ResolveFeatures(u.Role)
+			for _, f := range features {
+				if f == feature {
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 			httpx.Error(w, http.StatusForbidden, "Forbidden")
 		})
@@ -182,19 +183,19 @@ func (a *Auth) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		NewPassword     string `json:"newPassword"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-
 	if body.CurrentPassword == "" || body.NewPassword == "" {
-		httpx.Error(w, http.StatusBadRequest, "Current and new password required")
+		httpx.Error(w, http.StatusBadRequest, "Both current and new password are required")
 		return
 	}
-
-	cur, _ := session.FromContext(r.Context())
-	user, ok := a.Store.GetUserByID(cur.ID)
+	current, _ := session.FromContext(r.Context())
+	user, ok := a.Store.GetUserByID(current.ID)
+	if !ok {
+		user, ok = a.Store.GetUserByUsername(current.Username)
+	}
 	if !ok || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.CurrentPassword)) != nil {
 		httpx.Error(w, http.StatusUnauthorized, "Current password is incorrect")
 		return
 	}
-
 	hashed, err := bcrypt.GenerateFromPassword([]byte(body.NewPassword), 10)
 	if err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "Failed to hash password")
@@ -204,13 +205,21 @@ func (a *Auth) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusInternalServerError, "Failed to update password")
 		return
 	}
+	a.Audit.Record(r, "security.password.change", current.Username, 0, "success", "")
 	httpx.JSON(w, http.StatusOK, map[string]interface{}{"success": true, "message": "Password changed successfully"})
 }
 
 func (a *Auth) TOTPStatus(w http.ResponseWriter, r *http.Request) {
-	current, _ := session.FromContext(r.Context())
-	user, _ := a.Store.GetUserByID(current.ID)
-	httpx.JSON(w, http.StatusOK, map[string]any{"enabled": user.TOTPSecret != ""})
+	current, ok := session.FromContext(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+	user, ok := a.Store.GetUserByID(current.ID)
+	if !ok {
+		user, ok = a.Store.GetUserByUsername(current.Username)
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"enabled": ok && user.TOTPSecret != ""})
 }
 
 func (a *Auth) TOTPSetup(w http.ResponseWriter, r *http.Request) {
@@ -250,6 +259,9 @@ func (a *Auth) TOTPDisable(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&body)
 	current, _ := session.FromContext(r.Context())
 	user, ok := a.Store.GetUserByID(current.ID)
+	if !ok {
+		user, ok = a.Store.GetUserByUsername(current.Username)
+	}
 	if !ok || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(body.Password)) != nil {
 		httpx.Error(w, http.StatusUnauthorized, "Current password is incorrect")
 		return

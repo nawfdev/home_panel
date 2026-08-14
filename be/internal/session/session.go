@@ -115,22 +115,47 @@ func (m *Manager) Current(r *http.Request) (SessionUser, bool) {
 	if !ok || id == 0 {
 		return SessionUser{}, false
 	}
-	if sid, ok := s.Values["session_id"].(string); ok {
+	username, _ := s.Values["username"].(string)
+	role, _ := s.Values["role"].(string)
+	now := time.Now().UTC()
+
+	sid, hasSid := s.Values["session_id"].(string)
+	if !hasSid || sid == "" {
+		if newSid, err := sessionID(); err == nil {
+			sid = newSid
+			s.Values["session_id"] = newSid
+		}
+	}
+
+	if sid != "" {
 		m.mu.Lock()
 		rec, exists := m.active[sid]
-		if !exists || time.Now().After(rec.expires) {
+		if !exists {
+			// Auto-restore session in memory after server restart so active sessions tracking is never lost
+			rec = record{
+				Info: Info{
+					ID:        sid,
+					UserID:    id,
+					Username:  username,
+					IP:        requestIP(r),
+					UserAgent: r.UserAgent(),
+					CreatedAt: now.Format(time.RFC3339),
+					LastSeen:  now.Format(time.RFC3339),
+				},
+				expires: now.Add(m.maxAge),
+			}
+		} else if time.Now().After(rec.expires) {
 			delete(m.active, sid)
 			m.mu.Unlock()
 			return SessionUser{}, false
+		} else {
+			rec.LastSeen = now.Format(time.RFC3339)
+			rec.expires = now.Add(m.maxAge)
 		}
-		now := time.Now().UTC()
-		rec.LastSeen = now.Format(time.RFC3339)
-		rec.expires = now.Add(m.maxAge)
 		m.active[sid] = rec
 		m.mu.Unlock()
 	}
-	username, _ := s.Values["username"].(string)
-	role, _ := s.Values["role"].(string)
+
 	return SessionUser{ID: id, Username: username, Role: role}, true
 }
 
@@ -158,7 +183,7 @@ func (m *Manager) Revoke(id string, userID int, admin bool) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	rec, ok := m.active[id]
-	if !ok || !admin && rec.UserID != userID {
+	if !ok || (!admin && rec.UserID != userID) {
 		return false
 	}
 	delete(m.active, id)
@@ -170,6 +195,7 @@ type ctxKey struct{}
 func WithUser(ctx context.Context, u SessionUser) context.Context {
 	return context.WithValue(ctx, ctxKey{}, u)
 }
+
 func FromContext(ctx context.Context) (SessionUser, bool) {
 	u, ok := ctx.Value(ctxKey{}).(SessionUser)
 	return u, ok
