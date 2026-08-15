@@ -15,6 +15,7 @@ export const FEATURE_KEYS = [
   "ai-gateway",
   "telegram",
   "movies",
+  "music",
   "tv",
   "monitoring",
   "storage",
@@ -37,6 +38,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   "ai-gateway": "AI Gateway",
   telegram: "Telegram",
   movies: "Movies (Library & Add Movie)",
+  music: "Music (Spotify Connect)",
   tv: "Live TV",
   monitoring: "Uptime Monitoring & SLA",
   storage: "Disk Health & Storage",
@@ -56,6 +58,7 @@ const ROUTE_FEATURE: Record<string, FeatureKey> = {
   "/services": "services",
   "/shares": "files",
   "/movies": "movies", // covers /movies, /movies/add, /movies/watch/:id via prefix match below
+  "/music": "music",
   "/tv": "tv",
   "/terminal": "terminal",
   "/remote-desktop": "remote-desktop",

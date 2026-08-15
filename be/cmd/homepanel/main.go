@@ -27,6 +27,7 @@ import (
 	"github.com/nawfdev/home-panel/internal/logs"
 	"github.com/nawfdev/home-panel/internal/metrics"
 	"github.com/nawfdev/home-panel/internal/movies"
+	"github.com/nawfdev/home-panel/internal/music"
 	"github.com/nawfdev/home-panel/internal/networkhistory"
 	"github.com/nawfdev/home-panel/internal/pm2"
 	"github.com/nawfdev/home-panel/internal/prober"
@@ -137,6 +138,16 @@ func main() {
 	aigw.StartUsageFlusher(context.Background(), 30*time.Second)
 
 	mov := movies.New(filepath.Join(paths.Root, "data"))
+	// go-librespot binary is an optional dependency (same pattern as aria2c/
+	// ffmpeg elsewhere): its absence just means the Music feature does not
+	// come up, not a fatal error. Path is fixed rather than a config option —
+	// installing it is a one-time server-side step, not a per-user setting.
+	musicSvc := music.New(filepath.Join(paths.Root, "data"), "/opt/go-librespot/go-librespot")
+	if musicSvc.Available() {
+		if err := musicSvc.Start(context.Background()); err != nil {
+			log.Printf("music: failed to start: %v", err)
+		}
+	}
 	ts := torrentsearch.New(paths)
 	tvSvc := tv.NewService()
 
@@ -150,6 +161,7 @@ func main() {
 		Files:          files.New(st, hostsSvc),
 		Health:         healthSvc,
 		Movies:         mov,
+		Music:          musicSvc,
 		TorrentSearch:  ts,
 		TV:             tvSvc,
 		NetworkHistory: traffic,
@@ -196,6 +208,7 @@ func main() {
 	proj.StopAll()
 	aigw.FlushUsage()
 	mov.Shutdown()
+	musicSvc.Stop()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

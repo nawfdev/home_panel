@@ -21,6 +21,7 @@ import {
   ServerIcon,
   XMarkIcon,
   FilmIcon,
+  MusicalNoteIcon,
   PlusIcon,
   ChevronDownIcon,
   ComputerDesktopIcon,
@@ -105,6 +106,7 @@ const NAV_ITEMS: NavEntry[] = [
   },
   { to: "/ai-gateway", label: "AI Gateway", icon: SparklesIcon },
   { to: "/telegram", label: "Telegram", icon: PaperAirplaneIcon },
+  { to: "/music", label: "Music", icon: MusicalNoteIcon },
   {
     label: "Movies",
     icon: FilmIcon,

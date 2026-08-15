@@ -26,6 +26,7 @@ const Files = lazy(() => import("./pages/Files").then((m) => ({ default: m.Files
 const Shares = lazy(() => import("./pages/Shares").then((m) => ({ default: m.Shares })));
 const Library = lazy(() => import("./pages/Library").then((m) => ({ default: m.Library })));
 const AddMovie = lazy(() => import("./pages/AddMovie").then((m) => ({ default: m.AddMovie })));
+const Music = lazy(() => import("./pages/Music").then((m) => ({ default: m.Music })));
 const Watch = lazy(() => import("./pages/Watch").then((m) => ({ default: m.Watch })));
 const TV = lazy(() => import("./pages/TV").then((m) => ({ default: m.TV })));
 const Terminal = lazy(() => import("./pages/Terminal").then((m) => ({ default: m.Terminal })));
@@ -103,6 +104,7 @@ function AppRoutes() {
           <Route path="/shares" element={<RequireFeature><Shares /></RequireFeature>} />
           <Route path="/movies" element={<RequireFeature><Library /></RequireFeature>} />
           <Route path="/movies/add" element={<RequireFeature><AddMovie /></RequireFeature>} />
+          <Route path="/music" element={<RequireFeature><Music /></RequireFeature>} />
           <Route path="/movies/watch/:id" element={<RequireFeature><Watch /></RequireFeature>} />
           <Route path="/downloads" element={<Navigate to="/movies" replace />} />
           <Route path="/stream" element={<Navigate to="/movies" replace />} />

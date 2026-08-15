@@ -23,6 +23,7 @@ import (
 	"github.com/nawfdev/home-panel/internal/logs"
 	"github.com/nawfdev/home-panel/internal/metrics"
 	moviesvc "github.com/nawfdev/home-panel/internal/movies"
+	musicsvc "github.com/nawfdev/home-panel/internal/music"
 	"github.com/nawfdev/home-panel/internal/networkhistory"
 	pm2svc "github.com/nawfdev/home-panel/internal/pm2"
 	"github.com/nawfdev/home-panel/internal/prober"
@@ -51,6 +52,7 @@ type Deps struct {
 	Files          *filesvc.Service
 	Health         *hosthealth.Service
 	Movies         *moviesvc.Service
+	Music          *musicsvc.Service
 	NetworkHistory *networkhistory.Collector
 	Prober         *prober.Manager
 	Storage        *smartdisk.Service
@@ -102,6 +104,7 @@ func New(d Deps) http.Handler {
 	aigatewayH := &handlers.AiGateway{Svc: d.AiGateway}
 	gatewayAuth := &handlers.GatewayAuth{Svc: d.AiGateway}
 	moviesH := &handlers.Movies{Svc: d.Movies, Torrents: d.TorrentSearch, Files: d.Files}
+	musicH := &handlers.Music{Svc: d.Music}
 	subtitlesH := &handlers.Subtitles{}
 	tvH := &handlers.TV{Svc: d.TV}
 	usersH := &handlers.Users{Store: d.Store}
@@ -444,6 +447,13 @@ func New(d Deps) http.Handler {
 			mr.Post("/subtitles/download", subtitlesH.Download)
 			mr.Post("/torrents/search", moviesH.TorrentSearch)
 			mr.Post("/torrents/download", moviesH.StartTorrentDownload)
+		})
+
+		api.Route("/music", func(mur chi.Router) {
+			mur.Use(auth.RequireAuth, auth.RequireFeature("music"))
+			mur.Get("/available", musicH.AvailableStatus)
+			mur.Handle("/librespot/*", http.HandlerFunc(musicH.Librespot))
+			mur.Get("/stream", musicH.Stream)
 		})
 
 		api.Route("/tv", func(tr chi.Router) {
