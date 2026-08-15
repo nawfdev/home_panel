@@ -147,7 +147,7 @@ export function Watch() {
     return (
       <div>
         <button
-          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/stream"))}
+          onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/movies"))}
           className="btn-secondary inline-flex items-center gap-1.5 mb-4 cursor-pointer"
         >
           <ArrowLeftIcon className="w-4 h-4" /> Back
@@ -166,7 +166,7 @@ export function Watch() {
   return (
     <div className="max-w-4xl mx-auto">
       <button
-        onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/stream"))}
+        onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/movies"))}
         className="btn-secondary inline-flex items-center gap-1.5 mb-4 cursor-pointer"
       >
         <ArrowLeftIcon className="w-4 h-4" /> Back

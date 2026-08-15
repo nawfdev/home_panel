@@ -21,8 +21,7 @@ import {
   ServerIcon,
   XMarkIcon,
   FilmIcon,
-  ArrowDownTrayIcon,
-  PlayIcon,
+  PlusIcon,
   ChevronDownIcon,
   ComputerDesktopIcon,
   TvIcon,
@@ -44,6 +43,10 @@ interface NavLeaf {
   label: string;
   icon: IconType;
   adminOnly?: boolean;
+  // Exact-match only — needed when this path is itself a prefix of a
+  // sibling (e.g. "/movies" vs "/movies/add"), so only one nav item lights
+  // up at a time instead of both.
+  end?: boolean;
 }
 
 interface NavGroup {
@@ -106,9 +109,8 @@ const NAV_ITEMS: NavEntry[] = [
     label: "Movies",
     icon: FilmIcon,
     children: [
-      { to: "/movies", label: "Movies", icon: FilmIcon },
-      { to: "/downloads", label: "Downloads", icon: ArrowDownTrayIcon },
-      { to: "/stream", label: "Stream", icon: PlayIcon },
+      { to: "/movies", label: "Library", icon: FilmIcon, end: true },
+      { to: "/movies/add", label: "Add Movie", icon: PlusIcon },
       { to: "/tv", label: "Live TV", icon: TvIcon },
     ],
   },
@@ -204,6 +206,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 <NavLink
                   key={item.to}
                   to={item.to}
+                  end={item.end}
                   onClick={onClose}
                   className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
                 >
@@ -234,6 +237,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                         <NavLink
                           key={c.to}
                           to={c.to}
+                          end={c.end}
                           onClick={onClose}
                           className={({ isActive }) => `nav-link ${isActive ? "active" : ""}`}
                         >

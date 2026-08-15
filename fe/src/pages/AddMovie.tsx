@@ -57,9 +57,9 @@ const SIZE_FILTERS: { label: string; min: number; max: number }[] = [
 ];
 
 // Search & browse only — active downloads and the finished-movie library now
-// live on their own page (Downloads.tsx) reached via the nav, so starting a
+// live on their own page (Library.tsx) reached via the nav, so starting a
 // download here just hands off there instead of tracking job state locally.
-export function Movies() {
+export function AddMovie() {
   const { show } = useToast();
   const navigate = useNavigate();
   const [mode, setMode] = useState<"pahe" | "torrent" | "direct">("pahe");
@@ -140,8 +140,8 @@ export function Movies() {
         body: JSON.stringify({ title: t.title, url: t.magnet, poster: t.poster ?? "" }),
       });
       if (data.success) {
-        show("Download started — see it on the Downloads page", "success");
-        navigate("/downloads");
+        show("Download started — see it in your Library", "success");
+        navigate("/movies");
       } else {
         show(data.error ?? "Couldn't start download", "error");
       }
@@ -211,9 +211,9 @@ export function Movies() {
         body: JSON.stringify({ title, url, poster }),
       });
       if (data.success) {
-        show("Download started — see it on the Downloads page", "success");
+        show("Download started — see it in your Library", "success");
         setDetail(null);
-        navigate("/downloads");
+        navigate("/movies");
       } else {
         show(data.error ?? "Couldn't start download", "error");
       }
@@ -249,7 +249,7 @@ export function Movies() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-100">Movies</h2>
+          <h2 className="text-2xl font-bold text-gray-100">Add Movie</h2>
           <p className="text-gray-500 text-sm mt-1">Browse pahe.ink or search torrents, then download to the server.</p>
         </div>
       </div>

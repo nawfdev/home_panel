@@ -16,9 +16,8 @@ import { Logs } from "./pages/Logs";
 import { Services } from "./pages/Services";
 import { Files } from "./pages/Files";
 import { Shares } from "./pages/Shares";
-import { Movies } from "./pages/Movies";
-import { Downloads } from "./pages/Downloads";
-import { Stream } from "./pages/Stream";
+import { Library } from "./pages/Library";
+import { AddMovie } from "./pages/AddMovie";
 import { Watch } from "./pages/Watch";
 import { TV } from "./pages/TV";
 import { Terminal } from "./pages/Terminal";
@@ -85,10 +84,11 @@ function AppRoutes() {
         <Route path="/services" element={<RequireFeature><Services /></RequireFeature>} />
         <Route path="/files" element={<RequireFeature><Files /></RequireFeature>} />
         <Route path="/shares" element={<RequireFeature><Shares /></RequireFeature>} />
-        <Route path="/movies" element={<RequireFeature><Movies /></RequireFeature>} />
-        <Route path="/downloads" element={<RequireFeature><Downloads /></RequireFeature>} />
-        <Route path="/stream" element={<RequireFeature><Stream /></RequireFeature>} />
+        <Route path="/movies" element={<RequireFeature><Library /></RequireFeature>} />
+        <Route path="/movies/add" element={<RequireFeature><AddMovie /></RequireFeature>} />
         <Route path="/movies/watch/:id" element={<RequireFeature><Watch /></RequireFeature>} />
+        <Route path="/downloads" element={<Navigate to="/movies" replace />} />
+        <Route path="/stream" element={<Navigate to="/movies" replace />} />
         <Route path="/tv" element={<RequireFeature><TV /></RequireFeature>} />
         <Route path="/terminal" element={<RequireFeature><Terminal /></RequireFeature>} />
         <Route path="/remote-desktop" element={<RequireFeature><RemoteDesktop /></RequireFeature>} />

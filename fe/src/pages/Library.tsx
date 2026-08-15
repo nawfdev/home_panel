@@ -1,29 +1,50 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
 import { Modal } from "../components/ui/Modal";
-import { formatBytes } from "../lib/format";
-import { ArrowPathIcon, FilmIcon, PlayIcon, PlusIcon, PencilIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { formatBytes, formatDuration } from "../lib/format";
+import {
+  ArrowPathIcon,
+  ArrowUpTrayIcon,
+  XMarkIcon,
+  PauseIcon,
+  PlayIcon,
+  PlusIcon,
+  FilmIcon,
+  PencilIcon,
+  TrashIcon,
+} from "@heroicons/react/24/outline";
 
 interface Job {
   id: string;
   title: string;
+  url: string;
   dest: string;
   poster?: string;
-  status: string;
+  status: "queued" | "downloading" | "paused" | "remuxing" | "done" | "error" | "canceled";
   downloaded: number;
+  total: number;
+  speedBps: number;
+  error?: string;
+  createdAt: string;
 }
 
-// The media library: every finished download, shown as a poster grid.
-// Clicking one opens its own full Watch page (player + download + public
-// share), not a modal — a proper "media library" page, separate from the
-// Downloads queue. Admins can also add a file manually (outside the download
-// queue) and rename/re-thumbnail/delete any entry from here.
-export function Stream() {
+function eta(job: Job): string | null {
+  if (job.status !== "downloading" || job.speedBps <= 0 || job.total <= job.downloaded) return null;
+  return formatDuration((job.total - job.downloaded) / job.speedBps);
+}
+
+// The movie library: active downloads at the top (so progress is visible
+// without leaving the page you actually care about) and finished movies as a
+// poster grid below — one page for "movies you're getting" and "movies you
+// have", since they're the same list at different states, not three
+// separate pages (Movies/Downloads/Stream) a user had to hop between.
+export function Library() {
   const { show } = useToast();
   const [jobs, setJobs] = useState<Job[] | null>(null);
+  const esRef = useRef<EventSource | null>(null);
 
   const [addOpen, setAddOpen] = useState(false);
   const [addTitle, setAddTitle] = useState("");
@@ -42,14 +63,55 @@ export function Stream() {
 
   useEffect(() => {
     load();
+    const es = new EventSource("/api/movies/downloads/stream", { withCredentials: true });
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data) as { jobs: Job[] };
+        setJobs(data.jobs ?? []);
+      } catch {
+        /* ignore malformed frame */
+      }
+    };
+    es.onerror = () => {
+      /* keep last known state; browser auto-reconnects */
+    };
+    esRef.current = es;
+    return () => es.close();
   }, []);
 
   async function load() {
     try {
       const data = await api<{ success: boolean; jobs: Job[] }>("/movies/downloads");
-      setJobs((data.jobs ?? []).filter((j) => j.status === "done"));
+      setJobs(data.jobs ?? []);
     } catch {
       setJobs([]);
+    }
+  }
+
+  async function cancelJob(id: string) {
+    try {
+      await api(`/movies/downloads/${id}`, { method: "DELETE" });
+      load();
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  async function pauseJob(id: string) {
+    try {
+      await api(`/movies/downloads/${id}/pause`, { method: "POST" });
+      load();
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Couldn't pause", "error");
+    }
+  }
+
+  async function resumeJob(id: string) {
+    try {
+      await api(`/movies/downloads/${id}/resume`, { method: "POST" });
+      load();
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Couldn't resume", "error");
     }
   }
 
@@ -173,16 +235,22 @@ export function Stream() {
     }
   }
 
+  const activeJobs = (jobs ?? []).filter((j) => j.status !== "done");
+  const finishedJobs = (jobs ?? []).filter((j) => j.status === "done");
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-gray-100">Stream</h2>
-          <p className="text-gray-500 text-sm mt-1">Your downloaded movies, ready to watch or share.</p>
+          <h2 className="text-2xl font-bold text-gray-100">Library</h2>
+          <p className="text-gray-500 text-sm mt-1">Movies downloading now, and everything ready to watch.</p>
         </div>
         <div className="flex gap-2">
+          <Link to="/movies/add" className="btn-primary inline-flex items-center gap-1.5">
+            <PlusIcon className="w-4 h-4" />Add movie
+          </Link>
           <button className="btn-secondary" onClick={() => setAddOpen(true)}>
-            <PlusIcon className="w-4 h-4 inline mr-1.5" />Add movie
+            <ArrowUpTrayIcon className="w-4 h-4 inline mr-1.5" />Upload file
           </button>
           <button className="btn-secondary" onClick={load}>
             <ArrowPathIcon className="w-4 h-4 inline mr-1.5" />Refresh
@@ -190,14 +258,77 @@ export function Stream() {
         </div>
       </div>
 
+      {activeJobs.length > 0 && (
+        <Panel className="mb-6">
+          <h3 className="section-heading">Downloading</h3>
+          <div className="space-y-2">
+            {activeJobs.map((job) => {
+              const pct = job.total > 0 ? Math.round((job.downloaded / job.total) * 100) : 0;
+              const remaining = eta(job);
+              return (
+                <div key={job.id} className="bg-white/5 rounded-lg p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm text-gray-100 truncate">{job.title}</p>
+                      <p className="text-xs text-gray-500">
+                        {job.status === "downloading" &&
+                          `${formatBytes(job.downloaded)}${job.total > 0 ? " / " + formatBytes(job.total) : ""}` +
+                            (job.speedBps > 0 ? ` · ${formatBytes(job.speedBps)}/s` : "") +
+                            (remaining ? ` · ETA ${remaining}` : "") +
+                            (job.total > 0 ? ` · ${pct}%` : "")}
+                        {job.status === "queued" && "Queued…"}
+                        {job.status === "paused" &&
+                          `Paused · ${formatBytes(job.downloaded)}${job.total > 0 ? " / " + formatBytes(job.total) : ""}`}
+                        {job.status === "remuxing" && "Optimizing for streaming…"}
+                        {job.status === "canceled" && "Canceled"}
+                        {job.status === "error" && <span className="text-red-400">{job.error}</span>}
+                      </p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      {job.status === "downloading" && (
+                        <button className="btn-secondary" title="Pause" onClick={() => pauseJob(job.id)}>
+                          <PauseIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                      {job.status === "paused" && (
+                        <button className="btn-secondary" title="Resume" onClick={() => resumeJob(job.id)}>
+                          <PlayIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                      {(job.status === "downloading" || job.status === "queued" || job.status === "paused") && (
+                        <button className="btn-danger" title="Cancel" onClick={() => cancelJob(job.id)}>
+                          <XMarkIcon className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {(job.status === "downloading" || job.status === "remuxing" || job.status === "paused") && (
+                    <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden mt-2">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          job.status === "remuxing" ? "bg-purple-500 animate-pulse w-full" : job.status === "paused" ? "bg-gray-500" : "bg-blue-500"
+                        }`}
+                        style={job.status !== "remuxing" ? { width: `${pct}%` } : undefined}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+
       <Panel>
         {jobs === null ? (
           <p className="text-sm text-gray-500">Loading…</p>
-        ) : jobs.length === 0 ? (
-          <p className="text-sm text-gray-500">No finished downloads yet — start one from Movies, or add a file manually.</p>
+        ) : finishedJobs.length === 0 ? (
+          <p className="text-sm text-gray-500">
+            No movies yet — <Link to="/movies/add" className="text-gray-300 underline">add one</Link> or upload a file to get started.
+          </p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {jobs.map((job) => (
+            {finishedJobs.map((job) => (
               <Link
                 key={job.id}
                 to={`/movies/watch/${job.id}`}
@@ -245,7 +376,7 @@ export function Stream() {
       </Panel>
 
       {addOpen && (
-        <Modal title="Add movie manually" onClose={() => (adding ? null : resetAdd())}>
+        <Modal title="Upload a movie file" onClose={() => (adding ? null : resetAdd())}>
           <div className="space-y-3">
             <div>
               <label className="text-xs text-gray-500 mb-1 block">Title</label>
