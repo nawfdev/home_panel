@@ -191,18 +191,33 @@ func periodDuration(period string) time.Duration {
 	}
 }
 
+// History returns the traffic series and per-interface totals for hostID
+// over period. When iface is empty (the dashboard's default "all
+// interfaces" view), the series is aggregated by collection timestamp:
+// every interface recorded in the same tick shares an identical Timestamp
+// (see record), so summing per-tick both fixes the series — raw
+// per-interface points would otherwise interleave a loopback's near-zero
+// traffic with a real NIC's into one meaningless jagged line — and bounds
+// its size to one point per collection interval regardless of how many
+// interfaces the host reports. A 7-day series across 5 interfaces
+// (loopback + a NIC + a few docker/veth interfaces is a common count on a
+// home server) was previously ~50k raw points fed straight into the chart,
+// enough to hang or crash the tab on mobile; this caps it at <=10,080.
 func (c *Collector) History(hostID int, iface, period string) ([]SeriesPoint, []Total) {
 	cutoff := time.Now().Add(-periodDuration(period)).UnixMilli()
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	series := make([]SeriesPoint, 0)
+
 	totals := map[string]*Total{}
 	previousTimestamp := map[string]int64{}
+	aggregated := map[int64]*SeriesPoint{}
+	var order []int64
+	var series []SeriesPoint
+
 	for _, sample := range c.samples {
 		if sample.HostID != hostID || sample.Timestamp < cutoff || iface != "" && sample.Interface != iface {
 			continue
 		}
-		series = append(series, SeriesPoint{Timestamp: sample.Timestamp, RxSec: sample.RxSec, TxSec: sample.TxSec})
 		total := totals[sample.Interface]
 		if total == nil {
 			total = &Total{Interface: sample.Interface}
@@ -214,7 +229,31 @@ func (c *Collector) History(hostID int, iface, period string) ([]SeriesPoint, []
 			total.Upload += uint64(sample.TxSec * seconds)
 		}
 		previousTimestamp[sample.Interface] = sample.Timestamp
+
+		if iface != "" {
+			series = append(series, SeriesPoint{Timestamp: sample.Timestamp, RxSec: sample.RxSec, TxSec: sample.TxSec})
+			continue
+		}
+		point := aggregated[sample.Timestamp]
+		if point == nil {
+			point = &SeriesPoint{Timestamp: sample.Timestamp}
+			aggregated[sample.Timestamp] = point
+			order = append(order, sample.Timestamp)
+		}
+		point.RxSec += sample.RxSec
+		point.TxSec += sample.TxSec
 	}
+
+	if iface == "" {
+		sort.Slice(order, func(i, j int) bool { return order[i] < order[j] })
+		series = make([]SeriesPoint, 0, len(order))
+		for _, ts := range order {
+			series = append(series, *aggregated[ts])
+		}
+	} else if series == nil {
+		series = make([]SeriesPoint, 0)
+	}
+
 	outTotals := make([]Total, 0, len(totals))
 	for _, total := range totals {
 		outTotals = append(outTotals, *total)

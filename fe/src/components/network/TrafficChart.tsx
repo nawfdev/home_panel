@@ -19,6 +19,24 @@ interface TrafficPoint {
   txSec: number;
 }
 
+// A chart panel this size can't usefully distinguish more points than this
+// anyway, and it's a permanent safety net independent of how much history
+// the backend ever returns (e.g. if retention/collection frequency changes
+// later) — feeding thousands of points into Chart.js is what made this
+// chart hang/crash on mobile. Always keeps the most recent point so the
+// current reading is never stale.
+const MAX_POINTS = 300;
+
+function downsample(points: TrafficPoint[]): TrafficPoint[] {
+  if (points.length <= MAX_POINTS) return points;
+  const stride = Math.ceil(points.length / MAX_POINTS);
+  const out: TrafficPoint[] = [];
+  for (let i = 0; i < points.length; i += stride) out.push(points[i]);
+  const last = points[points.length - 1];
+  if (out[out.length - 1] !== last) out.push(last);
+  return out;
+}
+
 export function TrafficChart({ data }: { data: TrafficPoint[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartRef = useRef<Chart | null>(null);
@@ -39,6 +57,11 @@ export function TrafficChart({ data }: { data: TrafficPoint[] }) {
           responsive: true,
           maintainAspectRatio: false,
           animation: false,
+          // High-DPI phones (3x devicePixelRatio is common) multiply the
+          // canvas backing-store resolution; capped so a large chart on a
+          // high-DPI mobile screen never allocates a canvas far bigger
+          // than it's ever displayed at.
+          devicePixelRatio: Math.min(window.devicePixelRatio || 1, 2),
           interaction: { intersect: false, mode: "index" },
           scales: {
             y: {
@@ -61,9 +84,10 @@ export function TrafficChart({ data }: { data: TrafficPoint[] }) {
       });
     }
     const chart = chartRef.current;
-    chart.data.labels = data.map((point) => new Date(point.timestamp).toLocaleString());
-    chart.data.datasets[0].data = data.map((point) => point.rxSec);
-    chart.data.datasets[1].data = data.map((point) => point.txSec);
+    const points = downsample(data);
+    chart.data.labels = points.map((point) => new Date(point.timestamp).toLocaleString());
+    chart.data.datasets[0].data = points.map((point) => point.rxSec);
+    chart.data.datasets[1].data = points.map((point) => point.txSec);
     chart.update();
   }, [data]);
 

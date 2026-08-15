@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { canAccessPath } from "./lib/features";
 import { ToastProvider } from "./context/ToastContext";
 import { AppLayout } from "./components/layout/AppLayout";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 // Every routed page is lazy-loaded (one chunk per page instead of one
 // eagerly-loaded ~1.1 MB bundle covering every page in the app) so the
@@ -72,53 +73,59 @@ function RequireFeature({ children }: { children: ReactNode }) {
 
 function AppRoutes() {
   const { user, isLoading } = useAuth();
+  const location = useLocation();
 
   return (
-    <Routes>
-      <Route path="/login" element={!isLoading && user ? <Navigate to="/dashboard" replace /> : <Login />} />
-      <Route path="/status" element={<Status />} />
-      <Route
-        element={
-          <RequireAuth>
-            <AppLayout />
-          </RequireAuth>
-        }
-      >
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/tunnel" element={<RequireFeature><Tunnel /></RequireFeature>} />
-        <Route path="/cloudflare" element={<RequireFeature><Cloudflare /></RequireFeature>} />
-        <Route path="/telegram" element={<RequireFeature><Telegram /></RequireFeature>} />
-        <Route path="/network" element={<RequireFeature><Network /></RequireFeature>} />
-        <Route path="/docker" element={<RequireFeature><Docker /></RequireFeature>} />
-        <Route path="/pm2" element={<RequireFeature><PM2 /></RequireFeature>} />
-        <Route path="/logs" element={<RequireFeature><Logs /></RequireFeature>} />
-        <Route path="/services" element={<RequireFeature><Services /></RequireFeature>} />
-        <Route path="/files" element={<RequireFeature><Files /></RequireFeature>} />
-        <Route path="/shares" element={<RequireFeature><Shares /></RequireFeature>} />
-        <Route path="/movies" element={<RequireFeature><Library /></RequireFeature>} />
-        <Route path="/movies/add" element={<RequireFeature><AddMovie /></RequireFeature>} />
-        <Route path="/movies/watch/:id" element={<RequireFeature><Watch /></RequireFeature>} />
-        <Route path="/downloads" element={<Navigate to="/movies" replace />} />
-        <Route path="/stream" element={<Navigate to="/movies" replace />} />
-        <Route path="/tv" element={<RequireFeature><TV /></RequireFeature>} />
-        <Route path="/terminal" element={<RequireFeature><Terminal /></RequireFeature>} />
-        <Route path="/remote-desktop" element={<RequireFeature><RemoteDesktop /></RequireFeature>} />
-        <Route path="/remote-desktop/:id/view" element={<RequireFeature><RemoteDesktopView /></RequireFeature>} />
-        <Route path="/projects" element={<RequireFeature><Projects /></RequireFeature>} />
-        <Route path="/monitoring" element={<RequireFeature><Monitoring /></RequireFeature>} />
-        <Route path="/storage" element={<RequireFeature><Storage /></RequireFeature>} />
-        <Route path="/system" element={<Navigate to="/dashboard" replace />} />
-        <Route path="/ai-gateway" element={<RequireFeature><AiGateway /></RequireFeature>} />
-        <Route path="/hosts" element={user?.role === "admin" ? <Hosts /> : <Navigate to="/dashboard" replace />} />
-        <Route path="/users" element={user?.role === "admin" ? <Users /> : <Navigate to="/dashboard" replace />} />
-        <Route path="/operations" element={user?.role === "admin" ? <Operations /> : <Navigate to="/dashboard" replace />} />
-        <Route path="/integrations" element={user?.role === "admin" ? <Integrations /> : <Navigate to="/dashboard" replace />} />
-        <Route path="/updates" element={user?.role === "admin" ? <Updates /> : <Navigate to="/dashboard" replace />} />
-        <Route path="/account" element={<Account />} />
-        <Route path="/settings" element={<Navigate to="/account" replace />} />
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      </Route>
-    </Routes>
+    // Keyed by pathname so a page-level render error (see ErrorBoundary)
+    // clears itself on the next navigation instead of leaving every
+    // subsequent page stuck on the error screen until "Try again" is clicked.
+    <ErrorBoundary key={location.pathname}>
+      <Routes>
+        <Route path="/login" element={!isLoading && user ? <Navigate to="/dashboard" replace /> : <Login />} />
+        <Route path="/status" element={<Status />} />
+        <Route
+          element={
+            <RequireAuth>
+              <AppLayout />
+            </RequireAuth>
+          }
+        >
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/tunnel" element={<RequireFeature><Tunnel /></RequireFeature>} />
+          <Route path="/cloudflare" element={<RequireFeature><Cloudflare /></RequireFeature>} />
+          <Route path="/telegram" element={<RequireFeature><Telegram /></RequireFeature>} />
+          <Route path="/network" element={<RequireFeature><Network /></RequireFeature>} />
+          <Route path="/docker" element={<RequireFeature><Docker /></RequireFeature>} />
+          <Route path="/pm2" element={<RequireFeature><PM2 /></RequireFeature>} />
+          <Route path="/logs" element={<RequireFeature><Logs /></RequireFeature>} />
+          <Route path="/services" element={<RequireFeature><Services /></RequireFeature>} />
+          <Route path="/files" element={<RequireFeature><Files /></RequireFeature>} />
+          <Route path="/shares" element={<RequireFeature><Shares /></RequireFeature>} />
+          <Route path="/movies" element={<RequireFeature><Library /></RequireFeature>} />
+          <Route path="/movies/add" element={<RequireFeature><AddMovie /></RequireFeature>} />
+          <Route path="/movies/watch/:id" element={<RequireFeature><Watch /></RequireFeature>} />
+          <Route path="/downloads" element={<Navigate to="/movies" replace />} />
+          <Route path="/stream" element={<Navigate to="/movies" replace />} />
+          <Route path="/tv" element={<RequireFeature><TV /></RequireFeature>} />
+          <Route path="/terminal" element={<RequireFeature><Terminal /></RequireFeature>} />
+          <Route path="/remote-desktop" element={<RequireFeature><RemoteDesktop /></RequireFeature>} />
+          <Route path="/remote-desktop/:id/view" element={<RequireFeature><RemoteDesktopView /></RequireFeature>} />
+          <Route path="/projects" element={<RequireFeature><Projects /></RequireFeature>} />
+          <Route path="/monitoring" element={<RequireFeature><Monitoring /></RequireFeature>} />
+          <Route path="/storage" element={<RequireFeature><Storage /></RequireFeature>} />
+          <Route path="/system" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/ai-gateway" element={<RequireFeature><AiGateway /></RequireFeature>} />
+          <Route path="/hosts" element={user?.role === "admin" ? <Hosts /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/users" element={user?.role === "admin" ? <Users /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/operations" element={user?.role === "admin" ? <Operations /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/integrations" element={user?.role === "admin" ? <Integrations /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/updates" element={user?.role === "admin" ? <Updates /> : <Navigate to="/dashboard" replace />} />
+          <Route path="/account" element={<Account />} />
+          <Route path="/settings" element={<Navigate to="/account" replace />} />
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        </Route>
+      </Routes>
+    </ErrorBoundary>
   );
 }
 
