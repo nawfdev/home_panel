@@ -1,44 +1,55 @@
 import type { ReactNode } from "react";
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { canAccessPath } from "./lib/features";
 import { ToastProvider } from "./context/ToastContext";
 import { AppLayout } from "./components/layout/AppLayout";
-import { Login } from "./pages/Login";
-import { Dashboard } from "./pages/Dashboard";
-import { Tunnel } from "./pages/Tunnel";
-import { Cloudflare } from "./pages/Cloudflare";
-import { Telegram } from "./pages/Telegram";
-import { Network } from "./pages/Network";
-import { Docker } from "./pages/Docker";
-import { PM2 } from "./pages/PM2";
-import { Logs } from "./pages/Logs";
-import { Services } from "./pages/Services";
-import { Files } from "./pages/Files";
-import { Shares } from "./pages/Shares";
-import { Library } from "./pages/Library";
-import { AddMovie } from "./pages/AddMovie";
-import { Watch } from "./pages/Watch";
-import { TV } from "./pages/TV";
-import { Terminal } from "./pages/Terminal";
-import { Projects } from "./pages/Projects";
-import { RemoteDesktop } from "./pages/RemoteDesktop";
-import { RemoteDesktopView } from "./pages/RemoteDesktopView";
-import { AiGateway } from "./pages/AiGateway";
-import { Hosts } from "./pages/Hosts";
-import { Users } from "./pages/Users";
-import { Operations } from "./pages/Operations";
-import { Integrations } from "./pages/Integrations";
-import { Updates } from "./pages/Updates";
-import { Account } from "./pages/Account";
-import { Monitoring } from "./pages/Monitoring";
-import { Storage } from "./pages/Storage";
-import { Status } from "./pages/Status";
+
+// Every routed page is lazy-loaded (one chunk per page instead of one
+// eagerly-loaded ~1.1 MB bundle covering every page in the app) so the
+// initial load only pays for the app shell + whichever page is actually
+// being visited. Pages use named exports, hence the ".then(m => ({default:
+// m.X}))" — React.lazy requires a module with a default export.
+const Login = lazy(() => import("./pages/Login").then((m) => ({ default: m.Login })));
+const Dashboard = lazy(() => import("./pages/Dashboard").then((m) => ({ default: m.Dashboard })));
+const Tunnel = lazy(() => import("./pages/Tunnel").then((m) => ({ default: m.Tunnel })));
+const Cloudflare = lazy(() => import("./pages/Cloudflare").then((m) => ({ default: m.Cloudflare })));
+const Telegram = lazy(() => import("./pages/Telegram").then((m) => ({ default: m.Telegram })));
+const Network = lazy(() => import("./pages/Network").then((m) => ({ default: m.Network })));
+const Docker = lazy(() => import("./pages/Docker").then((m) => ({ default: m.Docker })));
+const PM2 = lazy(() => import("./pages/PM2").then((m) => ({ default: m.PM2 })));
+const Logs = lazy(() => import("./pages/Logs").then((m) => ({ default: m.Logs })));
+const Services = lazy(() => import("./pages/Services").then((m) => ({ default: m.Services })));
+const Files = lazy(() => import("./pages/Files").then((m) => ({ default: m.Files })));
+const Shares = lazy(() => import("./pages/Shares").then((m) => ({ default: m.Shares })));
+const Library = lazy(() => import("./pages/Library").then((m) => ({ default: m.Library })));
+const AddMovie = lazy(() => import("./pages/AddMovie").then((m) => ({ default: m.AddMovie })));
+const Watch = lazy(() => import("./pages/Watch").then((m) => ({ default: m.Watch })));
+const TV = lazy(() => import("./pages/TV").then((m) => ({ default: m.TV })));
+const Terminal = lazy(() => import("./pages/Terminal").then((m) => ({ default: m.Terminal })));
+const Projects = lazy(() => import("./pages/Projects").then((m) => ({ default: m.Projects })));
+const RemoteDesktop = lazy(() => import("./pages/RemoteDesktop").then((m) => ({ default: m.RemoteDesktop })));
+const RemoteDesktopView = lazy(() => import("./pages/RemoteDesktopView").then((m) => ({ default: m.RemoteDesktopView })));
+const AiGateway = lazy(() => import("./pages/AiGateway").then((m) => ({ default: m.AiGateway })));
+const Hosts = lazy(() => import("./pages/Hosts").then((m) => ({ default: m.Hosts })));
+const Users = lazy(() => import("./pages/Users").then((m) => ({ default: m.Users })));
+const Operations = lazy(() => import("./pages/Operations").then((m) => ({ default: m.Operations })));
+const Integrations = lazy(() => import("./pages/Integrations").then((m) => ({ default: m.Integrations })));
+const Updates = lazy(() => import("./pages/Updates").then((m) => ({ default: m.Updates })));
+const Account = lazy(() => import("./pages/Account").then((m) => ({ default: m.Account })));
+const Monitoring = lazy(() => import("./pages/Monitoring").then((m) => ({ default: m.Monitoring })));
+const Storage = lazy(() => import("./pages/Storage").then((m) => ({ default: m.Storage })));
+const Status = lazy(() => import("./pages/Status").then((m) => ({ default: m.Status })));
+
+function PageLoading() {
+  return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>;
+}
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
   if (isLoading) {
-    return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>;
+    return <PageLoading />;
   }
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -116,7 +127,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <ToastProvider>
-          <AppRoutes />
+          <Suspense fallback={<PageLoading />}>
+            <AppRoutes />
+          </Suspense>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>

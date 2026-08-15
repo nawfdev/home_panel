@@ -272,3 +272,19 @@ func runRemux(args []string, output string) (string, error) {
 	}
 	return output, nil
 }
+
+// RemoveWebSiblings deletes the non-destructive streaming siblings
+// EnsureWebPlayable/EnsureWebPlayableAudio may have built next to path
+// ("<base>.web.mp4", "<base>.web.a0.mp4", "<base>.web.a1.mp4", ...) so
+// they never outlive the file they were built from — callers must invoke
+// this whenever path itself is deleted, since neither Delete path in this
+// codebase removed them before, leaking a near-original-sized copy on disk
+// per deleted video. Best-effort: missing siblings are not an error.
+func RemoveWebSiblings(path string) {
+	base := path[:len(path)-len(filepath.Ext(path))]
+	_ = os.Remove(base + ".web.mp4")
+	matches, _ := filepath.Glob(base + ".web.a*.mp4")
+	for _, m := range matches {
+		_ = os.Remove(m)
+	}
+}

@@ -136,20 +136,20 @@ const (
 // Job is one download. Progress fields are read under the service lock via
 // snapshot(); the downloader goroutine updates them the same way.
 type Job struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	URL         string    `json:"url"`
-	Dest        string    `json:"dest"`
-	Poster      string    `json:"poster,omitempty"`
-	IsTorrent   bool      `json:"-"` // which engine to relaunch through on resume
-	Status      Status    `json:"status"`
-	Downloaded  int64     `json:"downloaded"`
-	Total       int64     `json:"total"`
-	SpeedBps    int64     `json:"speedBps"`
-	Error       string    `json:"error,omitempty"`
-	CreatedAt   time.Time `json:"createdAt"`
-	cancel context.CancelFunc
-	gid    string // aria2 job id; empty when using the fallback downloader
+	ID         string    `json:"id"`
+	Title      string    `json:"title"`
+	URL        string    `json:"url"`
+	Dest       string    `json:"dest"`
+	Poster     string    `json:"poster,omitempty"`
+	IsTorrent  bool      `json:"-"` // which engine to relaunch through on resume
+	Status     Status    `json:"status"`
+	Downloaded int64     `json:"downloaded"`
+	Total      int64     `json:"total"`
+	SpeedBps   int64     `json:"speedBps"`
+	Error      string    `json:"error,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+	cancel     context.CancelFunc
+	gid        string // aria2 job id; empty when using the fallback downloader
 }
 
 // MoviesDir returns the on-disk directory movies are saved to, creating it if
@@ -657,6 +657,7 @@ func (s *Service) Delete(id string) error {
 	if job.Dest != "" {
 		_ = os.Remove(job.Dest)
 		_ = os.Remove(job.Dest + ".part")
+		filesvc.RemoveWebSiblings(job.Dest)
 	}
 	removeLocalPoster(job.Poster)
 	s.mu.Lock()

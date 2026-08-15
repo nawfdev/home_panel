@@ -31,7 +31,9 @@ type Service struct {
 	sshMgr *sshmgr.Manager
 }
 
-func New(st *store.Store, sshMgr *sshmgr.Manager) *Service { return &Service{store: st, sshMgr: sshMgr} }
+func New(st *store.Store, sshMgr *sshmgr.Manager) *Service {
+	return &Service{store: st, sshMgr: sshMgr}
+}
 
 // MaxUploadBytes returns the configured upload cap in bytes (default 500MB).
 func (s *Service) MaxUploadBytes() int64 {
@@ -153,7 +155,11 @@ func (s *Service) Delete(userPath string) error {
 		}
 		return os.RemoveAll(fullPath)
 	}
-	return os.Remove(fullPath)
+	if err := os.Remove(fullPath); err != nil {
+		return err
+	}
+	RemoveWebSiblings(fullPath)
+	return nil
 }
 
 func (s *Service) DownloadPath(userPath string) (string, error) {
