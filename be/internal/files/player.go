@@ -293,7 +293,7 @@ body{min-height:100vh}
 .np-row:hover .np-vol{width:76px;opacity:1}
 
 .np-pop{position:relative}
-.np-menu{position:absolute;bottom:46px;right:0;min-width:150px;background:#131316;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:6px;display:none;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+.np-menu{position:absolute;bottom:46px;right:0;min-width:150px;max-width:min(260px,calc(100vw - 32px));max-height:min(280px,50vh);overflow-y:auto;background:#131316;border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:6px;display:none;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.6)}
 .np-menu.open{display:flex}
 .np-item{text-align:left;background:transparent;border:none;color:#d4d4d8;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:13px;font-family:inherit;white-space:nowrap}
 .np-item:hover{background:rgba(255,255,255,.08);color:#fafafa}
