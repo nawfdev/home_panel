@@ -78,6 +78,7 @@ func DownloadPageHTML(basePath, fileName string, size int64, modTime time.Time, 
 	b.WriteString(`<!doctype html><html><head>`)
 	b.WriteString(themeHead(fileName))
 	b.WriteString(`<style>` + panelBaseCSS + downloadCSS + sharedActionsCSS + `</style></head><body>`)
+	b.WriteString(topBarHTML())
 	b.WriteString(`<div class="dlwrap"><div class="dlcard">`)
 	b.WriteString(`<div class="dlicon">` + icoFile)
 	if ext != "" {
@@ -100,8 +101,8 @@ const (
 )
 
 const downloadCSS = `
-body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-.dlwrap{width:100%;max-width:440px;text-align:center}
+body{min-height:100vh}
+.dlwrap{width:100%;max-width:440px;margin:64px auto 56px;padding:0 16px;text-align:center}
 .dlcard{background:#131316;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:38px 30px;box-shadow:0 20px 60px rgba(0,0,0,.45)}
 .dlicon{position:relative;width:88px;height:88px;margin:0 auto 22px;color:#a1a1aa}
 .dlicon svg{width:88px;height:88px}
@@ -137,6 +138,7 @@ func PlayerHTML(mediaType, basePath, videoSrc, fileName string, size int64, modT
 	b.WriteString(playerCSS)
 	b.WriteString(sharedActionsCSS)
 	b.WriteString(`</style></head><body>`)
+	b.WriteString(topBarHTML())
 	b.WriteString(`<div class="wrap">`)
 	b.WriteString(`<div class="title mono">` + htmlEscape(fileName) + `</div>`)
 
@@ -244,8 +246,8 @@ func renderedPlayerJS() string {
 
 // playerCSS: page layout + the custom video player component.
 const playerCSS = `
-body{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
-.wrap{width:100%;max-width:1100px}
+body{min-height:100vh}
+.wrap{width:100%;max-width:1100px;margin:0 auto;padding:24px 16px 56px}
 .title{font-size:13px;color:#71717a;margin-bottom:12px;word-break:break-all;text-align:center}
 .stage{background:#000;border:1px solid rgba(255,255,255,0.07);border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center}
 .stage.audio{padding:24px}
