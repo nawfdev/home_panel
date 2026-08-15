@@ -36,14 +36,15 @@ function eta(job: Job): string | null {
   return formatDuration((job.total - job.downloaded) / job.speedBps);
 }
 
-// The movie library: active downloads at the top (so progress is visible
-// without leaving the page you actually care about) and finished movies as a
-// poster grid below — one page for "movies you're getting" and "movies you
-// have", since they're the same list at different states, not three
-// separate pages (Movies/Downloads/Stream) a user had to hop between.
+// The movie library: a Downloads tab (progress, pause/resume, dismiss
+// failures) and a Movies tab (finished poster grid) — one page instead of
+// three (the old Movies/Downloads/Stream split), organized as tabs instead
+// of always-stacked sections so each is a focused view rather than a long
+// scroll.
 export function Library() {
   const { show } = useToast();
   const [jobs, setJobs] = useState<Job[] | null>(null);
+  const [tab, setTab] = useState<"downloads" | "movies">("movies");
   const esRef = useRef<EventSource | null>(null);
 
   const [addOpen, setAddOpen] = useState(false);
@@ -88,12 +89,18 @@ export function Library() {
     }
   }
 
-  async function cancelJob(id: string) {
+  // Stops an in-flight job (if any) and permanently removes it from the
+  // list — the same "/movies/library/:id" delete the finished-grid trash
+  // button uses. Deliberately NOT "/movies/downloads/:id" (Cancel): Cancel
+  // only stops a job, it's a documented no-op once a job has already
+  // finished/errored/been canceled, so a failed download could never
+  // actually be dismissed from this list — it just sat here forever.
+  async function removeJob(id: string) {
     try {
-      await api(`/movies/downloads/${id}`, { method: "DELETE" });
+      await api(`/movies/library/${id}`, { method: "DELETE" });
       load();
-    } catch {
-      /* non-fatal */
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Couldn't remove", "error");
     }
   }
 
@@ -258,122 +265,142 @@ export function Library() {
         </div>
       </div>
 
-      {activeJobs.length > 0 && (
-        <Panel className="mb-6">
-          <h3 className="section-heading">Downloading</h3>
-          <div className="space-y-2">
-            {activeJobs.map((job) => {
-              const pct = job.total > 0 ? Math.round((job.downloaded / job.total) * 100) : 0;
-              const remaining = eta(job);
-              return (
-                <div key={job.id} className="bg-white/5 rounded-lg p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm text-gray-100 truncate">{job.title}</p>
-                      <p className="text-xs text-gray-500">
-                        {job.status === "downloading" &&
-                          `${formatBytes(job.downloaded)}${job.total > 0 ? " / " + formatBytes(job.total) : ""}` +
-                            (job.speedBps > 0 ? ` · ${formatBytes(job.speedBps)}/s` : "") +
-                            (remaining ? ` · ETA ${remaining}` : "") +
-                            (job.total > 0 ? ` · ${pct}%` : "")}
-                        {job.status === "queued" && "Queued…"}
-                        {job.status === "paused" &&
-                          `Paused · ${formatBytes(job.downloaded)}${job.total > 0 ? " / " + formatBytes(job.total) : ""}`}
-                        {job.status === "remuxing" && "Optimizing for streaming…"}
-                        {job.status === "canceled" && "Canceled"}
-                        {job.status === "error" && <span className="text-red-400">{job.error}</span>}
-                      </p>
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                      {job.status === "downloading" && (
-                        <button className="btn-secondary" title="Pause" onClick={() => pauseJob(job.id)}>
-                          <PauseIcon className="w-4 h-4" />
-                        </button>
-                      )}
-                      {job.status === "paused" && (
-                        <button className="btn-secondary" title="Resume" onClick={() => resumeJob(job.id)}>
-                          <PlayIcon className="w-4 h-4" />
-                        </button>
-                      )}
-                      {(job.status === "downloading" || job.status === "queued" || job.status === "paused") && (
-                        <button className="btn-danger" title="Cancel" onClick={() => cancelJob(job.id)}>
+      <div className="tab-bar mb-4">
+        <button className={`tab-btn ${tab === "movies" ? "active" : ""}`} onClick={() => setTab("movies")}>
+          Movies
+          {finishedJobs.length > 0 && <span className="tab-count">{finishedJobs.length}</span>}
+        </button>
+        <button className={`tab-btn ${tab === "downloads" ? "active" : ""}`} onClick={() => setTab("downloads")}>
+          Downloads
+          {activeJobs.length > 0 && <span className="tab-count tab-count-attention">{activeJobs.length}</span>}
+        </button>
+      </div>
+
+      {tab === "downloads" && (
+        <Panel>
+          {jobs === null ? (
+            <p className="text-sm text-gray-500">Loading…</p>
+          ) : activeJobs.length === 0 ? (
+            <p className="text-sm text-gray-500">Nothing downloading right now.</p>
+          ) : (
+            <div className="space-y-2">
+              {activeJobs.map((job) => {
+                const pct = job.total > 0 ? Math.round((job.downloaded / job.total) * 100) : 0;
+                const remaining = eta(job);
+                return (
+                  <div key={job.id} className="bg-white/5 rounded-lg p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-gray-100 truncate">{job.title}</p>
+                        <p className="text-xs text-gray-500">
+                          {job.status === "downloading" &&
+                            `${formatBytes(job.downloaded)}${job.total > 0 ? " / " + formatBytes(job.total) : ""}` +
+                              (job.speedBps > 0 ? ` · ${formatBytes(job.speedBps)}/s` : "") +
+                              (remaining ? ` · ETA ${remaining}` : "") +
+                              (job.total > 0 ? ` · ${pct}%` : "")}
+                          {job.status === "queued" && "Queued…"}
+                          {job.status === "paused" &&
+                            `Paused · ${formatBytes(job.downloaded)}${job.total > 0 ? " / " + formatBytes(job.total) : ""}`}
+                          {job.status === "remuxing" && "Preparing for streaming…"}
+                          {job.status === "canceled" && "Canceled"}
+                          {job.status === "error" && <span className="text-red-400">{job.error || "Failed"}</span>}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        {job.status === "downloading" && (
+                          <button className="btn-secondary" title="Pause" onClick={() => pauseJob(job.id)}>
+                            <PauseIcon className="w-4 h-4" />
+                          </button>
+                        )}
+                        {job.status === "paused" && (
+                          <button className="btn-secondary" title="Resume" onClick={() => resumeJob(job.id)}>
+                            <PlayIcon className="w-4 h-4" />
+                          </button>
+                        )}
+                        <button
+                          className="btn-danger"
+                          title={job.status === "error" || job.status === "canceled" ? "Remove from history" : "Cancel"}
+                          onClick={() => removeJob(job.id)}
+                        >
                           <XMarkIcon className="w-4 h-4" />
                         </button>
-                      )}
+                      </div>
                     </div>
+                    {(job.status === "downloading" || job.status === "remuxing" || job.status === "paused") && (
+                      <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden mt-2">
+                        <div
+                          className={`h-full transition-all duration-300 ${
+                            job.status === "remuxing" ? "bg-purple-500 animate-pulse w-full" : job.status === "paused" ? "bg-gray-500" : "bg-blue-500"
+                          }`}
+                          style={job.status !== "remuxing" ? { width: `${pct}%` } : undefined}
+                        />
+                      </div>
+                    )}
                   </div>
-                  {(job.status === "downloading" || job.status === "remuxing" || job.status === "paused") && (
-                    <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden mt-2">
-                      <div
-                        className={`h-full transition-all duration-300 ${
-                          job.status === "remuxing" ? "bg-purple-500 animate-pulse w-full" : job.status === "paused" ? "bg-gray-500" : "bg-blue-500"
-                        }`}
-                        style={job.status !== "remuxing" ? { width: `${pct}%` } : undefined}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </Panel>
       )}
 
-      <Panel>
-        {jobs === null ? (
-          <p className="text-sm text-gray-500">Loading…</p>
-        ) : finishedJobs.length === 0 ? (
-          <p className="text-sm text-gray-500">
-            No movies yet — <Link to="/movies/add" className="text-gray-300 underline">add one</Link> or upload a file to get started.
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-            {finishedJobs.map((job) => (
-              <Link
-                key={job.id}
-                to={`/movies/watch/${job.id}`}
-                className="group relative text-left bg-white/5 rounded-lg overflow-hidden hover:ring-2 hover:ring-blue-500/60 transition"
-              >
-                <div className="aspect-[2/3] bg-white/5 flex items-center justify-center overflow-hidden relative">
-                  {job.poster ? (
-                    <img
-                      src={job.poster}
-                      alt={job.title}
-                      loading="lazy"
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                    />
-                  ) : (
-                    <FilmIcon className="w-10 h-10 text-gray-600" />
-                  )}
-                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center">
-                    <PlayIcon className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition" />
+      {tab === "movies" && (
+        <Panel>
+          {jobs === null ? (
+            <p className="text-sm text-gray-500">Loading…</p>
+          ) : finishedJobs.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              No movies yet — <Link to="/movies/add" className="text-gray-300 underline">add one</Link> or upload a file to get started.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {finishedJobs.map((job) => (
+                <Link
+                  key={job.id}
+                  to={`/movies/watch/${job.id}`}
+                  className="group relative text-left bg-white/5 rounded-lg overflow-hidden hover:ring-2 hover:ring-blue-500/60 transition"
+                >
+                  <div className="aspect-[2/3] bg-white/5 flex items-center justify-center overflow-hidden relative">
+                    {job.poster ? (
+                      <img
+                        src={job.poster}
+                        alt={job.title}
+                        loading="lazy"
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                      />
+                    ) : (
+                      <FilmIcon className="w-10 h-10 text-gray-600" />
+                    )}
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition flex items-center justify-center">
+                      <PlayIcon className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition" />
+                    </div>
+                    <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition">
+                      <button
+                        title="Edit"
+                        onClick={(e) => openEdit(job, e)}
+                        className="w-7 h-7 flex items-center justify-center bg-black/70 hover:bg-black/90 rounded-md text-gray-200"
+                      >
+                        <PencilIcon className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        title="Delete"
+                        onClick={(e) => openDelete(job, e)}
+                        className="w-7 h-7 flex items-center justify-center bg-black/70 hover:bg-red-600 rounded-md text-gray-200"
+                      >
+                        <TrashIcon className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="absolute top-1.5 right-1.5 flex gap-1 opacity-0 group-hover:opacity-100 transition">
-                    <button
-                      title="Edit"
-                      onClick={(e) => openEdit(job, e)}
-                      className="w-7 h-7 flex items-center justify-center bg-black/70 hover:bg-black/90 rounded-md text-gray-200"
-                    >
-                      <PencilIcon className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      title="Delete"
-                      onClick={(e) => openDelete(job, e)}
-                      className="w-7 h-7 flex items-center justify-center bg-black/70 hover:bg-red-600 rounded-md text-gray-200"
-                    >
-                      <TrashIcon className="w-3.5 h-3.5" />
-                    </button>
+                  <div className="p-2">
+                    <p className="text-xs text-gray-200 line-clamp-2">{job.title}</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{formatBytes(job.downloaded)}</p>
                   </div>
-                </div>
-                <div className="p-2">
-                  <p className="text-xs text-gray-200 line-clamp-2">{job.title}</p>
-                  <p className="text-[10px] text-gray-500 mt-0.5">{formatBytes(job.downloaded)}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        )}
-      </Panel>
+                </Link>
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
 
       {addOpen && (
         <Modal title="Upload a movie file" onClose={() => (adding ? null : resetAdd())}>

@@ -8,6 +8,7 @@ interface Subtitle {
 
 export function MediaPlayer({
   path,
+  playPath,
   name,
   type,
   subtitles,
@@ -15,6 +16,11 @@ export function MediaPlayer({
   onClose,
 }: {
   path: string;
+  // Defaults to path when omitted/equal — only differs for a video that
+  // needed a codec/container/faststart fix to play in-browser (see
+  // EnsureWebPlayable). The player uses this; Download always uses path,
+  // so it's always the exact original bytes, never a remuxed copy.
+  playPath?: string;
   name: string;
   type: "video" | "image" | "audio";
   subtitles: Subtitle[];
@@ -22,6 +28,7 @@ export function MediaPlayer({
   onClose: () => void;
 }) {
   const rawUrl = `/api/files/download?path=${encodeURIComponent(path)}`;
+  const playUrl = `/api/files/download?path=${encodeURIComponent(playPath || path)}`;
 
   // Sidecar subtitles served (converted to VTT) by the authenticated endpoint.
   const tracks = subtitles.map((s) => ({
@@ -33,14 +40,14 @@ export function MediaPlayer({
     <Modal title={name} onClose={onClose} wide>
       {type === "image" ? (
         <div className="bg-black rounded-lg overflow-hidden flex items-center justify-center">
-          <img src={rawUrl} alt={name} className="max-h-[70vh] max-w-full" />
+          <img src={playUrl} alt={name} className="max-h-[70vh] max-w-full" />
         </div>
       ) : type === "audio" ? (
         <div className="bg-black rounded-lg overflow-hidden flex items-center justify-center p-6">
-          <audio src={rawUrl} controls className="w-full" />
+          <audio src={playUrl} controls className="w-full" />
         </div>
       ) : (
-        <NestVideo src={rawUrl} tracks={tracks} audioTracks={audioTracks} />
+        <NestVideo src={playUrl} tracks={tracks} audioTracks={audioTracks} />
       )}
 
       <div className="text-center mt-4">

@@ -2,8 +2,10 @@ package files
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -29,6 +31,11 @@ var browserSafeAudioCodecs = map[string]bool{
 var browserSafeContainers = map[string]bool{
 	".mp4": true, ".m4v": true, ".webm": true, ".mov": true,
 }
+
+// faststartCheckExts: containers whose "moov atom before mdat" placement
+// (a.k.a. faststart) matters for progressive playback — MP4-family boxes
+// only; webm/mkv use a different (EBML) structure with no such concept.
+var faststartCheckExts = map[string]bool{".mp4": true, ".m4v": true, ".mov": true}
 
 type probeCodecStream struct {
 	CodecType string `json:"codec_type"`
@@ -70,6 +77,55 @@ func probeCodecs(path string) (videoCodec string, audioCodecs []string, err erro
 	return videoCodec, audioCodecs, nil
 }
 
+// isFaststartMP4 reports whether an MP4-family file's "moov" box (the index
+// browsers need before they can start decoding) comes before its "mdat" box
+// (the actual media bytes, often the bulk of the file). Sources that aren't
+// faststart force a browser/player to buffer the whole file before playback
+// can begin — the classic "downloaded video won't play until 100%" symptom.
+// This only walks top-level box headers (8 bytes at a time, then seeks past
+// each box's payload), so it's fast regardless of file size.
+func isFaststartMP4(path string) (bool, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	var offset int64
+	header := make([]byte, 8)
+	for {
+		if _, err := f.Seek(offset, io.SeekStart); err != nil {
+			return false, err
+		}
+		if _, err := io.ReadFull(f, header); err != nil {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				return false, nil // ran off the end without finding either box
+			}
+			return false, err
+		}
+		size := int64(binary.BigEndian.Uint32(header[0:4]))
+		boxType := string(header[4:8])
+		switch boxType {
+		case "moov":
+			return true, nil
+		case "mdat":
+			return false, nil
+		}
+		switch size {
+		case 1: // 64-bit "largesize" follows immediately after the header
+			var big [8]byte
+			if _, err := io.ReadFull(f, big[:]); err != nil {
+				return false, err
+			}
+			offset += 16 + int64(binary.BigEndian.Uint64(big[:]))
+		case 0: // box extends to EOF — nothing meaningful left to scan
+			return false, nil
+		default:
+			offset += size
+		}
+	}
+}
+
 // EnsureWebPlayable checks whether path's container+codecs are safe to play
 // directly in a browser and, if not, produces a ".web.mp4" sibling next to
 // it (same basename) that is — without touching or replacing the original
@@ -83,7 +139,11 @@ func probeCodecs(path string) (videoCodec string, audioCodecs []string, err erro
 // silently lose its second language on remux); each is stream-copied when
 // its codec is already browser-safe, or transcoded to AAC when any track
 // isn't (e.g. AC3/DTS from a Blu-ray rip) — the only lossy step, and only
-// the audio.
+// the audio. A sibling is also built (video and audio both stream-copied,
+// nothing re-encoded) when the container/codecs are already fine but the
+// file isn't faststart — so streaming is smooth on first view without ever
+// touching the original: the Download button/link always serves the exact
+// bytes that were downloaded, never a remuxed copy.
 func EnsureWebPlayable(path string) (string, error) {
 	if !ffmpegAvailable || !ffprobeAvailable || MediaType(path) != "video" {
 		return path, nil
@@ -100,10 +160,17 @@ func EnsureWebPlayable(path string) (string, error) {
 	if err != nil {
 		return path, err
 	}
-	containerOK := browserSafeContainers[strings.ToLower(filepath.Ext(path))]
+	ext := strings.ToLower(filepath.Ext(path))
+	containerOK := browserSafeContainers[ext]
 	videoOK := videoCodec == "" || browserSafeVideoCodecs[videoCodec]
 	audioOK := allAudioCodecsSafe(audioCodecs)
-	if containerOK && videoOK && audioOK {
+	faststartOK := true
+	if containerOK && videoOK && audioOK && faststartCheckExts[ext] {
+		if ok, ferr := isFaststartMP4(path); ferr == nil {
+			faststartOK = ok
+		} // on a probe error, assume fine — never block playback over this check
+	}
+	if containerOK && videoOK && audioOK && faststartOK {
 		return path, nil // already playable as-is
 	}
 	if !videoOK {

@@ -485,20 +485,19 @@ func (s *Service) run(ctx context.Context, job *Job) {
 }
 
 // finish runs the post-download pipeline shared by both download engines:
-// faststart remux (streaming-friendly moov atom placement) and mkv-embedded
-// subtitle extraction, both best-effort, then marks the job done.
+// extracting any subtitle tracks muxed inside the container (common for
+// .mkv) into sidecar .srt files, then non-destructively pre-building a
+// streaming-friendly sibling copy via EnsureWebPlayable — never touching
+// job.Dest itself, so the Download button/link and this job's history
+// always serve the exact bytes that were downloaded. Both steps are
+// best-effort; either failing still lets the job finish as done.
 func (s *Service) finish(job *Job) {
 	s.set(job, func(j *Job) { j.Status = StatusRemuxing })
-	if ext := strings.ToLower(filepath.Ext(job.Dest)); ext == ".mp4" || ext == ".mov" || ext == ".m4v" {
-		if err := filesvc.RemuxFaststart(job.Dest); err != nil {
-			log.Printf("movies: faststart remux skipped for %s: %v", job.Dest, err)
-		}
-	}
-	// Best-effort: pull any subtitle tracks muxed inside the container (common
-	// for .mkv) out into sidecar .srt files so the player's existing
-	// DetectSubtitles picks them up with no further wiring.
 	if err := filesvc.ExtractEmbeddedSubtitles(job.Dest); err != nil {
 		log.Printf("movies: subtitle extract skipped for %s: %v", job.Dest, err)
+	}
+	if _, err := filesvc.EnsureWebPlayable(job.Dest); err != nil {
+		log.Printf("movies: streaming sibling skipped for %s: %v", job.Dest, err)
 	}
 	s.set(job, func(j *Job) { j.Status = StatusDone })
 	s.persist()

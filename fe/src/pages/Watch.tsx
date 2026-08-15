@@ -47,6 +47,12 @@ export function Watch() {
   const [job, setJob] = useState<Job | null | undefined>(undefined); // undefined = loading, null = not found
   const [subtitles, setSubtitles] = useState<{ name: string; label: string }[]>([]);
   const [audioTracks, setAudioTracks] = useState<AudioTrackInfo[]>([]);
+  // media-info's "path" — points at a generated streaming-friendly sibling
+  // (".web.mp4") instead of job.dest when the original needs a codec/
+  // container/faststart fix for the browser. Only the player uses this;
+  // Download always uses job.dest directly (below), so it's always the
+  // exact original bytes, never a remuxed copy.
+  const [playPath, setPlayPath] = useState<string | null>(null);
 
   const [shareOpen, setShareOpen] = useState(false);
   const [shareTtl, setShareTtl] = useState(0);
@@ -71,9 +77,11 @@ export function Watch() {
             type: string;
             subtitles: { name: string; label: string }[];
             audioTracks: AudioTrackInfo[];
+            path?: string;
           }>("/files/media-info", { method: "POST", body: JSON.stringify({ path: found.dest }) });
           setSubtitles(info.subtitles ?? []);
           setAudioTracks(info.audioTracks ?? []);
+          setPlayPath(info.path || found.dest);
         }
       } catch {
         setJob(null);
@@ -158,6 +166,7 @@ export function Watch() {
   }
 
   const rawUrl = `/api/files/download?path=${encodeURIComponent(job.dest)}`;
+  const playUrl = `/api/files/download?path=${encodeURIComponent(playPath || job.dest)}`;
   const tracks = subtitles.map((s) => ({
     label: s.label,
     url: `/api/files/subtitle?path=${encodeURIComponent(job.dest)}&name=${encodeURIComponent(s.name)}`,
@@ -175,7 +184,7 @@ export function Watch() {
       <h2 className="text-xl font-bold text-gray-100 mb-4">{job.title}</h2>
 
       <div className="bg-black rounded-lg overflow-hidden mb-4">
-        <NestVideo src={rawUrl} tracks={tracks} audioTracks={audioTracks} />
+        <NestVideo src={playUrl} tracks={tracks} audioTracks={audioTracks} />
       </div>
 
       <div className="flex flex-wrap gap-2 mb-6">

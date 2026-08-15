@@ -66,6 +66,7 @@ export function Files() {
 
   const [player, setPlayer] = useState<{
     path: string;
+    playPath: string;
     name: string;
     type: "video" | "image" | "audio";
     subtitles: { name: string; label: string }[];
@@ -158,11 +159,13 @@ export function Files() {
         path?: string;
       }>("/files/media-info", { method: "POST", body: JSON.stringify({ path: item.path }) });
       if (info.type === "video" || info.type === "image" || info.type === "audio") {
-        // path may point at a generated ".web.mp4" sibling instead of
-        // item.path when the original isn't safely browser-playable — the
-        // original itself is untouched, so downloads still use item.path.
+        // info.path may point at a generated ".web.mp4" sibling instead of
+        // item.path when the original isn't safely browser-playable — only
+        // the player uses that; Download always uses item.path (below), so
+        // it always gets the exact original bytes, never a remuxed copy.
         setPlayer({
-          path: info.path || item.path,
+          path: item.path,
+          playPath: info.path || item.path,
           name: item.name,
           type: info.type,
           subtitles: info.subtitles ?? [],
@@ -472,6 +475,7 @@ export function Files() {
       {player && (
         <MediaPlayer
           path={player.path}
+          playPath={player.playPath}
           name={player.name}
           type={player.type}
           subtitles={player.subtitles}
