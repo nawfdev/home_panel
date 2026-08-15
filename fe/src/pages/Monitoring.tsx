@@ -14,6 +14,9 @@ import {
   CheckCircleIcon,
   XCircleIcon,
   GlobeAltIcon,
+  ArrowTopRightOnSquareIcon,
+  EyeIcon,
+  EyeSlashIcon,
 } from "@heroicons/react/24/outline";
 import type { Host } from "../lib/hosts";
 
@@ -41,6 +44,7 @@ interface Monitor {
   uptime24h: number;
   uptime30d: number;
   history: Heartbeat[];
+  public: boolean;
 }
 
 interface MonitorsResponse {
@@ -71,6 +75,7 @@ export function Monitoring() {
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [checkingId, setCheckingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   // WoL State
   const [wolMac, setWolMac] = useState("");
@@ -181,6 +186,22 @@ export function Monitoring() {
     }
   }
 
+  async function togglePublic(mon: Monitor) {
+    setTogglingId(mon.id);
+    try {
+      await api(`/monitors/${mon.id}/public`, {
+        method: "PATCH",
+        body: JSON.stringify({ public: !mon.public }),
+      });
+      show(mon.public ? `${mon.name} removed from public status page` : `${mon.name} is now on the public status page`, "success", 2000);
+      loadData();
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Failed to update visibility", "error");
+    } finally {
+      setTogglingId(null);
+    }
+  }
+
   async function sendWoL(mac: string, broadcast = wolBroadcast) {
     if (!mac.trim()) {
       show("Valid MAC address required", "warning");
@@ -201,6 +222,7 @@ export function Monitoring() {
   }
 
   const monitors = data?.monitors || [];
+  const publicCount = monitors.filter((m) => m.public).length;
   const avgUptime =
     monitors.length > 0
       ? monitors.reduce((acc, m) => acc + m.uptime24h, 0) / monitors.length
@@ -219,10 +241,22 @@ export function Monitoring() {
             Real-time endpoint prober, historical 30-day uptime bars, and Wake-on-LAN
           </p>
         </div>
-        <button className="btn-primary shrink-0 flex items-center gap-1.5" onClick={openAdd}>
-          <PlusIcon className="w-4 h-4" />
-          Add monitor
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          <a
+            href="/status"
+            target="_blank"
+            rel="noreferrer"
+            className="btn-secondary flex items-center gap-1.5"
+            title={publicCount === 0 ? "No monitors are public yet — toggle the eye icon below" : "Open the public status page"}
+          >
+            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+            Public status page{publicCount > 0 ? ` (${publicCount})` : ""}
+          </a>
+          <button className="btn-primary flex items-center gap-1.5" onClick={openAdd}>
+            <PlusIcon className="w-4 h-4" />
+            Add monitor
+          </button>
+        </div>
       </div>
 
       {/* Summary KPI Cards */}
@@ -304,6 +338,11 @@ export function Monitoring() {
                           <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">
                             {m.type}
                           </span>
+                          {m.public && (
+                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                              Public
+                            </span>
+                          )}
                         </div>
                         <p className="text-xs text-gray-400 font-mono truncate">{m.target}</p>
                       </div>
@@ -326,6 +365,14 @@ export function Monitoring() {
                       </div>
 
                       <div className="flex items-center gap-1">
+                        <button
+                          className={`btn-secondary !p-1.5 ${m.public ? "text-emerald-400 hover:text-emerald-300" : "text-gray-400 hover:text-white"}`}
+                          onClick={() => togglePublic(m)}
+                          disabled={togglingId === m.id}
+                          title={m.public ? "Showing on public status page — click to hide" : "Hidden from public status page — click to show"}
+                        >
+                          {m.public ? <EyeIcon className="w-3.5 h-3.5" /> : <EyeSlashIcon className="w-3.5 h-3.5" />}
+                        </button>
                         <button
                           className="btn-secondary !p-1.5 text-gray-400 hover:text-white"
                           onClick={() => triggerCheck(m.id)}

@@ -119,6 +119,14 @@ func main() {
 			proberMgr.Close()
 		}
 	}()
+	if proberMgr != nil {
+		storedHosts := st.ListHosts()
+		hostSeeds := make([]prober.HostSeed, len(storedHosts))
+		for i, sh := range storedHosts {
+			hostSeeds[i] = prober.HostSeed{ID: sh.ID, Name: sh.Name, Address: sh.Address, Port: sh.Port}
+		}
+		proberMgr.SeedFromHosts(hostSeeds, cfg.Server.Port)
+	}
 
 	tun := tunnel.New()
 	cloudflareSvc := cloudflare.New(st)

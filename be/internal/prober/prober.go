@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -54,6 +55,9 @@ type Monitor struct {
 	Uptime24h   float64     `json:"uptime24h"`
 	Uptime30d   float64     `json:"uptime30d"`
 	History     []Heartbeat `json:"history"`
+	// Public controls whether this monitor appears on the unauthenticated
+	// status page (/status). Off by default — an admin opts each one in.
+	Public bool `json:"public"`
 }
 
 type Manager struct {
@@ -89,7 +93,6 @@ func New(dataDir string) (*Manager, error) {
 	}
 
 	m.load()
-	m.seedDefaultsIfEmpty()
 	go m.startScheduler()
 
 	return m, nil
@@ -99,41 +102,97 @@ func (m *Manager) Close() {
 	m.cancel()
 }
 
-func (m *Manager) seedDefaultsIfEmpty() {
+// HostSeed is the minimal shape SeedFromHosts and EnsureHostMonitor need from
+// a store.Host, kept here instead of importing the store package to avoid a
+// dependency cycle (store never needs to know about prober).
+type HostSeed struct {
+	ID      int
+	Name    string
+	Address string
+	Port    int
+}
+
+func hostMonitorID(hostID int) string {
+	return fmt.Sprintf("m-host-%d", hostID)
+}
+
+// SeedFromHosts ensures every saved SSH host and the local panel itself have
+// a monitor, without clobbering probes an admin already customized. It also
+// discards the old hardcoded generic-internet defaults (m-gateway/m-dns)
+// from earlier versions in favor of monitoring the user's actual machines.
+func (m *Manager) SeedFromHosts(hosts []HostSeed, localPort int) {
+	m.mu.Lock()
+	delete(m.monitors, "m-gateway")
+	delete(m.monitors, "m-dns")
+	delete(m.heartbeats, "m-gateway")
+	delete(m.heartbeats, "m-dns")
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	touched := make([]string, 0, len(hosts)+1)
+	ensure := func(id, name string, mType MonitorType, target string) {
+		touched = append(touched, id)
+		if _, exists := m.monitors[id]; exists {
+			return
+		}
+		m.monitors[id] = &Monitor{
+			ID: id, Name: name, Type: mType, Target: target,
+			IntervalSec: 30, TimeoutSec: 5, Status: StatusPending,
+			CreatedAt: now, Uptime24h: 100, Uptime30d: 100,
+		}
+	}
+
+	ensure("m-localhost", "Nestcore Panel (localhost)", TypeTCP, net.JoinHostPort("127.0.0.1", strconv.Itoa(localPort)))
+	for _, h := range hosts {
+		port := h.Port
+		if port <= 0 {
+			port = 22
+		}
+		ensure(hostMonitorID(h.ID), h.Name, TypeTCP, net.JoinHostPort(h.Address, strconv.Itoa(port)))
+	}
+	_ = m.saveLocked()
+	m.mu.Unlock()
+
+	for _, id := range touched {
+		go m.ExecuteCheck(id)
+	}
+}
+
+// EnsureHostMonitor upserts the auto-managed monitor for a saved SSH host,
+// called whenever a host is created or edited so the monitor's name/address
+// never drifts from the host record.
+func (m *Manager) EnsureHostMonitor(host HostSeed) {
+	port := host.Port
+	if port <= 0 {
+		port = 22
+	}
+	id := hostMonitorID(host.ID)
+	target := net.JoinHostPort(host.Address, strconv.Itoa(port))
+
+	m.mu.Lock()
+	if mon, exists := m.monitors[id]; exists {
+		mon.Name = host.Name
+		mon.Target = target
+	} else {
+		m.monitors[id] = &Monitor{
+			ID: id, Name: host.Name, Type: TypeTCP, Target: target,
+			IntervalSec: 30, TimeoutSec: 5, Status: StatusPending,
+			CreatedAt: time.Now().UTC().Format(time.RFC3339), Uptime24h: 100, Uptime30d: 100,
+		}
+	}
+	_ = m.saveLocked()
+	m.mu.Unlock()
+
+	go m.ExecuteCheck(id)
+}
+
+// RemoveHostMonitor deletes the auto-managed monitor for a host that was
+// removed from the panel, so stale probes don't linger.
+func (m *Manager) RemoveHostMonitor(hostID int) {
+	id := hostMonitorID(hostID)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	if len(m.monitors) > 0 {
-		return
-	}
-
-	defaults := []Monitor{
-		{
-			ID:          "m-gateway",
-			Name:        "Internet Gateway",
-			Type:        TypeHTTP,
-			Target:      "https://1.1.1.1",
-			IntervalSec: 30,
-			TimeoutSec:  5,
-			Status:      StatusPending,
-			CreatedAt:   time.Now().UTC().Format(time.RFC3339),
-		},
-		{
-			ID:          "m-dns",
-			Name:        "Cloudflare DNS (1.1.1.1)",
-			Type:        TypeTCP,
-			Target:      "1.1.1.1:53",
-			IntervalSec: 30,
-			TimeoutSec:  3,
-			Status:      StatusPending,
-			CreatedAt:   time.Now().UTC().Format(time.RFC3339),
-		},
-	}
-
-	for _, d := range defaults {
-		mon := d
-		m.monitors[mon.ID] = &mon
-	}
+	delete(m.monitors, id)
+	delete(m.heartbeats, id)
 	_ = m.saveLocked()
 }
 
@@ -242,7 +301,7 @@ func (m *Manager) checkMonitor(mon *Monitor) (Status, float64, string) {
 		// Simple socket dial check on target host:80 or host:443
 		host := mon.Target
 		if !strings.Contains(host, ":") {
-			host = host + ":80"
+			host = net.JoinHostPort(host, "80")
 		}
 		conn, err := net.DialTimeout("tcp", host, timeout)
 		latency := float64(time.Since(start).Microseconds()) / 1000.0
@@ -433,6 +492,22 @@ func (m *Manager) Update(id string, name string, mType MonitorType, target strin
 	return *mon, nil
 }
 
+// SetPublic toggles whether a monitor is exposed on the unauthenticated
+// status page.
+func (m *Manager) SetPublic(id string, public bool) (Monitor, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mon, exists := m.monitors[id]
+	if !exists {
+		return Monitor{}, fmt.Errorf("monitor not found")
+	}
+	mon.Public = public
+	if err := m.saveLocked(); err != nil {
+		return Monitor{}, err
+	}
+	return *mon, nil
+}
+
 func (m *Manager) Delete(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -459,10 +534,10 @@ func SendWakeOnLAN(macAddr, broadcastIP string) error {
 
 	// Build 102-byte Magic Packet
 	packet := make([]byte, 102)
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		packet[i] = 0xFF
 	}
-	for i := 0; i < 16; i++ {
+	for i := range 16 {
 		copy(packet[6+i*6:], macBytes)
 	}
 

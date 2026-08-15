@@ -34,6 +34,7 @@ import { Updates } from "./pages/Updates";
 import { Account } from "./pages/Account";
 import { Monitoring } from "./pages/Monitoring";
 import { Storage } from "./pages/Storage";
+import { Status } from "./pages/Status";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -65,6 +66,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={!isLoading && user ? <Navigate to="/dashboard" replace /> : <Login />} />
+      <Route path="/status" element={<Status />} />
       <Route
         element={
           <RequireAuth>

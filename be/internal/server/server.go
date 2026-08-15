@@ -106,7 +106,7 @@ func New(d Deps) http.Handler {
 	tvH := &handlers.TV{Svc: d.TV}
 	usersH := &handlers.Users{Store: d.Store}
 	rolesH := &handlers.Roles{Store: d.Store}
-	hostsH := &handlers.Hosts{Store: d.Store, SSH: d.Hosts}
+	hostsH := &handlers.Hosts{Store: d.Store, SSH: d.Hosts, Prober: d.Prober}
 	auditH := &handlers.AuditLog{Log: d.Audit}
 	backupH := &handlers.Backups{Service: d.Backups, Audit: d.Audit}
 	healthH := &handlers.Health{Service: d.Health}
@@ -181,10 +181,14 @@ func New(d Deps) http.Handler {
 			mr.Get("/", monitorsH.List)
 			mr.With(auth.RequireRole("admin")).Post("/", monitorsH.Create)
 			mr.With(auth.RequireRole("admin")).Put("/{id}", monitorsH.Update)
+			mr.With(auth.RequireRole("admin")).Patch("/{id}/public", monitorsH.SetPublic)
 			mr.With(auth.RequireRole("admin")).Delete("/{id}", monitorsH.Delete)
 			mr.Post("/{id}/check", monitorsH.Check)
 		})
 		api.With(auth.RequireAuth).Post("/wol/wake", monitorsH.WakeOnLAN)
+
+		// Public Uptime Status Page (no auth) - shows only monitors flagged Public
+		api.Get("/status/public", monitorsH.PublicStatus)
 
 		// S.M.A.R.T. Disk Health & Storage Overview
 		api.Route("/storage", func(sr chi.Router) {

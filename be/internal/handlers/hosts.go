@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nawfdev/home-panel/internal/httpx"
+	"github.com/nawfdev/home-panel/internal/prober"
 	"github.com/nawfdev/home-panel/internal/sshmgr"
 	"github.com/nawfdev/home-panel/internal/store"
 )
@@ -15,12 +16,20 @@ import (
 // Hosts manages saved SSH targets (e.g. a secondary STB) the panel can run
 // terminal commands and browse files on.
 type Hosts struct {
-	Store *store.Store
-	SSH   *sshmgr.Manager
+	Store  *store.Store
+	SSH    *sshmgr.Manager
+	Prober *prober.Manager
 }
 
 func (h *Hosts) List(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, h.Store.ListHosts())
+}
+
+func (h *Hosts) ensureMonitor(host store.Host) {
+	if h.Prober == nil {
+		return
+	}
+	h.Prober.EnsureHostMonitor(prober.HostSeed{ID: host.ID, Name: host.Name, Address: host.Address, Port: host.Port})
 }
 
 // Create bootstraps a new host: the supplied password is used once to
@@ -51,6 +60,7 @@ func (h *Hosts) Create(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	h.ensureMonitor(host)
 	httpx.JSON(w, http.StatusOK, host)
 }
 
@@ -103,6 +113,7 @@ func (h *Hosts) Update(w http.ResponseWriter, r *http.Request) {
 			httpx.Error(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		h.ensureMonitor(host)
 		httpx.JSON(w, http.StatusOK, updatedHost)
 		return
 	}
@@ -111,6 +122,7 @@ func (h *Hosts) Update(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.ensureMonitor(host)
 	httpx.JSON(w, http.StatusOK, host)
 }
 
@@ -120,6 +132,9 @@ func (h *Hosts) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.Store.DeleteHost(id); err != nil {
 		httpx.Error(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if h.Prober != nil {
+		h.Prober.RemoveHostMonitor(id)
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"success": true})
 }
