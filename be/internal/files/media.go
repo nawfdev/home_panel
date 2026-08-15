@@ -8,27 +8,35 @@ import (
 )
 
 // MediaInfo validates userPath and reports its media type, any sidecar
-// subtitles, and the path the player should actually request bytes from
-// (for the in-panel player). type is "" for non-media files.
+// subtitles, embedded audio tracks, and the path the player should
+// actually request bytes from (for the in-panel player). type is "" for
+// non-media files.
 //
 // playPath differs from userPath only when the source isn't safely
 // browser-playable as-is (wrong container/codec) — in which case it points
 // at a generated ".web.mp4" sibling instead, leaving the original file (and
 // downloads of it) untouched. See EnsureWebPlayable.
-func (s *Service) MediaInfo(userPath string) (mt string, subs []Subtitle, playPath string, err error) {
+//
+// audio is only populated (2+ entries) when the file muxes more than one
+// audio stream — e.g. an Indonesian + English dub — since neither Chrome
+// nor Firefox exposes a working way to discover that client-side; see
+// DetectAudioTracks. Pick a track by requesting bytes with
+// "?audio=<AudioTrack.Index>" (ServePublicShare) or
+// "&audio=<AudioTrack.Index>" (the authenticated Download endpoint).
+func (s *Service) MediaInfo(userPath string) (mt string, subs []Subtitle, audio []AudioTrack, playPath string, err error) {
 	full, err := SafePath(userPath)
 	if err != nil {
-		return "", nil, "", err
+		return "", nil, nil, "", err
 	}
 	info, err := os.Stat(full)
 	if os.IsNotExist(err) {
-		return "", nil, "", errFileNotFound
+		return "", nil, nil, "", errFileNotFound
 	}
 	if err != nil {
-		return "", nil, "", err
+		return "", nil, nil, "", err
 	}
 	if info.IsDir() {
-		return "", nil, "", errReadDirectory
+		return "", nil, nil, "", errReadDirectory
 	}
 	mt = MediaType(full)
 	playFull := full
@@ -38,6 +46,7 @@ func (s *Service) MediaInfo(userPath string) (mt string, subs []Subtitle, playPa
 		// subtitle tracks pulled into sidecars — do it lazily on first view.
 		_ = ExtractEmbeddedSubtitles(full)
 		subs = DetectSubtitles(full)
+		audio = DetectAudioTracks(full)
 		if p, werr := EnsureWebPlayable(full); werr == nil {
 			playFull = p
 		}
@@ -46,7 +55,18 @@ func (s *Service) MediaInfo(userPath string) (mt string, subs []Subtitle, playPa
 	if playFull != full {
 		playPath = userPath[:len(userPath)-len(filepath.Ext(userPath))] + ".web.mp4"
 	}
-	return mt, subs, playPath, nil
+	return mt, subs, audio, playPath, nil
+}
+
+// MediaAudioVariant validates userPath and returns the on-disk path to serve
+// so the player plays audio track audioIndex (see AudioTrack.Index) instead
+// of the container's default. See EnsureWebPlayableAudio.
+func (s *Service) MediaAudioVariant(userPath string, audioIndex int) (string, error) {
+	full, err := SafePath(userPath)
+	if err != nil {
+		return "", err
+	}
+	return EnsureWebPlayableAudio(full, audioIndex)
 }
 
 // SubtitleForPath validates userPath and returns the named sidecar subtitle as

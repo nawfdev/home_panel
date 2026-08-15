@@ -1,5 +1,5 @@
 import { Modal } from "../components/ui/Modal";
-import { NestVideo } from "./NestVideo";
+import { NestVideo, type AudioTrackInfo } from "./NestVideo";
 
 interface Subtitle {
   name: string;
@@ -11,12 +11,14 @@ export function MediaPlayer({
   name,
   type,
   subtitles,
+  audioTracks = [],
   onClose,
 }: {
   path: string;
   name: string;
   type: "video" | "image" | "audio";
   subtitles: Subtitle[];
+  audioTracks?: AudioTrackInfo[];
   onClose: () => void;
 }) {
   const rawUrl = `/api/files/download?path=${encodeURIComponent(path)}`;
@@ -38,7 +40,7 @@ export function MediaPlayer({
           <audio src={rawUrl} controls className="w-full" />
         </div>
       ) : (
-        <NestVideo src={rawUrl} tracks={tracks} />
+        <NestVideo src={rawUrl} tracks={tracks} audioTracks={audioTracks} />
       )}
 
       <div className="text-center mt-4">

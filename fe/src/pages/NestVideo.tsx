@@ -29,6 +29,11 @@ const IcoCC = () => (
     <path d="M9.5 10.5a2 2 0 1 0 0 3M15.5 10.5a2 2 0 1 0 0 3" strokeLinecap="round" />
   </svg>
 );
+const IcoAudioTrack = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+    <path d="M4 10v4M9 6v12M14 9v6M19 4v16" />
+  </svg>
+);
 const IcoFull = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4" />
@@ -44,6 +49,18 @@ const IcoGear = () => (
 interface Track {
   label: string;
   url: string;
+}
+
+// One embedded audio track (e.g. an Indonesian + English dub), as reported
+// by the media-info API's ffprobe scan. Index matches the ?audio=<Index>
+// query param the "download" endpoint understands (see selectAudio below) —
+// switching can't be done client-side: neither Chrome nor Firefox exposes a
+// working way to discover or switch a <video>'s embedded audio tracks, so
+// picking one instead reloads the element at a URL the server remuxes down
+// to just that track.
+export interface AudioTrackInfo {
+  index: number;
+  label: string;
 }
 
 function fmt(t: number) {
@@ -88,12 +105,8 @@ function loadSubSetting<T extends string>(key: string, valid: readonly T[], fall
   const v = localStorage.getItem(key);
   return (valid as readonly string[]).includes(v ?? "") ? (v as T) : fallback;
 }
-const loadSubBg = () => loadSubSetting<SubBg>("np-subbg", ["solid", "semi", "none"], "solid");
-const loadSubSize = () => loadSubSetting<SubSize>("np-subsize", ["sm", "md", "lg", "xl"], "md");
-const loadSubColor = () => loadSubSetting<SubColor>("np-subcolor", ["white", "yellow", "cyan", "green"], "white");
-const loadSubEdge = () => loadSubSetting<SubEdge>("np-subedge", ["none", "drop", "outline"], "none");
 
-export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
+export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; tracks: Track[]; audioTracks?: AudioTrackInfo[] }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [paused, setPaused] = useState(true);
@@ -104,18 +117,22 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
   const [buffered, setBuffered] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [selTrack, setSelTrack] = useState(-1);
-  const [subBg, setSubBg] = useState<SubBg>(loadSubBg);
-  const [subSize, setSubSize] = useState<SubSize>(loadSubSize);
-  const [subColor, setSubColor] = useState<SubColor>(loadSubColor);
-  const [subEdge, setSubEdge] = useState<SubEdge>(loadSubEdge);
+  const [subBg, setSubBg] = useState<SubBg>(() => loadSubSetting<SubBg>("np-subbg", ["solid", "semi", "none"], "solid"));
+  const [subSize, setSubSize] = useState<SubSize>(() => loadSubSetting<SubSize>("np-subsize", ["sm", "md", "lg", "xl"], "md"));
+  const [subColor, setSubColor] = useState<SubColor>(() => loadSubSetting<SubColor>("np-subcolor", ["white", "yellow", "cyan", "green"], "white"));
+  const [subEdge, setSubEdge] = useState<SubEdge>(() => loadSubSetting<SubEdge>("np-subedge", ["none", "drop", "outline"], "none"));
   const [ccOpen, setCcOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [speedOpen, setSpeedOpen] = useState(false);
+  const [audioOpen, setAudioOpen] = useState(false);
+  const [audioIdx, setAudioIdx] = useState(-1); // -1 = server default (first track)
   const [hidden, setHidden] = useState(false);
   const [localTracks, setLocalTracks] = useState<Track[]>([]);
   const hideTimer = useRef<number | undefined>(undefined);
+  const pendingSeek = useRef<{ time: number; playing: boolean } | null>(null);
 
   const allTracks = [...tracks, ...localTracks];
+  const videoSrc = audioIdx < 0 ? src : `${src}&audio=${audioIdx}`;
 
   function toggle() {
     const v = videoRef.current;
@@ -137,6 +154,17 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
     }, 80);
     return () => clearTimeout(t);
   }, [selTrack, allTracks.length]);
+
+  function selectAudio(idx: number) {
+    if (idx === audioIdx) {
+      setAudioOpen(false);
+      return;
+    }
+    const v = videoRef.current;
+    pendingSeek.current = { time: v?.currentTime ?? 0, playing: !!v && !v.paused };
+    setAudioIdx(idx);
+    setAudioOpen(false);
+  }
 
   useEffect(() => {
     return () => localTracks.forEach((t) => URL.revokeObjectURL(t.url));
@@ -236,7 +264,7 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
       <video
         ref={videoRef}
         className="np-video"
-        src={src}
+        src={videoSrc}
         playsInline
         onClick={toggle}
         onDoubleClick={toggleFull}
@@ -244,6 +272,14 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
         onPause={() => setPaused(true)}
         onTimeUpdate={(e) => setCur(e.currentTarget.currentTime)}
         onDurationChange={(e) => setDur(e.currentTarget.duration)}
+        onLoadedMetadata={(e) => {
+          const p = pendingSeek.current;
+          if (p) {
+            e.currentTarget.currentTime = p.time;
+            if (p.playing) e.currentTarget.play();
+            pendingSeek.current = null;
+          }
+        }}
         onProgress={(e) => {
           const v = e.currentTarget;
           if (v.buffered.length && v.duration) setBuffered((v.buffered.end(v.buffered.length - 1) / v.duration) * 100);
@@ -318,6 +354,7 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
                 e.stopPropagation();
                 setSpeedOpen(false);
                 setSettingsOpen(false);
+                setAudioOpen(false);
                 setCcOpen((o) => !o);
               }}
               aria-label="Subtitles"
@@ -342,12 +379,43 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
             )}
           </div>
 
+          {audioTracks.length > 1 && (
+            <div className="np-pop">
+              <button
+                className="np-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCcOpen(false);
+                  setSettingsOpen(false);
+                  setSpeedOpen(false);
+                  setAudioOpen((o) => !o);
+                }}
+                aria-label="Audio track"
+              >
+                <IcoAudioTrack />
+              </button>
+              {audioOpen && (
+                <div className="np-menu">
+                  {audioTracks.map((t) => {
+                    const isActive = audioIdx < 0 ? t.index === 0 : t.index === audioIdx;
+                    return (
+                      <button key={t.index} className={`np-item ${isActive ? "active" : ""}`} onClick={() => selectAudio(t.index)}>
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="np-pop">
             <button
               className="np-btn"
               onClick={(e) => {
                 e.stopPropagation();
                 setCcOpen(false);
+                setAudioOpen(false);
                 setSpeedOpen(false);
                 setSettingsOpen((o) => !o);
               }}
@@ -423,6 +491,7 @@ export function NestVideo({ src, tracks }: { src: string; tracks: Track[] }) {
               onClick={(e) => {
                 e.stopPropagation();
                 setCcOpen(false);
+                setAudioOpen(false);
                 setSettingsOpen(false);
                 setSpeedOpen((o) => !o);
               }}

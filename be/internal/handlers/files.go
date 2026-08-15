@@ -134,6 +134,16 @@ func (f *Files) Download(w http.ResponseWriter, r *http.Request) {
 		fileError(w, err)
 		return
 	}
+	// ?audio=<AudioTrack.Index> switches which embedded audio track plays —
+	// only the in-panel player's <video> ever sends this; the Download
+	// button's href never does, so downloads always get the original file.
+	if audioParam := r.URL.Query().Get("audio"); audioParam != "" {
+		if idx, perr := strconv.Atoi(audioParam); perr == nil {
+			if variant, verr := f.Svc.MediaAudioVariant(path, idx); verr == nil {
+				fullPath = variant
+			}
+		}
+	}
 	if ct := filesvc.ContentTypeFor(fullPath); ct != "" {
 		w.Header().Set("Content-Type", ct)
 	}
@@ -181,7 +191,7 @@ func (f *Files) MediaInfo(w http.ResponseWriter, r *http.Request) {
 		Path string `json:"path"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	mt, subs, path, err := f.Svc.MediaInfo(req.Path)
+	mt, subs, audio, path, err := f.Svc.MediaInfo(req.Path)
 	if err != nil {
 		fileError(w, err)
 		return
@@ -189,7 +199,10 @@ func (f *Files) MediaInfo(w http.ResponseWriter, r *http.Request) {
 	if subs == nil {
 		subs = []filesvc.Subtitle{}
 	}
-	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "type": mt, "subtitles": subs, "path": path})
+	if audio == nil {
+		audio = []filesvc.AudioTrack{}
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "type": mt, "subtitles": subs, "audioTracks": audio, "path": path})
 }
 
 func (f *Files) Subtitle(w http.ResponseWriter, r *http.Request) {
@@ -277,29 +290,38 @@ func (f *Files) ServePublicShare(w http.ResponseWriter, r *http.Request) {
 	// ?raw=1 serves the raw bytes (range-enabled for video seeking); without it,
 	// a media file gets the player page and any other file gets a themed
 	// download landing page instead of an immediate download. ?raw=1&web=1
-	// serves a web-compat sibling instead of target — only ever requested by
-	// the player's own <video> src (see videoSrc below), never the Download
+	// serves a web-compat sibling instead of target, and ?raw=1&audio=<N>
+	// serves a sibling remuxed down to embedded audio track N — both only
+	// ever requested by the player's own <video> src, never the Download
 	// button/link, so downloads always get the original bytes.
 	if q.Get("raw") != "1" {
 		if mt := filesvc.MediaType(info.Name()); mt != "" {
 			var subs []filesvc.Subtitle
+			var audioTracks []filesvc.AudioTrack
 			videoSrc := r.URL.Path + "?raw=1"
 			if mt == "video" {
 				_ = filesvc.ExtractEmbeddedSubtitles(target)
 				subs = filesvc.DetectSubtitles(target)
+				audioTracks = filesvc.DetectAudioTracks(target)
 				if playable, werr := filesvc.EnsureWebPlayable(target); werr == nil && playable != target {
 					videoSrc = r.URL.Path + "?raw=1&web=1"
 				}
 			}
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			_, _ = w.Write([]byte(filesvc.PlayerHTML(mt, r.URL.Path, videoSrc, info.Name(), info.Size(), info.ModTime(), subs, httpx.CSPNonce(r))))
+			_, _ = w.Write([]byte(filesvc.PlayerHTML(mt, r.URL.Path, videoSrc, info.Name(), info.Size(), info.ModTime(), subs, audioTracks, httpx.CSPNonce(r))))
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(filesvc.DownloadPageHTML(r.URL.Path, info.Name(), info.Size(), info.ModTime(), httpx.CSPNonce(r))))
 		return
 	}
-	if q.Get("web") == "1" {
+	if audioParam := q.Get("audio"); audioParam != "" {
+		if idx, perr := strconv.Atoi(audioParam); perr == nil {
+			if variant, verr := filesvc.EnsureWebPlayableAudio(target, idx); verr == nil {
+				target = variant
+			}
+		}
+	} else if q.Get("web") == "1" {
 		if playable, werr := filesvc.EnsureWebPlayable(target); werr == nil {
 			target = playable
 		}

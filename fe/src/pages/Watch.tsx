@@ -4,7 +4,7 @@ import { api } from "../lib/api";
 import { useToast } from "../context/ToastContext";
 import { Panel } from "../components/ui/Panel";
 import { ShareQr } from "../components/ui/ShareQr";
-import { NestVideo } from "./NestVideo";
+import { NestVideo, type AudioTrackInfo } from "./NestVideo";
 import { copyText } from "../lib/clipboard";
 import {
   ArrowLeftIcon,
@@ -46,6 +46,7 @@ export function Watch() {
   const { show } = useToast();
   const [job, setJob] = useState<Job | null | undefined>(undefined); // undefined = loading, null = not found
   const [subtitles, setSubtitles] = useState<{ name: string; label: string }[]>([]);
+  const [audioTracks, setAudioTracks] = useState<AudioTrackInfo[]>([]);
 
   const [shareOpen, setShareOpen] = useState(false);
   const [shareTtl, setShareTtl] = useState(0);
@@ -65,11 +66,14 @@ export function Watch() {
         const found = (data.jobs ?? []).find((j) => j.id === id && j.status === "done");
         setJob(found ?? null);
         if (found) {
-          const info = await api<{ success: boolean; type: string; subtitles: { name: string; label: string }[] }>(
-            "/files/media-info",
-            { method: "POST", body: JSON.stringify({ path: found.dest }) }
-          );
+          const info = await api<{
+            success: boolean;
+            type: string;
+            subtitles: { name: string; label: string }[];
+            audioTracks: AudioTrackInfo[];
+          }>("/files/media-info", { method: "POST", body: JSON.stringify({ path: found.dest }) });
           setSubtitles(info.subtitles ?? []);
+          setAudioTracks(info.audioTracks ?? []);
         }
       } catch {
         setJob(null);
@@ -171,7 +175,7 @@ export function Watch() {
       <h2 className="text-xl font-bold text-gray-100 mb-4">{job.title}</h2>
 
       <div className="bg-black rounded-lg overflow-hidden mb-4">
-        <NestVideo src={rawUrl} tracks={tracks} />
+        <NestVideo src={rawUrl} tracks={tracks} audioTracks={audioTracks} />
       </div>
 
       <div className="flex flex-wrap gap-2 mb-6">

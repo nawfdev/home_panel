@@ -126,9 +126,17 @@ body{min-height:100vh}
 // but the caller may point it at a web-compat sibling instead (see
 // EnsureWebPlayable) while the Download button/link below still uses the
 // original via basePath?raw=1, so downloads are never affected.
-func PlayerHTML(mediaType, basePath, videoSrc, fileName string, size int64, modTime time.Time, subs []Subtitle, nonce string) string {
+//
+// audio lists the file's embedded audio tracks (2+ entries — e.g. an
+// Indonesian + English dub — or nil for a single track). Chrome/Firefox
+// don't expose a working client-side way to discover or switch between
+// muxed audio tracks, so the picker is server-driven: picking a track
+// reloads the <video> at "basePath?raw=1&audio=<AudioTrack.Index>", which
+// EnsureWebPlayableAudio serves as a remuxed single-track file.
+func PlayerHTML(mediaType, basePath, videoSrc, fileName string, size int64, modTime time.Time, subs []Subtitle, audio []AudioTrack, nonce string) string {
 	rawURL := basePath + "?raw=1"
 	subsJSON, _ := json.Marshal(subtitleTracks(basePath, subs))
+	audioJSON, _ := json.Marshal(audio)
 
 	var b strings.Builder
 	b.WriteString(`<!doctype html><html><head>`)
@@ -158,11 +166,19 @@ func PlayerHTML(mediaType, basePath, videoSrc, fileName string, size int64, modT
 	// Custom video player.
 	b.WriteString(videoPlayerHTML(videoSrc))
 	b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
-	b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">window.__SUBS__=` + string(subsJSON) + `;</script>`)
+	b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">window.__SUBS__=` + string(subsJSON) + `;window.__AUDIO__=` + string(audioJSON) + `;window.__AUDIO_BASE__=` + mustJSONString(rawURL) + `;</script>`)
 	b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">` + renderedPlayerJS() + `</script>`)
 	b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">` + shareActionsJS + `</script>`)
 	b.WriteString(`</body></html>`)
 	return b.String()
+}
+
+// mustJSONString marshals s as a JSON string literal for inlining into a
+// <script> block (handles quoting/escaping so basePath's own characters
+// can't break out of the literal).
+func mustJSONString(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }
 
 // mediaActionsHTML is the info + actions block below the player/image: file
@@ -179,7 +195,7 @@ func mediaActionsHTML(rawURL, fileName string, size int64, modTime time.Time) st
 
 func videoPlayerHTML(rawURL string) string {
 	return `<div class="np subbg-solid subsize-md subcolor-white subedge-none" id="np" tabindex="0">
-<video class="np-video" id="npvideo" playsinline><source src="` + htmlEscape(rawURL) + `"></video>
+<video class="np-video" id="npvideo" playsinline src="` + htmlEscape(rawURL) + `"></video>
 <div class="np-center"><button class="np-bigplay" id="npbig" aria-label="Play">` + icoPlay + `</button></div>
 <div class="np-scrim"></div>
 <div class="np-controls" id="npctrls">
@@ -193,6 +209,10 @@ func videoPlayerHTML(rawURL string) string {
     <div class="np-pop">
       <button class="np-btn" id="npcc" aria-label="Subtitles">` + icoCC + `</button>
       <div class="np-menu" id="npccmenu"></div>
+    </div>
+    <div class="np-pop" id="npaudiowrap" style="display:none">
+      <button class="np-btn" id="npaudio" aria-label="Audio track">` + icoAudioTrack + `</button>
+      <div class="np-menu" id="npaudiomenu"></div>
     </div>
     <div class="np-pop">
       <button class="np-btn" id="npsettings" aria-label="Subtitle settings">` + icoGear + `</button>
@@ -224,13 +244,14 @@ func subtitleTracks(basePath string, subs []Subtitle) []subtitleTrack {
 
 // Minimal monochrome line/solid SVG icons (24x24, currentColor).
 const (
-	icoPlay  = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`
-	icoPause = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>`
-	icoVol   = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16 8.5a4 4 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>`
-	icoMute  = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M17 9l4 4m0-4l-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`
-	icoCC    = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M9.5 10.5a2 2 0 1 0 0 3M15.5 10.5a2 2 0 1 0 0 3" stroke-linecap="round"/></svg>`
-	icoFull  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>`
-	icoGear  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
+	icoPlay       = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`
+	icoPause      = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>`
+	icoVol        = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16 8.5a4 4 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>`
+	icoMute       = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M17 9l4 4m0-4l-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`
+	icoCC         = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M9.5 10.5a2 2 0 1 0 0 3M15.5 10.5a2 2 0 1 0 0 3" stroke-linecap="round"/></svg>`
+	icoAudioTrack = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10v4M9 6v12M14 9v6M19 4v16"/></svg>`
+	icoFull       = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>`
+	icoGear       = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
 )
 
 // renderedPlayerJS injects the pause/volume/mute SVG icons (which the script
@@ -338,6 +359,7 @@ const playerJS = `
   var buf=document.getElementById('npbuf'), thumb=document.getElementById('npthumb');
   var timeEl=document.getElementById('nptime'), fullBtn=document.getElementById('npfull');
   var ccBtn=document.getElementById('npcc'), ccMenu=document.getElementById('npccmenu');
+  var audioWrap=document.getElementById('npaudiowrap'), audioBtn=document.getElementById('npaudio'), audioMenu=document.getElementById('npaudiomenu');
   var settingsBtn=document.getElementById('npsettings'), settingsMenu=document.getElementById('npsettingsmenu');
   var speedBtn=document.getElementById('npspeed'), speedMenu=document.getElementById('npspeedmenu');
   var subFile=document.getElementById('npsubfile');
@@ -348,6 +370,7 @@ const playerJS = `
     function p(n){return (n<10?'0':'')+n;} return h>0? h+':'+p(m)+':'+p(s) : m+':'+p(s); }
   function setPlayIcon(){ var i=v.paused?ICON_PLAY:ICON_PAUSE; playBtn.innerHTML=i; big.innerHTML=ICON_PLAY; np.classList.toggle('paused',v.paused); }
   function toggle(){ if(v.paused) v.play(); else v.pause(); }
+  function closeMenus(){ ccMenu.classList.remove('open'); audioMenu.classList.remove('open'); settingsMenu.classList.remove('open'); speedMenu.classList.remove('open'); }
 
   big.addEventListener('click',toggle);
   playBtn.addEventListener('click',toggle);
@@ -386,7 +409,7 @@ const playerJS = `
   // speed menu
   var speeds=[0.5,0.75,1,1.25,1.5,2];
   speeds.forEach(function(s){ var b=document.createElement('button'); b.className='np-item'+(s===1?' active':''); b.textContent=s+'x'; b.onclick=function(){ v.playbackRate=s; speedBtn.textContent=s+'x'; [].forEach.call(speedMenu.children,function(c){c.classList.remove('active');}); b.classList.add('active'); speedMenu.classList.remove('open'); }; speedMenu.appendChild(b); });
-  speedBtn.addEventListener('click',function(e){ e.stopPropagation(); ccMenu.classList.remove('open'); settingsMenu.classList.remove('open'); speedMenu.classList.toggle('open'); });
+  speedBtn.addEventListener('click',function(e){ e.stopPropagation(); closeMenus(); speedMenu.classList.toggle('open'); });
 
   // subtitles
   var trackEls=[];
@@ -400,7 +423,42 @@ const playerJS = `
   }
   (window.__SUBS__||[]).forEach(function(s){ addTrack(s.label,s.url); });
   rebuildCCMenu();
-  ccBtn.addEventListener('click',function(e){ e.stopPropagation(); speedMenu.classList.remove('open'); settingsMenu.classList.remove('open'); ccMenu.classList.toggle('open'); });
+  ccBtn.addEventListener('click',function(e){ e.stopPropagation(); closeMenus(); ccMenu.classList.toggle('open'); });
+
+  // audio tracks — for containers muxing more than one audio stream (e.g. an
+  // Indonesian + English dub). Neither Chrome nor Firefox exposes a working
+  // client-side way to discover or switch embedded audio tracks, so the
+  // track list comes from the server (window.__AUDIO__, from ffprobe) and
+  // switching reloads the <video> at a URL the server remuxes down to that
+  // single track (window.__AUDIO_BASE__ + "&audio=<index>").
+  var AUDIO_TRACKS=window.__AUDIO__||[];
+  var AUDIO_BASE=window.__AUDIO_BASE__||'';
+  var curAudio=-1; // -1 = server default (first track), no ?audio param yet
+  function audioURL(idx){ return AUDIO_BASE+'&audio='+idx; }
+  function rebuildAudioMenu(){
+    if(AUDIO_TRACKS.length<=1){ audioWrap.style.display='none'; return; }
+    audioWrap.style.display='';
+    audioMenu.innerHTML='';
+    AUDIO_TRACKS.forEach(function(t){
+      var isActive = curAudio===-1 ? t.index===0 : t.index===curAudio;
+      var b=document.createElement('button'); b.className='np-item'+(isActive?' active':''); b.textContent=t.label;
+      b.onclick=function(){ selectAudio(t.index); };
+      audioMenu.appendChild(b);
+    });
+  }
+  function selectAudio(idx){
+    if(idx===curAudio) { audioMenu.classList.remove('open'); return; }
+    var wasPlaying=!v.paused, t=v.currentTime;
+    curAudio=idx;
+    var resume=function(){ v.currentTime=t; if(wasPlaying) v.play(); v.removeEventListener('loadedmetadata',resume); };
+    v.addEventListener('loadedmetadata',resume);
+    v.src=audioURL(idx);
+    v.load();
+    rebuildAudioMenu();
+    audioMenu.classList.remove('open');
+  }
+  rebuildAudioMenu();
+  audioBtn.addEventListener('click',function(e){ e.stopPropagation(); closeMenus(); audioMenu.classList.toggle('open'); });
 
   // subtitle style settings (size / color / background / edge)
   var subDims=[
@@ -429,14 +487,14 @@ const playerJS = `
   }
   subDims.forEach(function(d){ setDim(d,loadDim(d)); });
   rebuildSettingsMenu();
-  settingsBtn.addEventListener('click',function(e){ e.stopPropagation(); ccMenu.classList.remove('open'); speedMenu.classList.remove('open'); settingsMenu.classList.toggle('open'); });
+  settingsBtn.addEventListener('click',function(e){ e.stopPropagation(); closeMenus(); settingsMenu.classList.toggle('open'); });
 
   function srtToVtt(t){ return 'WEBVTT\n\n'+t.replace(/\r\n/g,'\n').replace(/(\d\d:\d\d:\d\d),(\d\d\d)/g,'$1.$2'); }
   subFile.addEventListener('change',function(){ var f=subFile.files&&subFile.files[0]; if(!f)return; var r=new FileReader();
     r.onload=function(){ var txt=String(r.result||''); if(/\.srt$/i.test(f.name)) txt=srtToVtt(txt); var url=URL.createObjectURL(new Blob([txt],{type:'text/vtt'}));
       var idx=addTrack(f.name+' (local)',url); rebuildCCMenu(); setTimeout(function(){ showTrack(idx); },80); }; r.readAsText(f); });
 
-  document.addEventListener('click',function(){ ccMenu.classList.remove('open'); settingsMenu.classList.remove('open'); speedMenu.classList.remove('open'); });
+  document.addEventListener('click',closeMenus);
 
   // auto-hide controls
   var hideT;

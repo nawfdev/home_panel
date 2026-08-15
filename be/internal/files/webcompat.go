@@ -38,10 +38,12 @@ type probeCodecsOutput struct {
 	Streams []probeCodecStream `json:"streams"`
 }
 
-// probeCodecs returns the first video and audio codec name ffprobe reports
-// for path (e.g. "h264", "aac", "ac3"). Either can come back empty if the
+// probeCodecs returns the first video codec ffprobe reports for path (e.g.
+// "h264", "hevc"), plus every audio codec present — one entry per audio
+// stream, so a dual-audio file (e.g. an Indonesian + English dub) reports
+// two, possibly different, codecs. Either can come back empty/nil if the
 // file has no such stream.
-func probeCodecs(path string) (videoCodec, audioCodec string, err error) {
+func probeCodecs(path string) (videoCodec string, audioCodecs []string, err error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "ffprobe",
@@ -49,11 +51,11 @@ func probeCodecs(path string) (videoCodec, audioCodec string, err error) {
 		path,
 	).Output()
 	if err != nil {
-		return "", "", fmt.Errorf("ffprobe: %w", err)
+		return "", nil, fmt.Errorf("ffprobe: %w", err)
 	}
 	var probe probeCodecsOutput
 	if err := json.Unmarshal(out, &probe); err != nil {
-		return "", "", fmt.Errorf("ffprobe output: %w", err)
+		return "", nil, fmt.Errorf("ffprobe output: %w", err)
 	}
 	for _, s := range probe.Streams {
 		switch s.CodecType {
@@ -62,12 +64,10 @@ func probeCodecs(path string) (videoCodec, audioCodec string, err error) {
 				videoCodec = s.CodecName
 			}
 		case "audio":
-			if audioCodec == "" {
-				audioCodec = s.CodecName
-			}
+			audioCodecs = append(audioCodecs, s.CodecName)
 		}
 	}
-	return videoCodec, audioCodec, nil
+	return videoCodec, audioCodecs, nil
 }
 
 // EnsureWebPlayable checks whether path's container+codecs are safe to play
@@ -78,9 +78,12 @@ func probeCodecs(path string) (videoCodec, audioCodec string, err error) {
 // reused rather than regenerated.
 //
 // Video is always stream-copied (never re-encoded) when a sibling is built.
-// Audio is stream-copied when its codec is already browser-safe, or
-// transcoded to AAC when it isn't (e.g. AC3/DTS from a Blu-ray rip) — the
-// only lossy step, and only the audio track.
+// Every audio track is carried over (not just ffmpeg's default "best"
+// pick — otherwise a dual-audio file, e.g. Indonesian + English, would
+// silently lose its second language on remux); each is stream-copied when
+// its codec is already browser-safe, or transcoded to AAC when any track
+// isn't (e.g. AC3/DTS from a Blu-ray rip) — the only lossy step, and only
+// the audio.
 func EnsureWebPlayable(path string) (string, error) {
 	if !ffmpegAvailable || !ffprobeAvailable || MediaType(path) != "video" {
 		return path, nil
@@ -93,13 +96,13 @@ func EnsureWebPlayable(path string) (string, error) {
 		}
 	}
 
-	videoCodec, audioCodec, err := probeCodecs(path)
+	videoCodec, audioCodecs, err := probeCodecs(path)
 	if err != nil {
 		return path, err
 	}
 	containerOK := browserSafeContainers[strings.ToLower(filepath.Ext(path))]
 	videoOK := videoCodec == "" || browserSafeVideoCodecs[videoCodec]
-	audioOK := audioCodec == "" || browserSafeAudioCodecs[audioCodec]
+	audioOK := allAudioCodecsSafe(audioCodecs)
 	if containerOK && videoOK && audioOK {
 		return path, nil // already playable as-is
 	}
@@ -115,17 +118,90 @@ func EnsureWebPlayable(path string) (string, error) {
 	if !audioOK {
 		audioArgs = []string{"-c:a", "aac", "-b:a", "192k"}
 	}
+	args := []string{"-y", "-i", path, "-map", "0:v:0"}
+	if len(audioCodecs) > 0 {
+		args = append(args, "-map", "0:a")
+	}
+	args = append(args, "-c:v", "copy")
+	args = append(args, audioArgs...)
+	args = append(args, "-sn", "-movflags", "+faststart", sibling)
+	result, err := runRemux(args, sibling)
+	if err != nil {
+		return path, err
+	}
+	return result, nil
+}
+
+// EnsureWebPlayableAudio produces (and caches) a "<base>.web.a<audioIndex>.mp4"
+// sibling containing only the video stream plus the single chosen audio
+// stream (audioIndex is 0-based among audio streams, matching AudioTrack.Index
+// from DetectAudioTracks) — the only way to make a browser play a specific
+// embedded audio track, since neither Chrome nor Firefox will switch tracks
+// in an already-loaded multi-audio file via JS. audioIndex < 0 delegates to
+// EnsureWebPlayable's existing single-request behavior (default track).
+func EnsureWebPlayableAudio(path string, audioIndex int) (string, error) {
+	if audioIndex < 0 {
+		return EnsureWebPlayable(path)
+	}
+	if !ffmpegAvailable || !ffprobeAvailable || MediaType(path) != "video" {
+		return path, nil
+	}
+
+	sibling := fmt.Sprintf("%s.web.a%d.mp4", path[:len(path)-len(filepath.Ext(path))], audioIndex)
+	if srcInfo, err := os.Stat(path); err == nil {
+		if sibInfo, err := os.Stat(sibling); err == nil && !sibInfo.ModTime().Before(srcInfo.ModTime()) {
+			return sibling, nil
+		}
+	}
+
+	videoCodec, audioCodecs, err := probeCodecs(path)
+	if err != nil {
+		return path, err
+	}
+	if audioIndex >= len(audioCodecs) {
+		return path, fmt.Errorf("audio track %d not found (file has %d)", audioIndex, len(audioCodecs))
+	}
+	if videoCodec != "" && !browserSafeVideoCodecs[videoCodec] {
+		return path, fmt.Errorf("video codec %q isn't browser-safe and re-encoding video isn't supported", videoCodec)
+	}
+
+	audioArgs := []string{"-c:a", "copy"}
+	if !browserSafeAudioCodecs[audioCodecs[audioIndex]] {
+		audioArgs = []string{"-c:a", "aac", "-b:a", "192k"}
+	}
+	args := []string{"-y", "-i", path, "-map", "0:v:0", "-map", fmt.Sprintf("0:a:%d", audioIndex), "-c:v", "copy"}
+	args = append(args, audioArgs...)
+	args = append(args, "-sn", "-movflags", "+faststart", sibling)
+	result, err := runRemux(args, sibling)
+	if err != nil {
+		return path, err
+	}
+	return result, nil
+}
+
+func allAudioCodecsSafe(codecs []string) bool {
+	for _, c := range codecs {
+		if !browserSafeAudioCodecs[c] {
+			return false
+		}
+	}
+	return true
+}
+
+// runRemux shells out to ffmpeg with args (whose last element must be the
+// output path) and validates the result, sharing the same "clean up on
+// failure/empty output" handling used by both EnsureWebPlayable and
+// EnsureWebPlayableAudio.
+func runRemux(args []string, output string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	args := append([]string{"-y", "-i", path, "-c:v", "copy"}, audioArgs...)
-	args = append(args, "-sn", "-movflags", "+faststart", sibling)
 	if err := exec.CommandContext(ctx, "ffmpeg", args...).Run(); err != nil {
-		_ = os.Remove(sibling)
-		return path, fmt.Errorf("ffmpeg: %w", err)
+		_ = os.Remove(output)
+		return "", fmt.Errorf("ffmpeg: %w", err)
 	}
-	if info, err := os.Stat(sibling); err != nil || info.Size() == 0 {
-		_ = os.Remove(sibling)
-		return path, fmt.Errorf("ffmpeg produced an empty file")
+	if info, err := os.Stat(output); err != nil || info.Size() == 0 {
+		_ = os.Remove(output)
+		return "", fmt.Errorf("ffmpeg produced an empty file")
 	}
-	return sibling, nil
+	return output, nil
 }

@@ -5,6 +5,7 @@ import { Panel } from "../components/ui/Panel";
 import { Modal } from "../components/ui/Modal";
 import { ShareQr } from "../components/ui/ShareQr";
 import { MediaPlayer } from "./MediaPlayer";
+import type { AudioTrackInfo } from "./NestVideo";
 import { formatBytes } from "../lib/format";
 import { copyText } from "../lib/clipboard";
 import type { Host } from "../lib/hosts";
@@ -68,6 +69,7 @@ export function Files() {
     name: string;
     type: "video" | "image" | "audio";
     subtitles: { name: string; label: string }[];
+    audioTracks: AudioTrackInfo[];
   } | null>(null);
 
   async function loadDirectory(p: string) {
@@ -148,15 +150,24 @@ export function Files() {
     }
     // Media files open in the player; everything else in the text viewer.
     try {
-      const info = await api<{ success: boolean; type: string; subtitles: { name: string; label: string }[]; path?: string }>(
-        "/files/media-info",
-        { method: "POST", body: JSON.stringify({ path: item.path }) }
-      );
+      const info = await api<{
+        success: boolean;
+        type: string;
+        subtitles: { name: string; label: string }[];
+        audioTracks: AudioTrackInfo[];
+        path?: string;
+      }>("/files/media-info", { method: "POST", body: JSON.stringify({ path: item.path }) });
       if (info.type === "video" || info.type === "image" || info.type === "audio") {
         // path may point at a generated ".web.mp4" sibling instead of
         // item.path when the original isn't safely browser-playable — the
         // original itself is untouched, so downloads still use item.path.
-        setPlayer({ path: info.path || item.path, name: item.name, type: info.type, subtitles: info.subtitles ?? [] });
+        setPlayer({
+          path: info.path || item.path,
+          name: item.name,
+          type: info.type,
+          subtitles: info.subtitles ?? [],
+          audioTracks: info.audioTracks ?? [],
+        });
         return;
       }
     } catch {
@@ -464,6 +475,7 @@ export function Files() {
           name={player.name}
           type={player.type}
           subtitles={player.subtitles}
+          audioTracks={player.audioTracks}
           onClose={() => setPlayer(null)}
         />
       )}
