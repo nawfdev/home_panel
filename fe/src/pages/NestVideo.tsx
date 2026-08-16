@@ -165,15 +165,15 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
     const v = videoRef.current;
     if (!v) return;
     for (let i = 0; i < v.textTracks.length; i++) {
-      v.textTracks[i].mode = i === selTrack ? "showing" : "disabled";
+      v.textTracks[i].mode = i === selTrack ? "hidden" : "disabled";
     }
     const t = window.setTimeout(() => {
       for (let i = 0; i < v.textTracks.length; i++) {
         v.textTracks[i].mode = i === selTrack ? "showing" : "disabled";
       }
-    }, 80);
+    }, 50);
     return () => clearTimeout(t);
-  }, [selTrack, allTracks.length]);
+  }, [selTrack, allTracks.length, subBg, subSize, subColor, subEdge]);
 
   function selectAudio(idx: number) {
     if (idx === audioIdx) {

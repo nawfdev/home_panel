@@ -368,21 +368,21 @@ body{min-height:100vh}
 .np-swatch{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;padding:0}
 .np-swatch.active{border-color:#fafafa;box-shadow:0 0 0 2px rgba(0,0,0,.4)}
 
-.np video::cue{font-family:"Plus Jakarta Sans",sans-serif}
-.np.subbg-solid video::cue{background:rgba(0,0,0,.72)}
-.np.subbg-semi video::cue{background:rgba(0,0,0,.35)}
-.np.subbg-none video::cue{background:transparent}
-.np.subsize-sm video::cue{font-size:.75em}
-.np.subsize-md video::cue{font-size:1em}
-.np.subsize-lg video::cue{font-size:1.3em}
-.np.subsize-xl video::cue{font-size:1.6em}
-.np.subcolor-white video::cue{color:#fff}
-.np.subcolor-yellow video::cue{color:#ffeb3b}
-.np.subcolor-cyan video::cue{color:#00e5ff}
-.np.subcolor-green video::cue{color:#76ff03}
-.np.subedge-none video::cue{text-shadow:none}
-.np.subedge-drop video::cue{text-shadow:0 2px 3px rgba(0,0,0,.9)}
-.np.subedge-outline video::cue{text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000,0 0 4px rgba(0,0,0,.8)}
+.np video::cue{font-family:"Plus Jakarta Sans",sans-serif!important}
+.np.subbg-solid video::cue{background:rgba(0,0,0,.72)!important}
+.np.subbg-semi video::cue{background:rgba(0,0,0,.35)!important}
+.np.subbg-none video::cue{background:transparent!important}
+.np.subsize-sm video::cue{font-size:.75em!important}
+.np.subsize-md video::cue{font-size:1em!important}
+.np.subsize-lg video::cue{font-size:1.35em!important}
+.np.subsize-xl video::cue{font-size:1.7em!important}
+.np.subcolor-white video::cue{color:#fff!important}
+.np.subcolor-yellow video::cue{color:#ffeb3b!important}
+.np.subcolor-cyan video::cue{color:#00e5ff!important}
+.np.subcolor-green video::cue{color:#76ff03!important}
+.np.subedge-none video::cue{text-shadow:none!important}
+.np.subedge-drop video::cue{text-shadow:0 2px 3px rgba(0,0,0,.9)!important}
+.np.subedge-outline video::cue{text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000,0 0 4px rgba(0,0,0,.8)!important}
 `
 
 const playerJS = `
@@ -517,8 +517,9 @@ const playerJS = `
     {cls:'subbg',store:'np-subbg',def:'solid',opts:[['solid','Solid'],['semi','Semi'],['none','None']],label:'Background',kind:'chip'},
     {cls:'subedge',store:'np-subedge',def:'none',opts:[['none','None'],['drop','Drop shadow'],['outline','Outline']],label:'Edge style',kind:'chip'}
   ];
+  function refreshCues(){ for(var i=0;i<v.textTracks.length;i++){ var t=v.textTracks[i]; if(t.mode==='showing'){ t.mode='hidden'; (function(tr){ setTimeout(function(){ tr.mode='showing'; },40); })(t); } } }
   function loadDim(d){ var v; try{v=localStorage.getItem(d.store);}catch(e){} return d.opts.some(function(o){return o[0]===v;})?v:d.def; }
-  function setDim(d,id){ d.opts.forEach(function(o){ np.classList.remove(d.cls+'-'+o[0]); }); np.classList.add(d.cls+'-'+id); try{localStorage.setItem(d.store,id);}catch(e){} }
+  function setDim(d,id){ d.opts.forEach(function(o){ np.classList.remove(d.cls+'-'+o[0]); }); np.classList.add(d.cls+'-'+id); try{localStorage.setItem(d.store,id);}catch(e){} refreshCues(); }
   function rebuildSettingsMenu(){ settingsMenu.innerHTML='';
     subDims.forEach(function(d){
       var row=document.createElement('div'); row.className='np-setrow';
