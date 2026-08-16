@@ -101,7 +101,7 @@ export function Network() {
     }
   }
 
-  useInterval(loadStats, 2000);
+  useInterval(loadStats, 5000);
   useInterval(loadHistory, 60000);
 
   useEffect(() => {

@@ -119,7 +119,7 @@ func New(d Deps) http.Handler {
 	terminalExtraH := &handlers.TerminalExtra{Store: d.Store, SSH: d.Hosts}
 
 	// Rate limiters mirror express-rate-limit windows from server.js.
-	apiLimiter := httpx.NewRateLimiter(15*time.Minute, 500, false,
+	apiLimiter := httpx.NewRateLimiter(15*time.Minute, 500, true,
 		"Too many requests from this IP, please try again later.")
 	loginLimiter := httpx.NewRateLimiter(15*time.Minute, 10, true,
 		"Too many login attempts, please try again later.")
