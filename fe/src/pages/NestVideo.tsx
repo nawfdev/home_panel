@@ -128,6 +128,7 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
   const [audioIdx, setAudioIdx] = useState(-1); // -1 = server default (first track)
   const [hidden, setHidden] = useState(false);
   const [localTracks, setLocalTracks] = useState<Track[]>([]);
+  const [activeCue, setActiveCue] = useState<string | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const hideTimer = useRef<number | undefined>(undefined);
   const pendingSeek = useRef<{ time: number; playing: boolean } | null>(null);
@@ -164,16 +165,36 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    for (let i = 0; i < v.textTracks.length; i++) {
-      v.textTracks[i].mode = i === selTrack ? "hidden" : "disabled";
-    }
-    const t = window.setTimeout(() => {
-      for (let i = 0; i < v.textTracks.length; i++) {
-        v.textTracks[i].mode = i === selTrack ? "showing" : "disabled";
+
+    const updateCue = () => {
+      if (selTrack >= 0 && selTrack < v.textTracks.length) {
+        const t = v.textTracks[selTrack];
+        if (t.activeCues && t.activeCues.length > 0) {
+          const cue = t.activeCues[0] as VTTCue;
+          setActiveCue(cue ? cue.text : null);
+          return;
+        }
       }
-    }, 50);
-    return () => clearTimeout(t);
-  }, [selTrack, allTracks.length, subBg, subSize, subColor, subEdge]);
+      setActiveCue(null);
+    };
+
+    for (let i = 0; i < v.textTracks.length; i++) {
+      const t = v.textTracks[i];
+      if (i === selTrack) {
+        t.mode = "hidden";
+        t.oncuechange = updateCue;
+      } else {
+        t.mode = "disabled";
+        t.oncuechange = null;
+      }
+    }
+
+    if (selTrack < 0) {
+      setActiveCue(null);
+    } else {
+      updateCue();
+    }
+  }, [selTrack, allTracks.length]);
 
   function selectAudio(idx: number) {
     if (idx === audioIdx) {
@@ -329,6 +350,13 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
         ))}
       </video>
 
+      {activeCue && (
+        <div className="np-sub-overlay">
+          <span className={`np-sub-cue subsize-${subSize} subcolor-${subColor} subbg-${subBg} subedge-${subEdge}`}>
+            {activeCue}
+          </span>
+        </div>
+      )}
       <div className="np-center">
         {videoError ? (
           <div className="np-error">

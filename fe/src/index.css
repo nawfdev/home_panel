@@ -638,3 +638,51 @@ h1, h2, h3, h4 {
 .np.subedge-outline video::cue {
   text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 0 4px rgba(0, 0, 0, 0.8) !important;
 }
+
+/* Custom DOM subtitle overlay */
+.np-sub-overlay {
+  position: absolute;
+  bottom: 58px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  pointer-events: none;
+  text-align: center;
+  padding: 0 24px;
+  z-index: 15;
+  transition: bottom 0.2s ease;
+}
+.np.hide .np-sub-overlay {
+  bottom: 24px;
+}
+.np-sub-cue {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 6px;
+  line-height: 1.35;
+  font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  white-space: pre-wrap;
+  max-width: 90%;
+  word-break: break-word;
+}
+.np-sub-cue.subsize-sm { font-size: 14px; }
+.np-sub-cue.subsize-md { font-size: 18px; }
+.np-sub-cue.subsize-lg { font-size: 24px; }
+.np-sub-cue.subsize-xl { font-size: 32px; }
+
+.np-sub-cue.subcolor-white { color: #ffffff; }
+.np-sub-cue.subcolor-yellow { color: #ffeb3b; }
+.np-sub-cue.subcolor-cyan { color: #00e5ff; }
+.np-sub-cue.subcolor-green { color: #76ff03; }
+
+.np-sub-cue.subbg-solid { background: rgba(0, 0, 0, 0.85); }
+.np-sub-cue.subbg-semi { background: rgba(0, 0, 0, 0.45); }
+.np-sub-cue.subbg-none { background: transparent; }
+
+.np-sub-cue.subedge-none { text-shadow: none; }
+.np-sub-cue.subedge-drop { text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9); }
+.np-sub-cue.subedge-outline {
+  text-shadow: -1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 0 0 6px rgba(0, 0, 0, 0.9);
+}

@@ -220,6 +220,7 @@ func mediaActionsHTML(mediaType, rawURL, fileName string, size int64, modTime ti
 func videoPlayerHTML(videoSrc, rawURL string) string {
 	return `<div class="np subbg-solid subsize-md subcolor-white subedge-none" id="np" tabindex="0">
 <video class="np-video" id="npvideo" playsinline src="` + htmlEscape(videoSrc) + `"></video>
+<div class="np-sub-overlay" id="npsuboverlay" style="display:none"><span class="np-sub-cue" id="npsubcue"></span></div>
 <div class="np-center"><button class="np-bigplay" id="npbig" aria-label="Play">` + icoPlay + `</button><div class="np-error" id="nperror"><p id="npmsg"></p><div class="np-error-actions"><button class="np-retry" id="npretry">Retry</button><a class="np-retry np-retry-alt" data-vlc-path="` + htmlEscape(rawURL) + `" href="#">` + icoVlc + `<span>Open in VLC</span></a></div></div></div>
 <div class="np-scrim"></div>
 <div class="np-controls" id="npctrls">
@@ -383,6 +384,23 @@ body{min-height:100vh}
 .np.subedge-none video::cue{text-shadow:none!important}
 .np.subedge-drop video::cue{text-shadow:0 2px 3px rgba(0,0,0,.9)!important}
 .np.subedge-outline video::cue{text-shadow:-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000,1px 1px 0 #000,0 0 4px rgba(0,0,0,.8)!important}
+.np-sub-overlay{position:absolute;bottom:58px;left:0;right:0;display:flex;justify-content:center;align-items:center;pointer-events:none;text-align:center;padding:0 24px;z-index:15;transition:bottom .2s ease}
+.np.hide .np-sub-overlay{bottom:24px}
+.np-sub-cue{display:inline-block;padding:4px 12px;border-radius:6px;line-height:1.35;font-family:"Plus Jakarta Sans",ui-sans-serif,system-ui,sans-serif;white-space:pre-wrap;max-width:90%;word-break:break-word}
+.np.subsize-sm .np-sub-cue{font-size:14px}
+.np.subsize-md .np-sub-cue{font-size:18px}
+.np.subsize-lg .np-sub-cue{font-size:24px}
+.np.subsize-xl .np-sub-cue{font-size:32px}
+.np.subcolor-white .np-sub-cue{color:#ffffff}
+.np.subcolor-yellow .np-sub-cue{color:#ffeb3b}
+.np.subcolor-cyan .np-sub-cue{color:#00e5ff}
+.np.subcolor-green .np-sub-cue{color:#76ff03}
+.np.subbg-solid .np-sub-cue{background:rgba(0,0,0,.85)}
+.np.subbg-semi .np-sub-cue{background:rgba(0,0,0,.45)}
+.np.subbg-none .np-sub-cue{background:transparent}
+.np.subedge-none .np-sub-cue{text-shadow:none}
+.np.subedge-drop .np-sub-cue{text-shadow:0 2px 4px rgba(0,0,0,.9)}
+.np.subedge-outline .np-sub-cue{text-shadow:-1.5px -1.5px 0 #000,1.5px -1.5px 0 #000,-1.5px 1.5px 0 #000,1.5px 1.5px 0 #000,0 0 6px rgba(0,0,0,.9)}
 `
 
 const playerJS = `
@@ -398,6 +416,7 @@ const playerJS = `
   var settingsBtn=document.getElementById('npsettings'), settingsMenu=document.getElementById('npsettingsmenu');
   var speedBtn=document.getElementById('npspeed'), speedMenu=document.getElementById('npspeedmenu');
   var subFile=document.getElementById('npsubfile');
+  var subOverlay=document.getElementById('npsuboverlay'), subCue=document.getElementById('npsubcue');
   var nperror=document.getElementById('nperror'), npmsg=document.getElementById('npmsg'), npretry=document.getElementById('npretry');
   var ICON_PLAY=playBtn.innerHTML, ICON_PAUSE='__ICON_PAUSE__';
   var ICON_VOL='__ICON_VOL__', ICON_MUTE='__ICON_MUTE__';
@@ -462,9 +481,33 @@ const playerJS = `
 
   // subtitles
   var trackEls=[];
+  function updateCueText(){
+    var active="";
+    for(var i=0;i<v.textTracks.length;i++){
+      var t=v.textTracks[i];
+      if(t.mode==='hidden' && t.activeCues && t.activeCues.length>0){
+        active=t.activeCues[0].text;
+        break;
+      }
+    }
+    if(active){ subCue.textContent=active; subOverlay.style.display='flex'; }
+    else { subCue.textContent=''; subOverlay.style.display='none'; }
+  }
   function addTrack(label,src){ var t=document.createElement('track'); t.kind='subtitles'; t.label=label; t.src=src; v.appendChild(t); trackEls.push(t); return trackEls.length-1; }
-  function showTrack(idx){ for(var i=0;i<v.textTracks.length;i++){ v.textTracks[i].mode=(i===idx)?'showing':'disabled'; }
-    [].forEach.call(ccMenu.children,function(c){ c.classList.toggle('active', c.dataset.idx===String(idx)); }); }
+  function showTrack(idx){
+    for(var i=0;i<v.textTracks.length;i++){
+      var t=v.textTracks[i];
+      if(i===idx){
+        t.mode='hidden';
+        t.oncuechange=updateCueText;
+      } else {
+        t.mode='disabled';
+        t.oncuechange=null;
+      }
+    }
+    updateCueText();
+    [].forEach.call(ccMenu.children,function(c){ c.classList.toggle('active', c.dataset.idx===String(idx)); });
+  }
   function rebuildCCMenu(){ ccMenu.innerHTML='';
     var off=document.createElement('button'); off.className='np-item active'; off.textContent='Off'; off.dataset.idx='-1'; off.onclick=function(){ showTrack(-1); ccMenu.classList.remove('open'); }; ccMenu.appendChild(off);
     trackEls.forEach(function(t,i){ var b=document.createElement('button'); b.className='np-item'; b.textContent=t.label; b.dataset.idx=String(i); b.onclick=function(){ showTrack(i); ccMenu.classList.remove('open'); }; ccMenu.appendChild(b); });
