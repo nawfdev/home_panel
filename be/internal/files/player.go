@@ -62,7 +62,25 @@ function nsCopyLink(btn){ var url=window.location.href;
   if(navigator.clipboard&&window.isSecureContext){ navigator.clipboard.writeText(url).then(function(){ nsFlash(btn,'Copied!'); },function(){ nsFlash(btn, nsLegacyCopy(url)?'Copied!':'Select & copy'); }); }
   else { nsFlash(btn, nsLegacyCopy(url)?'Copied!':'Select & copy'); } }
 function nsShare(){ if(navigator.share){ navigator.share({url:window.location.href}).catch(function(){}); } else { nsCopyLink(); } }
-[].forEach.call(document.querySelectorAll('[data-vlc-path]'),function(a){ a.href='vlc://'+location.origin+a.getAttribute('data-vlc-path'); });
+function nsVlcIsMobile(){ return /Android|iPad|iPhone|iPod/i.test(navigator.userAgent||''); }
+function nsOpenVlc(a){
+  var abs=location.origin+a.getAttribute('data-vlc-path'); var ua=navigator.userAgent||'';
+  if(/Android/i.test(ua)){
+    var noScheme=abs.replace(/^https?:\/\//,''); var scheme=abs.indexOf('https://')===0?'https':'http';
+    location.href='intent://'+noScheme+'#Intent;scheme='+scheme+';package=org.videolan.vlc;S.browser_fallback_url='+encodeURIComponent('https://play.google.com/store/apps/details?id=org.videolan.vlc')+';end';
+  } else if(/iPad|iPhone|iPod/i.test(ua)){
+    location.href='vlc-x-callback://x-callback-url/stream?url='+encodeURIComponent(abs);
+  } else if(navigator.clipboard&&window.isSecureContext){
+    navigator.clipboard.writeText(abs).then(function(){ nsFlash(a,'Copied!'); },function(){ nsFlash(a, nsLegacyCopy(abs)?'Copied!':'Select & copy'); });
+  } else {
+    nsFlash(a, nsLegacyCopy(abs)?'Copied!':'Select & copy');
+  }
+}
+[].forEach.call(document.querySelectorAll('[data-vlc-path]'),function(a){
+  var span=a.querySelector('span'); if(span) span.textContent=nsVlcIsMobile()?'Open in VLC':'Copy stream URL';
+  a.setAttribute('data-orig',a.innerHTML);
+  a.addEventListener('click',function(e){ e.preventDefault(); nsOpenVlc(a); });
+});
 `
 
 // DownloadPageHTML renders a modern, panel-themed download landing page for a
@@ -187,7 +205,7 @@ func mustJSONString(s string) string {
 func mediaActionsHTML(mediaType, rawURL, fileName string, size int64, modTime time.Time) string {
 	vlcBtn := ""
 	if mediaType == "video" || mediaType == "audio" {
-		vlcBtn = `<a class="actbtn" data-vlc-path="` + htmlEscape(rawURL) + `" href="#">` + icoVlc + `Open in VLC</a>`
+		vlcBtn = `<a class="actbtn" data-vlc-path="` + htmlEscape(rawURL) + `" href="#">` + icoVlc + `<span>Open in VLC</span></a>`
 	}
 	return `<div class="mediainfo">` +
 		metaChipsHTML(size, fileName, modTime) +
@@ -202,7 +220,7 @@ func mediaActionsHTML(mediaType, rawURL, fileName string, size int64, modTime ti
 func videoPlayerHTML(videoSrc, rawURL string) string {
 	return `<div class="np subbg-solid subsize-md subcolor-white subedge-none" id="np" tabindex="0">
 <video class="np-video" id="npvideo" playsinline src="` + htmlEscape(videoSrc) + `"></video>
-<div class="np-center"><button class="np-bigplay" id="npbig" aria-label="Play">` + icoPlay + `</button><div class="np-error" id="nperror"><p id="npmsg"></p><div class="np-error-actions"><button class="np-retry" id="npretry">Retry</button><a class="np-retry np-retry-alt" data-vlc-path="` + htmlEscape(rawURL) + `" href="#">` + icoVlc + `Open in VLC</a></div></div></div>
+<div class="np-center"><button class="np-bigplay" id="npbig" aria-label="Play">` + icoPlay + `</button><div class="np-error" id="nperror"><p id="npmsg"></p><div class="np-error-actions"><button class="np-retry" id="npretry">Retry</button><a class="np-retry np-retry-alt" data-vlc-path="` + htmlEscape(rawURL) + `" href="#">` + icoVlc + `<span>Open in VLC</span></a></div></div></div>
 <div class="np-scrim"></div>
 <div class="np-controls" id="npctrls">
   <div class="np-seek" id="npseek"><div class="np-buffered" id="npbuf"></div><div class="np-played" id="npplayed"></div><div class="np-thumb" id="npthumb"></div></div>
