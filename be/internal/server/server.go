@@ -452,7 +452,7 @@ func New(d Deps) http.Handler {
 		api.Route("/music", func(mur chi.Router) {
 			mur.Use(auth.RequireAuth, auth.RequireFeature("music"))
 			mur.Get("/available", musicH.AvailableStatus)
-			mur.Handle("/librespot/*", http.HandlerFunc(musicH.Librespot))
+			mur.Handle("/librespot/*", http.StripPrefix("/api/music/librespot", http.HandlerFunc(musicH.Librespot)))
 			mur.Get("/stream", musicH.Stream)
 		})
 
