@@ -128,6 +128,7 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
   const [audioIdx, setAudioIdx] = useState(-1); // -1 = server default (first track)
   const [hidden, setHidden] = useState(false);
   const [localTracks, setLocalTracks] = useState<Track[]>([]);
+  const [videoError, setVideoError] = useState<string | null>(null);
   const hideTimer = useRef<number | undefined>(undefined);
   const pendingSeek = useRef<{ time: number; playing: boolean } | null>(null);
 
@@ -137,9 +138,28 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
   function toggle() {
     const v = videoRef.current;
     if (!v) return;
-    if (v.paused) v.play();
-    else v.pause();
+    if (v.paused) {
+      setVideoError(null);
+      v.play().catch(() => setVideoError("Playback couldn't start. Check your connection and try again."));
+    } else {
+      v.pause();
+    }
   }
+
+  function retry() {
+    const v = videoRef.current;
+    if (!v) return;
+    setVideoError(null);
+    v.load();
+    v.play().catch(() => setVideoError("Playback couldn't start. Check your connection and try again."));
+  }
+
+  // A source swap (switching audio tracks re-renders <video src>) starts a
+  // fresh load — don't leave a stale error banner from the previous attempt
+  // covering it.
+  useEffect(() => {
+    setVideoError(null);
+  }, [videoSrc]);
 
   useEffect(() => {
     const v = videoRef.current;
@@ -268,7 +288,10 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
         playsInline
         onClick={toggle}
         onDoubleClick={toggleFull}
-        onPlay={() => setPaused(false)}
+        onPlay={() => {
+          setPaused(false);
+          setVideoError(null);
+        }}
         onPause={() => setPaused(true)}
         onTimeUpdate={(e) => setCur(e.currentTarget.currentTime)}
         onDurationChange={(e) => setDur(e.currentTarget.duration)}
@@ -276,13 +299,25 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
           const p = pendingSeek.current;
           if (p) {
             e.currentTarget.currentTime = p.time;
-            if (p.playing) e.currentTarget.play();
+            if (p.playing) e.currentTarget.play().catch(() => setVideoError("Playback couldn't start. Check your connection and try again."));
             pendingSeek.current = null;
           }
         }}
         onProgress={(e) => {
           const v = e.currentTarget;
           if (v.buffered.length && v.duration) setBuffered((v.buffered.end(v.buffered.length - 1) / v.duration) * 100);
+        }}
+        onError={(e) => {
+          const err = e.currentTarget.error;
+          const msg =
+            err?.code === err?.MEDIA_ERR_NETWORK
+              ? "Network error while loading this video."
+              : err?.code === err?.MEDIA_ERR_DECODE
+                ? "This video couldn't be decoded."
+                : err?.code === err?.MEDIA_ERR_SRC_NOT_SUPPORTED
+                  ? "This format isn't supported by your browser."
+                  : "Couldn't load this video.";
+          setVideoError(msg);
         }}
         onVolumeChange={(e) => {
           setVolume(e.currentTarget.volume);
@@ -295,10 +330,19 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
       </video>
 
       <div className="np-center">
-        {paused && (
-          <button className="np-bigplay" onClick={toggle} aria-label="Play">
-            <IcoPlay />
-          </button>
+        {videoError ? (
+          <div className="np-error">
+            <p>{videoError}</p>
+            <button className="np-retry" onClick={retry}>
+              Retry
+            </button>
+          </div>
+        ) : (
+          paused && (
+            <button className="np-bigplay" onClick={toggle} aria-label="Play">
+              <IcoPlay />
+            </button>
+          )
         )}
       </div>
       <div className="np-scrim" />
