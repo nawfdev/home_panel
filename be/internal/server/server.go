@@ -118,9 +118,8 @@ func New(d Deps) http.Handler {
 	storageH := &handlers.Storage{Svc: d.Storage}
 	terminalExtraH := &handlers.TerminalExtra{Store: d.Store, SSH: d.Hosts}
 
-	// Rate limiters mirror express-rate-limit windows from server.js.
-	apiLimiter := httpx.NewRateLimiter(15*time.Minute, 500, true,
-		"Too many requests from this IP, please try again later.")
+	// Rate limiter for login brute-force protection only. Authenticated API
+	// requests are not rate-limited — the user is already inside the panel.
 	loginLimiter := httpx.NewRateLimiter(15*time.Minute, 10, true,
 		"Too many login attempts, please try again later.")
 
@@ -130,7 +129,6 @@ func New(d Deps) http.Handler {
 	tvProxy.Post("/tv-proxy", tvH.Proxy)
 
 	r.Route("/api", func(api chi.Router) {
-		api.Use(apiLimiter.Middleware)
 
 		api.Route("/auth", func(ar chi.Router) {
 			ar.With(loginLimiter.Middleware).Post("/login", auth.Login)
