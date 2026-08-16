@@ -62,6 +62,7 @@ function nsCopyLink(btn){ var url=window.location.href;
   if(navigator.clipboard&&window.isSecureContext){ navigator.clipboard.writeText(url).then(function(){ nsFlash(btn,'Copied!'); },function(){ nsFlash(btn, nsLegacyCopy(url)?'Copied!':'Select & copy'); }); }
   else { nsFlash(btn, nsLegacyCopy(url)?'Copied!':'Select & copy'); } }
 function nsShare(){ if(navigator.share){ navigator.share({url:window.location.href}).catch(function(){}); } else { nsCopyLink(); } }
+[].forEach.call(document.querySelectorAll('[data-vlc-path]'),function(a){ a.href='vlc://'+location.origin+a.getAttribute('data-vlc-path'); });
 `
 
 // DownloadPageHTML renders a modern, panel-themed download landing page for a
@@ -153,19 +154,19 @@ func PlayerHTML(mediaType, basePath, videoSrc, fileName string, size int64, modT
 	switch mediaType {
 	case "image":
 		b.WriteString(`<div class="stage"><img src="` + htmlEscape(videoSrc) + `" alt="` + htmlEscape(fileName) + `" class="media-img"></div>`)
-		b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
+		b.WriteString(mediaActionsHTML("image", rawURL, fileName, size, modTime) + `</div>`)
 		b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">` + shareActionsJS + `</script></body></html>`)
 		return b.String()
 	case "audio":
 		b.WriteString(`<div class="stage audio"><audio controls src="` + htmlEscape(videoSrc) + `" class="media-audio"></audio></div>`)
-		b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
+		b.WriteString(mediaActionsHTML("audio", rawURL, fileName, size, modTime) + `</div>`)
 		b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">` + shareActionsJS + `</script></body></html>`)
 		return b.String()
 	}
 
 	// Custom video player.
-	b.WriteString(videoPlayerHTML(videoSrc))
-	b.WriteString(mediaActionsHTML(rawURL, fileName, size, modTime) + `</div>`)
+	b.WriteString(videoPlayerHTML(videoSrc, rawURL))
+	b.WriteString(mediaActionsHTML("video", rawURL, fileName, size, modTime) + `</div>`)
 	b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">window.__SUBS__=` + string(subsJSON) + `;window.__AUDIO__=` + string(audioJSON) + `;window.__AUDIO_BASE__=` + mustJSONString(rawURL) + `;</script>`)
 	b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">` + renderedPlayerJS() + `</script>`)
 	b.WriteString(`<script nonce="` + htmlEscape(nonce) + `">` + shareActionsJS + `</script>`)
@@ -183,20 +184,25 @@ func mustJSONString(s string) string {
 
 // mediaActionsHTML is the info + actions block below the player/image: file
 // meta chips and a row with a prominent Download button plus Copy link / Share.
-func mediaActionsHTML(rawURL, fileName string, size int64, modTime time.Time) string {
+func mediaActionsHTML(mediaType, rawURL, fileName string, size int64, modTime time.Time) string {
+	vlcBtn := ""
+	if mediaType == "video" || mediaType == "audio" {
+		vlcBtn = `<a class="actbtn" data-vlc-path="` + htmlEscape(rawURL) + `" href="#">` + icoVlc + `Open in VLC</a>`
+	}
 	return `<div class="mediainfo">` +
 		metaChipsHTML(size, fileName, modTime) +
 		`<div class="actions">` +
 		`<a class="mediadl" href="` + htmlEscape(rawURL) + `" download>` + icoDownload + `Download</a>` +
+		vlcBtn +
 		`<button class="actbtn" type="button" data-orig="` + htmlEscape(icoLink) + `Copy link" onclick="nsCopyLink(this)">` + icoLink + `Copy link</button>` +
 		`<button class="actbtn" type="button" onclick="nsShare()">` + icoShare + `Share</button>` +
 		`</div></div>`
 }
 
-func videoPlayerHTML(rawURL string) string {
+func videoPlayerHTML(videoSrc, rawURL string) string {
 	return `<div class="np subbg-solid subsize-md subcolor-white subedge-none" id="np" tabindex="0">
-<video class="np-video" id="npvideo" playsinline src="` + htmlEscape(rawURL) + `"></video>
-<div class="np-center"><button class="np-bigplay" id="npbig" aria-label="Play">` + icoPlay + `</button></div>
+<video class="np-video" id="npvideo" playsinline src="` + htmlEscape(videoSrc) + `"></video>
+<div class="np-center"><button class="np-bigplay" id="npbig" aria-label="Play">` + icoPlay + `</button><div class="np-error" id="nperror"><p id="npmsg"></p><div class="np-error-actions"><button class="np-retry" id="npretry">Retry</button><a class="np-retry np-retry-alt" data-vlc-path="` + htmlEscape(rawURL) + `" href="#">` + icoVlc + `Open in VLC</a></div></div></div>
 <div class="np-scrim"></div>
 <div class="np-controls" id="npctrls">
   <div class="np-seek" id="npseek"><div class="np-buffered" id="npbuf"></div><div class="np-played" id="npplayed"></div><div class="np-thumb" id="npthumb"></div></div>
@@ -251,6 +257,7 @@ const (
 	icoCC         = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M9.5 10.5a2 2 0 1 0 0 3M15.5 10.5a2 2 0 1 0 0 3" stroke-linecap="round"/></svg>`
 	icoAudioTrack = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 10v4M9 6v12M14 9v6M19 4v16"/></svg>`
 	icoFull       = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4"/></svg>`
+	icoVlc        = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h7v7M21 3l-9 9"/><path d="M19 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/></svg>`
 	icoGear       = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
 )
 
@@ -294,6 +301,16 @@ body{min-height:100vh}
 .np-bigplay svg{width:34px;height:34px;margin-left:3px}
 .np-bigplay:hover{background:rgba(40,40,44,.8);transform:scale(1.06)}
 .np.paused .np-bigplay{opacity:1}
+.np-error{pointer-events:auto;display:none;flex-direction:column;align-items:center;gap:12px;background:rgba(20,20,22,.85);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:18px 22px;max-width:min(340px,80vw);text-align:center;backdrop-filter:blur(4px)}
+.np-error p{color:#e4e4e7;font-size:13px;margin:0}
+.np-error-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.np-retry{display:inline-flex;align-items:center;gap:6px;text-decoration:none;background:#fafafa;color:#0e0e10;border:none;border-radius:8px;padding:7px 16px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit}
+.np-retry:hover{background:#d4d4d8;text-decoration:none}
+.np-retry svg{width:15px;height:15px}
+.np-retry-alt{background:transparent;border:1px solid rgba(255,255,255,.2);color:#e4e4e7}
+.np-retry-alt:hover{background:rgba(255,255,255,.08)}
+.np.errored .np-bigplay{display:none}
+.np.errored .np-error{display:flex}
 
 .np-seek{position:relative;height:5px;background:rgba(255,255,255,.22);border-radius:3px;cursor:pointer;margin-bottom:10px;transition:height .12s}
 .np-seek:hover{height:8px}
@@ -363,19 +380,33 @@ const playerJS = `
   var settingsBtn=document.getElementById('npsettings'), settingsMenu=document.getElementById('npsettingsmenu');
   var speedBtn=document.getElementById('npspeed'), speedMenu=document.getElementById('npspeedmenu');
   var subFile=document.getElementById('npsubfile');
+  var nperror=document.getElementById('nperror'), npmsg=document.getElementById('npmsg'), npretry=document.getElementById('npretry');
   var ICON_PLAY=playBtn.innerHTML, ICON_PAUSE='__ICON_PAUSE__';
   var ICON_VOL='__ICON_VOL__', ICON_MUTE='__ICON_MUTE__';
 
   function fmt(t){ if(!isFinite(t))t=0; t=Math.floor(t); var m=Math.floor(t/60), s=t%60; var h=Math.floor(m/60); m=m%60;
     function p(n){return (n<10?'0':'')+n;} return h>0? h+':'+p(m)+':'+p(s) : m+':'+p(s); }
   function setPlayIcon(){ var i=v.paused?ICON_PLAY:ICON_PAUSE; playBtn.innerHTML=i; big.innerHTML=ICON_PLAY; np.classList.toggle('paused',v.paused); }
-  function toggle(){ if(v.paused) v.play(); else v.pause(); }
+  function showError(msg){ npmsg.textContent=msg; np.classList.add('errored'); }
+  function hideError(){ np.classList.remove('errored'); }
+  function playErr(){ showError("Playback couldn't start. Check your connection and try again."); }
+  function toggle(){ if(v.paused){ hideError(); v.play().catch(playErr); } else v.pause(); }
   function closeMenus(){ ccMenu.classList.remove('open'); audioMenu.classList.remove('open'); settingsMenu.classList.remove('open'); speedMenu.classList.remove('open'); }
 
   big.addEventListener('click',toggle);
   playBtn.addEventListener('click',toggle);
   v.addEventListener('click',toggle);
-  v.addEventListener('play',setPlayIcon); v.addEventListener('pause',setPlayIcon);
+  v.addEventListener('play',function(){ setPlayIcon(); hideError(); }); v.addEventListener('pause',setPlayIcon);
+  v.addEventListener('error',function(){
+    var err=v.error, msg='Could not load this video.';
+    if(err){
+      if(err.code===err.MEDIA_ERR_NETWORK) msg='Network error while loading this video.';
+      else if(err.code===err.MEDIA_ERR_DECODE) msg="This video couldn't be decoded.";
+      else if(err.code===err.MEDIA_ERR_SRC_NOT_SUPPORTED) msg="This format isn't supported by your browser.";
+    }
+    showError(msg);
+  });
+  npretry.addEventListener('click',function(){ hideError(); v.load(); v.play().catch(playErr); });
   v.addEventListener('dblclick',function(){ toggleFull(); });
 
   v.addEventListener('timeupdate',function(){
@@ -450,7 +481,8 @@ const playerJS = `
     if(idx===curAudio) { audioMenu.classList.remove('open'); return; }
     var wasPlaying=!v.paused, t=v.currentTime;
     curAudio=idx;
-    var resume=function(){ v.currentTime=t; if(wasPlaying) v.play(); v.removeEventListener('loadedmetadata',resume); };
+    hideError();
+    var resume=function(){ v.currentTime=t; if(wasPlaying) v.play().catch(playErr); v.removeEventListener('loadedmetadata',resume); };
     v.addEventListener('loadedmetadata',resume);
     v.src=audioURL(idx);
     v.load();
