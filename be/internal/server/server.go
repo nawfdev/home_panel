@@ -117,6 +117,7 @@ func New(d Deps) http.Handler {
 	monitorsH := &handlers.Monitors{Prober: d.Prober, Store: d.Store}
 	storageH := &handlers.Storage{Svc: d.Storage}
 	terminalExtraH := &handlers.TerminalExtra{Store: d.Store, SSH: d.Hosts}
+	adguardH := &handlers.AdGuard{}
 
 	// Rate limiter for login brute-force protection only. Authenticated API
 	// requests are not rate-limited — the user is already inside the panel.
@@ -457,6 +458,11 @@ func New(d Deps) http.Handler {
 		api.Route("/tv", func(tr chi.Router) {
 			tr.Use(auth.RequireAuth, auth.RequireFeature("tv"))
 			tr.Get("/channels", tvH.Channels)
+		})
+
+		api.Route("/adguard", func(ar chi.Router) {
+			ar.Use(auth.RequireAuth, auth.RequireFeature("adguard"))
+			ar.HandleFunc("/*", adguardH.Proxy)
 		})
 	})
 

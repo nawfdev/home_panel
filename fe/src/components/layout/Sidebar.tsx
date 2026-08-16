@@ -75,6 +75,7 @@ const NAV_ITEMS: NavEntry[] = [
       { to: "/tunnel", label: "Tunnel", icon: ArrowsRightLeftIcon },
       { to: "/cloudflare", label: "Cloudflare", icon: CloudIcon },
       { to: "/network", label: "Network", icon: GlobeAltIcon },
+      { to: "/adguard", label: "AdGuard", icon: ShieldCheckIcon },
     ],
   },
   {

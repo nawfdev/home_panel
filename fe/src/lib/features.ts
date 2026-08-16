@@ -19,6 +19,7 @@ export const FEATURE_KEYS = [
   "tv",
   "monitoring",
   "storage",
+  "adguard",
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
@@ -42,6 +43,7 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   tv: "Live TV",
   monitoring: "Uptime Monitoring & SLA",
   storage: "Disk Health & Storage",
+  adguard: "AdGuard Home (DNS)",
 };
 
 // Route path -> gating feature key. Routes absent from this map (dashboard,
@@ -66,6 +68,7 @@ const ROUTE_FEATURE: Record<string, FeatureKey> = {
   "/ai-gateway": "ai-gateway",
   "/monitoring": "monitoring",
   "/storage": "storage",
+  "/adguard": "adguard",
 };
 
 export function featureForPath(path: string): FeatureKey | null {

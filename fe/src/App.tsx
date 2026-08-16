@@ -43,6 +43,7 @@ const Account = lazy(() => import("./pages/Account").then((m) => ({ default: m.A
 const Monitoring = lazy(() => import("./pages/Monitoring").then((m) => ({ default: m.Monitoring })));
 const Storage = lazy(() => import("./pages/Storage").then((m) => ({ default: m.Storage })));
 const Status = lazy(() => import("./pages/Status").then((m) => ({ default: m.Status })));
+const AdGuard = lazy(() => import("./pages/AdGuard").then((m) => ({ default: m.AdGuard })));
 
 function PageLoading() {
   return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>;
@@ -96,6 +97,7 @@ function AppRoutes() {
           <Route path="/cloudflare" element={<RequireFeature><Cloudflare /></RequireFeature>} />
           <Route path="/telegram" element={<RequireFeature><Telegram /></RequireFeature>} />
           <Route path="/network" element={<RequireFeature><Network /></RequireFeature>} />
+          <Route path="/adguard" element={<RequireFeature><AdGuard /></RequireFeature>} />
           <Route path="/docker" element={<RequireFeature><Docker /></RequireFeature>} />
           <Route path="/pm2" element={<RequireFeature><PM2 /></RequireFeature>} />
           <Route path="/logs" element={<RequireFeature><Logs /></RequireFeature>} />
