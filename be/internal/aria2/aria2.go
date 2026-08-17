@@ -109,6 +109,7 @@ func (m *Manager) ensureRunning() error {
 		"--split=5",
 		"--allow-overwrite=true",
 		"--quiet=true",
+		"--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
 		"--seed-time=0", // this is a downloader, not a seedbox — stop the instant a torrent finishes instead of lingering in "active" (seeding) state forever
 	)
 	if err := cmd.Start(); err != nil {

@@ -211,6 +211,49 @@ func safeFilename(title, rawURL string) string {
 	}
 	return name
 }
+var reMetaRefresh = regexp.MustCompile(`(?i)<meta\s+[^>]*http-equiv=["']?refresh["']?[^>]*content=["'][^"']*url=['"]?([^'" >]+)`)
+
+func resolveDirectURL(rawURL string) string {
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}
+	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
+	if err != nil {
+		return rawURL
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
+	req.Header.Set("Referer", rawURL)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return rawURL
+	}
+	defer resp.Body.Close()
+
+	finalURL := resp.Request.URL.String()
+	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
+	if strings.Contains(contentType, "text/html") {
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		if err == nil {
+			if m := reMetaRefresh.FindStringSubmatch(string(body)); len(m) > 1 {
+				target := strings.TrimSpace(m[1])
+				target = strings.Trim(target, "'\"")
+				if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+					return target
+				}
+			}
+		}
+	} else if finalURL != "" && finalURL != rawURL {
+		return finalURL
+	}
+	return rawURL
+}
 
 // Start enqueues a download from a direct/simple link. Shortener links
 // (oii.la/tpi.li) are rejected in Fase 1 with a clear message so the UI can
@@ -222,6 +265,7 @@ func (s *Service) Start(title, rawURL, poster string) (*Job, error) {
 	if isShortener(rawURL) {
 		return nil, fmt.Errorf("this link goes through a shortener (%s) which needs manual resolving in Fase 1; open it in your browser, copy the direct file link, and paste that", shortenerHost(rawURL))
 	}
+	rawURL = resolveDirectURL(rawURL)
 	if err := checkHostAllowed(rawURL); err != nil {
 		return nil, err
 	}
