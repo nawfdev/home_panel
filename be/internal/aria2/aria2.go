@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strconv"
 	"sync"
@@ -189,9 +190,19 @@ func (m *Manager) call(method string, params []any) (json.RawMessage, error) {
 func (m *Manager) AddURI(rawURL, dir, filename string) (gid string, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	options := map[string]string{"dir": dir}
+	options := map[string]any{"dir": dir}
 	if filename != "" {
 		options["out"] = filename
+	}
+	if strings.HasPrefix(rawURL, "http://") || strings.HasPrefix(rawURL, "https://") {
+		if u, err := url.Parse(rawURL); err == nil && u.Scheme != "" && u.Host != "" {
+			origin := fmt.Sprintf("%s://%s/", u.Scheme, u.Host)
+			options["header"] = []string{
+				"Referer: " + origin,
+				"Accept: */*",
+				"Accept-Language: en-US,en;q=0.9",
+			}
+		}
 	}
 	result, err := m.call("aria2.addUri", []any{[]string{rawURL}, options})
 	if err != nil {
