@@ -121,6 +121,15 @@ export function Library() {
       show(err instanceof Error ? err.message : "Couldn't resume", "error");
     }
   }
+  async function retryJob(id: string) {
+    try {
+      await api(`/movies/downloads/${id}/retry`, { method: "POST" });
+      show("Retrying download…", "success", 1500);
+      load();
+    } catch (err) {
+      show(err instanceof Error ? err.message : "Couldn't retry download", "error");
+    }
+  }
 
   function resetAdd() {
     setAddOpen(false);
@@ -315,6 +324,15 @@ export function Library() {
                         {job.status === "paused" && (
                           <button className="btn-secondary" title="Resume" onClick={() => resumeJob(job.id)}>
                             <PlayIcon className="w-4 h-4" />
+                          </button>
+                        )}
+                        {(job.status === "error" || job.status === "canceled") && (
+                          <button
+                            className="btn-secondary text-amber-400 hover:text-amber-300"
+                            title="Retry download"
+                            onClick={() => retryJob(job.id)}
+                          >
+                            <ArrowPathIcon className="w-4 h-4" />
                           </button>
                         )}
                         <button

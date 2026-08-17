@@ -112,6 +112,15 @@ func (m *Movies) ResumeDownload(w http.ResponseWriter, r *http.Request) {
 	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "message": "Download resumed"})
 }
+// RetryDownload relaunches a failed or canceled job.
+func (m *Movies) RetryDownload(w http.ResponseWriter, r *http.Request) {
+	job, err := m.Svc.Retry(chi.URLParam(r, "id"))
+	if err != nil {
+		httpx.JSON(w, http.StatusBadRequest, map[string]any{"success": false, "error": err.Error()})
+		return
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"success": true, "job": job})
+}
 
 // uniqueFilename prefixes a filename with a nanosecond timestamp so uploads
 // into the shared Movies/.thumbs directories never clobber an existing file

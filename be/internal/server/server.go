@@ -438,7 +438,7 @@ func New(d Deps) http.Handler {
 			mr.Delete("/downloads/{id}", moviesH.CancelDownload)
 			mr.Post("/downloads/{id}/pause", moviesH.PauseDownload)
 			mr.Post("/downloads/{id}/resume", moviesH.ResumeDownload)
-			mr.Post("/manual", moviesH.ManualAdd)
+			mr.Post("/downloads/{id}/retry", moviesH.RetryDownload)
 			mr.Patch("/library/{id}", moviesH.UpdateLibraryItem)
 			mr.Post("/library/{id}/thumbnail", moviesH.UploadThumbnail)
 			mr.Delete("/library/{id}", moviesH.DeleteLibraryItem)

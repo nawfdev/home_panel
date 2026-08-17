@@ -740,6 +740,72 @@ func removeLocalPoster(poster string) {
 	}
 	_ = os.Remove(p)
 }
+// Retry relaunches a failed or canceled download job with its original URL and destination.
+func (s *Service) Retry(id string) (*Job, error) {
+	s.mu.Lock()
+	job, ok := s.jobs[id]
+	s.mu.Unlock()
+	if !ok {
+		return nil, errors.New("download not found")
+	}
+	if job.Status == StatusDownloading || job.Status == StatusQueued || job.Status == StatusRemuxing {
+		return nil, errors.New("download is already in progress")
+	}
+	if job.URL == "" {
+		return nil, errors.New("cannot retry manual upload")
+	}
+
+	if job.cancel != nil {
+		job.cancel()
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	s.set(job, func(j *Job) {
+		j.Status = StatusQueued
+		j.Error = ""
+		j.Downloaded = 0
+		j.SpeedBps = 0
+		j.cancel = cancel
+	})
+
+	rawURL := job.URL
+	if strings.HasPrefix(rawURL, "magnet:") {
+		if !aria2.Available {
+			s.fail(job, errors.New("aria2c isn't installed"))
+			return job.snapshot(), nil
+		}
+		if err := s.aria2.EnsureRunning(); err != nil {
+			s.fail(job, err)
+			return job.snapshot(), nil
+		}
+		dir := filepath.Dir(job.Dest)
+		gid, err := s.aria2.AddURI(rawURL, dir, "")
+		if err != nil {
+			s.fail(job, err)
+			return job.snapshot(), nil
+		}
+		job.gid = gid
+		go s.pollTorrent(ctx, job, gid)
+		return job.snapshot(), nil
+	}
+
+	rawURL = resolveDirectURL(rawURL)
+	dir := filepath.Dir(job.Dest)
+	filename := filepath.Base(job.Dest)
+
+	if aria2.Available {
+		if err := s.aria2.EnsureRunning(); err == nil {
+			if gid, err := s.aria2.AddURI(rawURL, dir, filename); err == nil {
+				job.gid = gid
+				go s.pollAria2(ctx, job)
+				return job.snapshot(), nil
+			}
+		}
+	}
+
+	go s.run(ctx, job)
+	return job.snapshot(), nil
+}
 
 // Update edits a job's title and/or poster in place, leaving nil fields
 // unchanged; when poster changes, the previous local thumbnail file (if any)
