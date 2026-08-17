@@ -131,7 +131,9 @@ func (m *Manager) SeedFromHosts(hosts []HostSeed, localPort int) {
 	touched := make([]string, 0, len(hosts)+1)
 	ensure := func(id, name string, mType MonitorType, target string) {
 		touched = append(touched, id)
-		if _, exists := m.monitors[id]; exists {
+		if mon, exists := m.monitors[id]; exists {
+			mon.Name = name
+			mon.Target = target
 			return
 		}
 		m.monitors[id] = &Monitor{
