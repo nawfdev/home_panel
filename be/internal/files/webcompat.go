@@ -209,7 +209,7 @@ func EnsureWebPlayableWithProgress(path string, onProgress func(pct int)) (strin
 
 	audioArgs := []string{"-c:a", "copy"}
 	if !audioOK {
-		audioArgs = []string{"-c:a", "aac", "-b:a", "192k"}
+		audioArgs = []string{"-c:a", "aac", "-b:a", "192k", "-ac", "2", "-af", "dynaudnorm=f=150:g=15:m=10:p=0.9"}
 	}
 	args := []string{"-y", "-threads", "0", "-i", path, "-map", "0:v:0"}
 	if len(audioCodecs) > 0 {
@@ -264,7 +264,7 @@ func EnsureWebPlayableAudio(path string, audioIndex int) (string, error) {
 
 	audioArgs := []string{"-c:a", "copy"}
 	if !browserSafeAudioCodecs[audioCodecs[audioIndex]] {
-		audioArgs = []string{"-c:a", "aac", "-b:a", "192k"}
+		audioArgs = []string{"-c:a", "aac", "-b:a", "192k", "-ac", "2", "-af", "dynaudnorm=f=150:g=15:m=10:p=0.9"}
 	}
 	args := []string{"-y", "-threads", "0", "-i", path, "-map", "0:v:0", "-map", fmt.Sprintf("0:a:%d", audioIndex), "-c:v", "copy"}
 	args = append(args, audioArgs...)
