@@ -243,15 +243,21 @@ func EnsureWebPlayableAudio(path string, audioIndex int) (string, error) {
 
 	sibling := fmt.Sprintf("%s.web.a%d.mp4", path[:len(path)-len(filepath.Ext(path))], audioIndex)
 	if srcInfo, err := os.Stat(path); err == nil {
-		if sibInfo, err := os.Stat(sibling); err == nil && !sibInfo.ModTime().Before(srcInfo.ModTime()) {
-			return sibling, nil
+		if sibInfo, err := os.Stat(sibling); err == nil && !sibInfo.ModTime().Before(srcInfo.ModTime()) && sibInfo.Size() > 0 {
+			if ok, _ := isFaststartMP4(sibling); ok {
+				return sibling, nil
+			}
+			_ = os.Remove(sibling)
 		}
 	}
 
-	args := []string{"-y", "-threads", "0", "-i", path, "-map", "0:v:0", "-map", fmt.Sprintf("0:a:%d", audioIndex)}
-	args = append(args, "-c:v", "copy")
-	args = append(args, audioArgs...)
-	args = append(args, "-sn", "-movflags", "+faststart", sibling)
+	videoCodec, audioCodecs, err := probeCodecs(path)
+	if err != nil {
+		return path, err
+	}
+	if audioIndex >= len(audioCodecs) {
+		return path, fmt.Errorf("audio track %d not found", audioIndex)
+	}
 	if videoCodec != "" && !browserSafeVideoCodecs[videoCodec] {
 		return path, fmt.Errorf("video codec %q isn't browser-safe and re-encoding video isn't supported", videoCodec)
 	}
@@ -260,7 +266,7 @@ func EnsureWebPlayableAudio(path string, audioIndex int) (string, error) {
 	if !browserSafeAudioCodecs[audioCodecs[audioIndex]] {
 		audioArgs = []string{"-c:a", "aac", "-b:a", "192k"}
 	}
-	args := []string{"-y", "-i", path, "-map", "0:v:0", "-map", fmt.Sprintf("0:a:%d", audioIndex), "-c:v", "copy"}
+	args := []string{"-y", "-threads", "0", "-i", path, "-map", "0:v:0", "-map", fmt.Sprintf("0:a:%d", audioIndex), "-c:v", "copy"}
 	args = append(args, audioArgs...)
 	args = append(args, "-sn", "-movflags", "+faststart", sibling)
 	result, err := runRemux(args, sibling)
