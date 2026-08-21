@@ -151,8 +151,11 @@ func EnsureWebPlayable(path string) (string, error) {
 
 	sibling := path[:len(path)-len(filepath.Ext(path))] + ".web.mp4"
 	if srcInfo, err := os.Stat(path); err == nil {
-		if sibInfo, err := os.Stat(sibling); err == nil && !sibInfo.ModTime().Before(srcInfo.ModTime()) {
-			return sibling, nil
+		if sibInfo, err := os.Stat(sibling); err == nil && !sibInfo.ModTime().Before(srcInfo.ModTime()) && sibInfo.Size() > 0 {
+			if ok, _ := isFaststartMP4(sibling); ok {
+				return sibling, nil
+			}
+			_ = os.Remove(sibling)
 		}
 	}
 
@@ -262,13 +265,27 @@ func allAudioCodecsSafe(codecs []string) bool {
 func runRemux(args []string, output string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	if err := exec.CommandContext(ctx, "ffmpeg", args...).Run(); err != nil {
-		_ = os.Remove(output)
+
+	tmp := output + ".tmp.mp4"
+	_ = os.Remove(tmp)
+
+	runArgs := make([]string, len(args))
+	copy(runArgs, args)
+	if len(runArgs) > 0 {
+		runArgs[len(runArgs)-1] = tmp
+	}
+
+	if err := exec.CommandContext(ctx, "ffmpeg", runArgs...).Run(); err != nil {
+		_ = os.Remove(tmp)
 		return "", fmt.Errorf("ffmpeg: %w", err)
 	}
-	if info, err := os.Stat(output); err != nil || info.Size() == 0 {
-		_ = os.Remove(output)
+	if info, err := os.Stat(tmp); err != nil || info.Size() == 0 {
+		_ = os.Remove(tmp)
 		return "", fmt.Errorf("ffmpeg produced an empty file")
+	}
+	if err := os.Rename(tmp, output); err != nil {
+		_ = os.Remove(tmp)
+		return "", fmt.Errorf("could not finalize remux file: %w", err)
 	}
 	return output, nil
 }
