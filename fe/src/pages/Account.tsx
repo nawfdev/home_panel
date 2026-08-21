@@ -1,11 +1,9 @@
-import { useEffect, useState } from "react";
-import { api } from "../lib/api";
-import { useToast } from "../context/ToastContext";
-import { Panel } from "../components/ui/Panel";
+import { useState, useEffect } from "react";
+import QRCode from "qrcode";
 import {
-  LockClosedIcon,
-  ShieldCheckIcon,
   KeyIcon,
+  ShieldCheckIcon,
+  LockClosedIcon,
   ComputerDesktopIcon,
   UserCircleIcon,
 } from "@heroicons/react/24/outline";
@@ -30,10 +28,10 @@ export function Account() {
   const [totpEnabled, setTotpEnabled] = useState(false);
   const [totpSecret, setTotpSecret] = useState("");
   const [totpUri, setTotpUri] = useState("");
+  const [qrDataUrl, setQrDataUrl] = useState("");
   const [totpCode, setTotpCode] = useState("");
   const [disablePassword, setDisablePassword] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
-  const [sessions, setSessions] = useState<SessionDTO[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
 
   function loadSessions() {
@@ -44,6 +42,15 @@ export function Account() {
       .finally(() => setLoadingSessions(false));
   }
 
+  useEffect(() => {
+    if (totpUri) {
+      QRCode.toDataURL(totpUri, { width: 200, margin: 1, color: { dark: "#000000", light: "#ffffff" } })
+        .then(setQrDataUrl)
+        .catch(() => {});
+    } else {
+      setQrDataUrl("");
+    }
+  }, [totpUri]);
   useEffect(() => {
     api<{ enabled: boolean }>("/auth/totp")
       .then((res) => setTotpEnabled(res.enabled))
@@ -87,14 +94,16 @@ export function Account() {
   }
 
   async function enableTotp() {
-    if (!totpCode.trim()) return;
+    if (!totpCode.trim() || !totpSecret) return;
     try {
       const data = await api<{ recoveryCodes: string[] }>("/auth/totp/enable", {
         method: "POST",
-        body: JSON.stringify({ code: totpCode.trim() }),
+        body: JSON.stringify({ secret: totpSecret, code: totpCode.trim() }),
       });
       setTotpEnabled(true);
       setTotpSecret("");
+      setTotpUri("");
+      setQrDataUrl("");
       setTotpCode("");
       setRecoveryCodes(data.recoveryCodes || []);
       show("Two-factor authentication enabled", "success");
@@ -102,7 +111,6 @@ export function Account() {
       show(err instanceof Error ? err.message : "Failed to verify 2FA code", "error");
     }
   }
-
   async function disableTotp() {
     if (!disablePassword) {
       show("Password required to disable 2FA", "warning");
@@ -209,16 +217,18 @@ export function Account() {
             </div>
           ) : totpSecret ? (
             <div className="space-y-3">
-              <p className="text-xs text-gray-300">Scan QR or enter secret into your authenticator app:</p>
-              <code className="block bg-black/40 border border-white/10 rounded-lg p-3 text-xs font-mono break-all text-blue-300">
-                {totpSecret}
-              </code>
-              <a
-                className="text-xs text-blue-400 hover:underline block truncate font-mono"
-                href={totpUri}
-              >
-                Open in Authenticator App &rarr;
-              </a>
+              <p className="text-xs text-gray-300 text-center">Scan QR with Google Authenticator or your authenticator app:</p>
+              {qrDataUrl && (
+                <div className="flex justify-center p-2.5 bg-white rounded-xl shadow-inner w-fit mx-auto">
+                  <img src={qrDataUrl} alt="TOTP QR Code" className="w-44 h-44" />
+                </div>
+              )}
+              <div>
+                <label className="block text-gray-400 text-xs font-semibold mb-1 text-center">Or enter manual key:</label>
+                <code className="block bg-black/40 border border-white/10 rounded-lg p-2.5 text-xs font-mono text-center break-all text-blue-300 select-all">
+                  {totpSecret}
+                </code>
+              </div>
               <div>
                 <label className="block text-gray-400 text-xs font-semibold mb-1">Verification code</label>
                 <input

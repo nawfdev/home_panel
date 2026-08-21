@@ -226,7 +226,9 @@ func videoPlayerHTML(videoSrc, rawURL string) string {
 <div class="np-controls" id="npctrls">
   <div class="np-seek" id="npseek"><div class="np-buffered" id="npbuf"></div><div class="np-played" id="npplayed"></div><div class="np-thumb" id="npthumb"></div></div>
   <div class="np-row">
+    <button class="np-btn" id="npback10" aria-label="Rewind 10s" title="Rewind 10s (J / Left Arrow)">` + icoBack10 + `</button>
     <button class="np-btn" id="npplay" aria-label="Play/Pause">` + icoPlay + `</button>
+    <button class="np-btn" id="npfwd10" aria-label="Forward 10s" title="Forward 10s (L / Right Arrow)">` + icoForward10 + `</button>
     <button class="np-btn" id="npmute" aria-label="Mute">` + icoVol + `</button>
     <input class="np-vol" id="npvol" type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume">
     <span class="np-time mono" id="nptime">0:00 / 0:00</span>
@@ -271,6 +273,8 @@ func subtitleTracks(basePath string, subs []Subtitle) []subtitleTrack {
 const (
 	icoPlay       = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`
 	icoPause      = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>`
+	icoBack10     = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"/><text x="12" y="16" font-size="7" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">10</text></svg>`
+	icoForward10  = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3"/><text x="12" y="16" font-size="7" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">10</text></svg>`
 	icoVol        = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M16 8.5a4 4 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.7"/></svg>`
 	icoMute       = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M4 9v6h4l5 5V4L8 9H4z"/><path d="M17 9l4 4m0-4l-4 4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>`
 	icoCC         = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M9.5 10.5a2 2 0 1 0 0 3M15.5 10.5a2 2 0 1 0 0 3" stroke-linecap="round"/></svg>`
@@ -456,11 +460,18 @@ const playerJS = `
   });
 
   function seekTo(e){ var r=seek.getBoundingClientRect(); var x=(e.clientX-r.left)/r.width; x=Math.max(0,Math.min(1,x)); if(v.duration) v.currentTime=x*v.duration; }
+  function seekToTouch(e){ if(!e.touches.length) return; var r=seek.getBoundingClientRect(); var x=(e.touches[0].clientX-r.left)/r.width; x=Math.max(0,Math.min(1,x)); if(v.duration) v.currentTime=x*v.duration; }
   var dragging=false;
   seek.addEventListener('mousedown',function(e){ dragging=true; seekTo(e); });
+  seek.addEventListener('touchstart',seekToTouch,{passive:true});
+  seek.addEventListener('touchmove',seekToTouch,{passive:true});
   document.addEventListener('mousemove',function(e){ if(dragging) seekTo(e); });
   document.addEventListener('mouseup',function(){ dragging=false; });
 
+  function skip(s){ if(v.duration) v.currentTime=Math.max(0,Math.min(v.duration,v.currentTime+s)); activity(); }
+  var back10=document.getElementById('npback10'), fwd10=document.getElementById('npfwd10');
+  if(back10) back10.addEventListener('click',function(){ skip(-10); });
+  if(fwd10) fwd10.addEventListener('click',function(){ skip(10); });
   vol.addEventListener('input',function(){ v.volume=parseFloat(vol.value); v.muted=v.volume===0; updateVol(); });
   function updateVol(){ muteBtn.innerHTML=(v.muted||v.volume===0)?ICON_MUTE:ICON_VOL; }
   muteBtn.addEventListener('click',function(){ v.muted=!v.muted; vol.value=v.muted?0:(v.volume||1); updateVol(); });
@@ -598,13 +609,18 @@ const playerJS = `
 
   // keyboard
   np.addEventListener('keydown',function(e){
-    if(e.key===' '||e.key==='k'){ e.preventDefault(); toggle(); }
-    else if(e.key==='ArrowRight'){ v.currentTime=Math.min(v.duration||0,v.currentTime+5); }
-    else if(e.key==='ArrowLeft'){ v.currentTime=Math.max(0,v.currentTime-5); }
+    if(e.key===' '||e.key==='k'||e.key==='K'){ e.preventDefault(); toggle(); }
+    else if(e.key==='ArrowRight'){ e.preventDefault(); skip(5); }
+    else if(e.key==='ArrowLeft'){ e.preventDefault(); skip(-5); }
+    else if(e.key==='l'||e.key==='L'){ e.preventDefault(); skip(10); }
+    else if(e.key==='j'||e.key==='J'){ e.preventDefault(); skip(-10); }
     else if(e.key==='ArrowUp'){ e.preventDefault(); v.volume=Math.min(1,v.volume+0.1); vol.value=v.volume; updateVol(); }
     else if(e.key==='ArrowDown'){ e.preventDefault(); v.volume=Math.max(0,v.volume-0.1); vol.value=v.volume; updateVol(); }
-    else if(e.key==='f'){ toggleFull(); }
-    else if(e.key==='m'){ v.muted=!v.muted; vol.value=v.muted?0:(v.volume||1); updateVol(); }
+    else if(e.key==='f'||e.key==='F'){ e.preventDefault(); toggleFull(); }
+    else if(e.key==='m'||e.key==='M'){ e.preventDefault(); v.muted=!v.muted; vol.value=v.muted?0:(v.volume||1); updateVol(); }
+    else if(e.key==='Home'&&v.duration){ e.preventDefault(); v.currentTime=0; }
+    else if(e.key==='End'&&v.duration){ e.preventDefault(); v.currentTime=v.duration; }
+    else if(e.key>='0'&&e.key<='9'&&v.duration){ e.preventDefault(); v.currentTime=(parseInt(e.key,10)/10)*v.duration; }
     activity();
   });
 

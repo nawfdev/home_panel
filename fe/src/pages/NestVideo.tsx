@@ -45,6 +45,19 @@ const IcoGear = () => (
     <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
   </svg>
 );
+const IcoBack10 = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3" />
+    <text x="12" y="16" fontSize="7" fontWeight="bold" fill="currentColor" stroke="none" textAnchor="middle">10</text>
+  </svg>
+);
+
+const IcoForward10 = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-5 h-5">
+    <path strokeLinecap="round" strokeLinejoin="round" d="M15 15l6-6m0 0l-6-6m6 6H9a6 6 0 000 12h3" />
+    <text x="12" y="16" fontSize="7" fontWeight="bold" fill="currentColor" stroke="none" textAnchor="middle">10</text>
+  </svg>
+);
 
 interface Track {
   label: string;
@@ -240,6 +253,27 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
     document.addEventListener("mouseup", up);
   }
 
+  function onSeekTouch(e: React.TouchEvent) {
+    if (!e.touches.length) return;
+    seekFromEvent(e.touches[0].clientX);
+    const move = (ev: TouchEvent) => {
+      if (ev.touches.length) seekFromEvent(ev.touches[0].clientX);
+    };
+    const up = () => {
+      document.removeEventListener("touchmove", move);
+      document.removeEventListener("touchend", up);
+    };
+    document.addEventListener("touchmove", move, { passive: true });
+    document.addEventListener("touchend", up, { passive: true });
+  }
+
+  function skip(seconds: number) {
+    const v = videoRef.current;
+    if (!v || !v.duration) return;
+    v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + seconds));
+    activity();
+  }
+
   function toggleFull() {
     const doc = document as unknown as {
       fullscreenElement?: Element;
@@ -289,15 +323,37 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
       onKeyDown={(e) => {
         const v = videoRef.current;
         if (!v) return;
-        if (e.key === " " || e.key === "k") {
+        if (e.key === " " || e.key === "k" || e.key === "K") {
           e.preventDefault();
           toggle();
-        } else if (e.key === "ArrowRight") v.currentTime = Math.min(v.duration || 0, v.currentTime + 5);
-        else if (e.key === "ArrowLeft") v.currentTime = Math.max(0, v.currentTime - 5);
-        else if (e.key === "f") toggleFull();
-        else if (e.key === "m") {
+        } else if (e.key === "ArrowRight") {
+          e.preventDefault();
+          skip(5);
+        } else if (e.key === "ArrowLeft") {
+          e.preventDefault();
+          skip(-5);
+        } else if (e.key === "l" || e.key === "L") {
+          e.preventDefault();
+          skip(10);
+        } else if (e.key === "j" || e.key === "J") {
+          e.preventDefault();
+          skip(-10);
+        } else if (e.key === "f" || e.key === "F") {
+          e.preventDefault();
+          toggleFull();
+        } else if (e.key === "m" || e.key === "M") {
+          e.preventDefault();
           v.muted = !v.muted;
           setMuted(v.muted);
+        } else if (e.key === "Home" && v.duration) {
+          e.preventDefault();
+          v.currentTime = 0;
+        } else if (e.key === "End" && v.duration) {
+          e.preventDefault();
+          v.currentTime = v.duration;
+        } else if (e.key >= "0" && e.key <= "9" && v.duration) {
+          e.preventDefault();
+          v.currentTime = (parseInt(e.key, 10) / 10) * v.duration;
         }
         activity();
       }}
@@ -376,14 +432,20 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
       <div className="np-scrim" />
 
       <div className="np-controls">
-        <div className="np-seek" onMouseDown={onSeekDown}>
+        <div className="np-seek" onMouseDown={onSeekDown} onTouchStart={onSeekTouch}>
           <div className="np-buffered" style={{ width: `${buffered}%` }} />
           <div className="np-played" style={{ width: `${pct}%` }} />
           <div className="np-thumb" style={{ left: `${pct}%` }} />
         </div>
         <div className="np-row">
+          <button className="np-btn" onClick={() => skip(-10)} aria-label="Rewind 10 seconds" title="Rewind 10s (J / Left Arrow)">
+            <IcoBack10 />
+          </button>
           <button className="np-btn" onClick={toggle} aria-label="Play/Pause">
             {paused ? <IcoPlay /> : <IcoPause />}
+          </button>
+          <button className="np-btn" onClick={() => skip(10)} aria-label="Forward 10 seconds" title="Forward 10s (L / Right Arrow)">
+            <IcoForward10 />
           </button>
           <button
             className="np-btn"
