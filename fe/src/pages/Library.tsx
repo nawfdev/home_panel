@@ -27,6 +27,7 @@ interface Job {
   downloaded: number;
   total: number;
   speedBps: number;
+  remuxPct?: number;
   error?: string;
   createdAt: string;
 }
@@ -310,8 +311,11 @@ export function Library() {
                           {job.status === "queued" && "Queued…"}
                           {job.status === "paused" &&
                             `Paused · ${formatBytes(job.downloaded)}${job.total > 0 ? " / " + formatBytes(job.total) : ""}`}
-                          {job.status === "remuxing" && "Preparing for streaming…"}
-                          {job.status === "canceled" && "Canceled"}
+                          {job.status === "remuxing" && (
+                            <span className="text-purple-300 font-medium">
+                              Preparing for streaming… {job.remuxPct ? `${job.remuxPct}%` : ""}
+                            </span>
+                          )}
                           {job.status === "error" && <span className="text-red-400">{job.error || "Failed"}</span>}
                         </p>
                       </div>
@@ -345,14 +349,14 @@ export function Library() {
                       </div>
                     </div>
                     {(job.status === "downloading" || job.status === "remuxing" || job.status === "paused") && (
-                      <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden mt-2">
                         <div
                           className={`h-full transition-all duration-300 ${
-                            job.status === "remuxing" ? "bg-purple-500 animate-pulse w-full" : job.status === "paused" ? "bg-gray-500" : "bg-blue-500"
+                            job.status === "remuxing" ? "bg-purple-500" : job.status === "paused" ? "bg-gray-500" : "bg-blue-500"
                           }`}
-                          style={job.status !== "remuxing" ? { width: `${pct}%` } : undefined}
+                          style={{
+                            width: `${job.status === "remuxing" ? (job.remuxPct || 10) : pct}%`,
+                          }}
                         />
-                      </div>
                     )}
                   </div>
                 );

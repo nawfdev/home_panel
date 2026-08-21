@@ -146,6 +146,7 @@ type Job struct {
 	Downloaded int64     `json:"downloaded"`
 	Total      int64     `json:"total"`
 	SpeedBps   int64     `json:"speedBps"`
+	RemuxPct   int       `json:"remuxPct,omitempty"`
 	Error      string    `json:"error,omitempty"`
 	CreatedAt  time.Time `json:"createdAt"`
 	cancel     context.CancelFunc
@@ -584,14 +585,16 @@ func (s *Service) run(ctx context.Context, job *Job) {
 // always serve the exact bytes that were downloaded. Both steps are
 // best-effort; either failing still lets the job finish as done.
 func (s *Service) finish(job *Job) {
-	s.set(job, func(j *Job) { j.Status = StatusRemuxing })
+	s.set(job, func(j *Job) { j.Status = StatusRemuxing; j.RemuxPct = 0 })
 	if err := filesvc.ExtractEmbeddedSubtitles(job.Dest); err != nil {
 		log.Printf("movies: subtitle extract skipped for %s: %v", job.Dest, err)
 	}
-	if _, err := filesvc.EnsureWebPlayable(job.Dest); err != nil {
+	if _, err := filesvc.EnsureWebPlayableWithProgress(job.Dest, func(pct int) {
+		s.set(job, func(j *Job) { j.RemuxPct = pct })
+	}); err != nil {
 		log.Printf("movies: streaming sibling skipped for %s: %v", job.Dest, err)
 	}
-	s.set(job, func(j *Job) { j.Status = StatusDone })
+	s.set(job, func(j *Job) { j.Status = StatusDone; j.RemuxPct = 100 })
 	s.persist()
 }
 

@@ -1,6 +1,6 @@
 package files
-
 import (
+	"bufio"
 	"context"
 	"encoding/binary"
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -77,7 +78,25 @@ func probeCodecs(path string) (videoCodec string, audioCodecs []string, err erro
 	return videoCodec, audioCodecs, nil
 }
 
-// isFaststartMP4 reports whether an MP4-family file's "moov" box (the index
+func probeDuration(path string) float64 {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "ffprobe",
+		"-v", "quiet", "-print_format", "json", "-show_entries", "format=duration",
+		path,
+	).Output()
+	if err != nil {
+		return 0
+	}
+	var d struct {
+		Format struct {
+			Duration string `json:"duration"`
+		} `json:"format"`
+	}
+	_ = json.Unmarshal(out, &d)
+	val, _ := strconv.ParseFloat(d.Format.Duration, 64)
+	return val
+}
 // browsers need before they can start decoding) comes before its "mdat" box
 // (the actual media bytes, often the bulk of the file). Sources that aren't
 // faststart force a browser/player to buffer the whole file before playback
@@ -145,6 +164,10 @@ func isFaststartMP4(path string) (bool, error) {
 // touching the original: the Download button/link always serves the exact
 // bytes that were downloaded, never a remuxed copy.
 func EnsureWebPlayable(path string) (string, error) {
+	return EnsureWebPlayableWithProgress(path, nil)
+}
+
+func EnsureWebPlayableWithProgress(path string, onProgress func(pct int)) (string, error) {
 	if !ffmpegAvailable || !ffprobeAvailable || MediaType(path) != "video" {
 		return path, nil
 	}
@@ -195,7 +218,8 @@ func EnsureWebPlayable(path string) (string, error) {
 	args = append(args, "-c:v", "copy")
 	args = append(args, audioArgs...)
 	args = append(args, "-sn", "-movflags", "+faststart", sibling)
-	result, err := runRemux(args, sibling)
+	totalSec := probeDuration(path)
+	result, err := runRemuxWithProgress(args, sibling, totalSec, onProgress)
 	if err != nil {
 		return path, err
 	}
@@ -260,19 +284,54 @@ func allAudioCodecsSafe(codecs []string) bool {
 // failure/empty output" handling used by both EnsureWebPlayable and
 // EnsureWebPlayableAudio.
 func runRemux(args []string, output string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	return runRemuxWithProgress(args, output, 0, nil)
+}
+
+func runRemuxWithProgress(args []string, output string, totalSec float64, onProgress func(pct int)) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 	defer cancel()
 
 	tmp := output + ".tmp.mp4"
 	_ = os.Remove(tmp)
 
-	runArgs := make([]string, len(args))
-	copy(runArgs, args)
+	runArgs := make([]string, 0, len(args)+4)
+	if onProgress != nil && totalSec > 0 {
+		runArgs = append(runArgs, "-progress", "pipe:1")
+	}
+	runArgs = append(runArgs, args...)
 	if len(runArgs) > 0 {
 		runArgs[len(runArgs)-1] = tmp
 	}
 
-	if err := exec.CommandContext(ctx, "ffmpeg", runArgs...).Run(); err != nil {
+	cmd := exec.CommandContext(ctx, "ffmpeg", runArgs...)
+	if onProgress != nil && totalSec > 0 {
+		stdout, err := cmd.StdoutPipe()
+		if err == nil {
+			go func() {
+				scanner := bufio.NewScanner(stdout)
+				lastPct := -1
+				for scanner.Scan() {
+					line := scanner.Text()
+					if strings.HasPrefix(line, "out_time_us=") {
+						usStr := strings.TrimPrefix(line, "out_time_us=")
+						if us, err := strconv.ParseInt(usStr, 10, 64); err == nil && us > 0 {
+							currentSec := float64(us) / 1000000.0
+							pct := int((currentSec / totalSec) * 100)
+							if pct > 99 {
+								pct = 99
+							}
+							if pct != lastPct && pct >= 0 {
+								lastPct = pct
+								onProgress(pct)
+							}
+						}
+					}
+				}
+			}()
+		}
+	}
+
+	if err := cmd.Run(); err != nil {
 		_ = os.Remove(tmp)
 		return "", fmt.Errorf("ffmpeg: %w", err)
 	}
@@ -284,11 +343,11 @@ func runRemux(args []string, output string) (string, error) {
 		_ = os.Remove(tmp)
 		return "", fmt.Errorf("could not finalize remux file: %w", err)
 	}
+	if onProgress != nil {
+		onProgress(100)
+	}
 	return output, nil
 }
-
-// RemoveWebSiblings deletes the non-destructive streaming siblings
-// EnsureWebPlayable/EnsureWebPlayableAudio may have built next to path
 // ("<base>.web.mp4", "<base>.web.a0.mp4", "<base>.web.a1.mp4", ...) so
 // they never outlive the file they were built from — callers must invoke
 // this whenever path itself is deleted, since neither Delete path in this
