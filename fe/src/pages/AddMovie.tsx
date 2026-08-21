@@ -236,11 +236,29 @@ export function AddMovie() {
     setManualUrl("");
   }
 
+  function onDirectUrlChange(val: string) {
+    setDirectUrl(val);
+    if (!directTitle.trim() && val.trim()) {
+      try {
+        const u = new URL(val.trim());
+        let seg = u.pathname.split("/").filter(Boolean).pop() || "";
+        seg = decodeURIComponent(seg);
+        seg = seg.replace(/^[a-zA-Z0-9_-]{12,}-/, "");
+        seg = seg.replace(/\.(mp4|mkv|webm|avi|ts|mov)$/i, "");
+        if (seg && !seg.startsWith("eyJ") && seg.length > 3) {
+          setDirectTitle(seg);
+        }
+      } catch {
+        /* ignore invalid URL while typing */
+      }
+    }
+  }
+
   function startDirectDownload(e?: React.FormEvent) {
     e?.preventDefault();
     const url = directUrl.trim();
     if (!url) return;
-    startDownloadRequest("direct", directTitle.trim() || url, url, "");
+    startDownloadRequest("direct", directTitle.trim(), url, "");
     setDirectTitle("");
     setDirectUrl("");
   }
@@ -297,7 +315,7 @@ export function AddMovie() {
             <div className="flex gap-2">
               <input
                 value={directUrl}
-                onChange={(e) => setDirectUrl(e.target.value)}
+                onChange={(e) => onDirectUrlChange(e.target.value)}
                 placeholder="https://example.com/movie.mp4"
                 className="input-field flex-1 text-sm"
               />

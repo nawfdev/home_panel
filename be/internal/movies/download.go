@@ -184,18 +184,35 @@ func MoviesDir() (string, error) {
 	return safe, nil
 }
 
-var reUnsafeName = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
+var (
+	reUnsafeName = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
+	reCDFilename = regexp.MustCompile(`(?i)filename\*?=['"]?(?:UTF-8'')?([^'";\r\n]+)`)
+	reHashPrefix = regexp.MustCompile(`^[a-zA-Z0-9_-]{12,}-`)
+)
+
+func extractFilenameFromURL(rawURL string) string {
+	uPath := rawURL
+	if q := strings.IndexByte(uPath, '?'); q >= 0 {
+		uPath = uPath[:q]
+	}
+	if i := strings.LastIndexByte(uPath, '/'); i >= 0 {
+		uPath = uPath[i+1:]
+	}
+	if decoded, err := url.PathUnescape(uPath); err == nil && decoded != "" {
+		uPath = decoded
+	}
+	uPath = reHashPrefix.ReplaceAllString(uPath, "")
+	return uPath
+}
 
 // safeFilename turns a title + URL into a safe video filename preserving .mkv / .mp4 / .webm.
-func safeFilename(title, rawURL string) string {
+func safeFilename(title, rawURL, cdFilename string) string {
 	name := strings.TrimSpace(title)
-	if name == "" {
-		// Fall back to the URL's last path segment.
-		if i := strings.LastIndexByte(rawURL, '/'); i >= 0 {
-			name = rawURL[i+1:]
-		}
-		if q := strings.IndexByte(name, '?'); q >= 0 {
-			name = name[:q]
+	if name == "" || name == rawURL || strings.HasPrefix(name, "http://") || strings.HasPrefix(name, "https://") {
+		if cdFilename != "" {
+			name = cdFilename
+		} else {
+			name = extractFilenameFromURL(rawURL)
 		}
 	}
 	if name == "" {
@@ -206,14 +223,14 @@ func safeFilename(title, rawURL string) string {
 		name = name[:150]
 	}
 	ext := strings.ToLower(filepath.Ext(name))
-	if ext != ".mp4" && ext != ".mkv" && ext != ".webm" {
-		// Detect extension from the URL path if title didn't specify one
-		uPath := rawURL
-		if q := strings.IndexByte(uPath, '?'); q >= 0 {
-			uPath = uPath[:q]
+	if ext != ".mp4" && ext != ".mkv" && ext != ".webm" && ext != ".avi" && ext != ".ts" {
+		urlExt := ""
+		if cdFilename != "" {
+			urlExt = strings.ToLower(filepath.Ext(cdFilename))
+		} else {
+			urlExt = strings.ToLower(filepath.Ext(extractFilenameFromURL(rawURL)))
 		}
-		urlExt := strings.ToLower(filepath.Ext(uPath))
-		if urlExt == ".mkv" || urlExt == ".webm" || urlExt == ".mp4" {
+		if urlExt == ".mkv" || urlExt == ".webm" || urlExt == ".mp4" || urlExt == ".avi" || urlExt == ".ts" {
 			name += urlExt
 		} else {
 			name += ".mp4"
@@ -223,7 +240,7 @@ func safeFilename(title, rawURL string) string {
 }
 var reMetaRefresh = regexp.MustCompile(`(?i)<meta\s+[^>]*http-equiv=["']?refresh["']?[^>]*content=["'][^"']*url=['"]?([^'" >]+)`)
 
-func resolveDirectURL(rawURL string) string {
+func resolveDirectURL(rawURL string) (string, string) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -235,18 +252,28 @@ func resolveDirectURL(rawURL string) string {
 	}
 	req, err := http.NewRequest(http.MethodGet, rawURL, nil)
 	if err != nil {
-		return rawURL
+		return rawURL, ""
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-	req.Header.Set("Referer", rawURL)
+	if u, err := url.Parse(rawURL); err == nil && u.Scheme != "" && u.Host != "" {
+		req.Header.Set("Referer", fmt.Sprintf("%s://%s/", u.Scheme, u.Host))
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return rawURL
+		return rawURL, ""
 	}
 	defer resp.Body.Close()
 
 	finalURL := resp.Request.URL.String()
+	cd := resp.Header.Get("Content-Disposition")
+	cdFilename := ""
+	if cd != "" {
+		if m := reCDFilename.FindStringSubmatch(cd); len(m) > 1 {
+			cdFilename = strings.Trim(m[1], "'\" ")
+		}
+	}
+
 	contentType := strings.ToLower(resp.Header.Get("Content-Type"))
 	if strings.Contains(contentType, "text/html") {
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
@@ -255,14 +282,17 @@ func resolveDirectURL(rawURL string) string {
 				target := strings.TrimSpace(m[1])
 				target = strings.Trim(target, "'\"")
 				if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
-					return target
+					if tURL, tCD := resolveDirectURL(target); tURL != "" {
+						return tURL, tCD
+					}
+					return target, ""
 				}
 			}
 		}
 	} else if finalURL != "" && finalURL != rawURL {
-		return finalURL
+		return finalURL, cdFilename
 	}
-	return rawURL
+	return rawURL, cdFilename
 }
 
 // Start enqueues a download from a direct/simple link. Shortener links
@@ -275,7 +305,10 @@ func (s *Service) Start(title, rawURL, poster string) (*Job, error) {
 	if isShortener(rawURL) {
 		return nil, fmt.Errorf("this link goes through a shortener (%s) which needs manual resolving in Fase 1; open it in your browser, copy the direct file link, and paste that", shortenerHost(rawURL))
 	}
-	rawURL = resolveDirectURL(rawURL)
+	resolvedURL, cdFilename := resolveDirectURL(rawURL)
+	if resolvedURL != "" {
+		rawURL = resolvedURL
+	}
 	if err := checkHostAllowed(rawURL); err != nil {
 		return nil, err
 	}
@@ -283,15 +316,20 @@ func (s *Service) Start(title, rawURL, poster string) (*Job, error) {
 	if err != nil {
 		return nil, err
 	}
-	filename := safeFilename(title, rawURL)
+	filename := safeFilename(title, rawURL, cdFilename)
 	dest := filepath.Join(dir, filename)
+
+	displayTitle := strings.TrimSpace(title)
+	if displayTitle == "" || displayTitle == rawURL || strings.HasPrefix(displayTitle, "http://") || strings.HasPrefix(displayTitle, "https://") {
+		displayTitle = strings.TrimSuffix(filename, filepath.Ext(filename))
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.mu.Lock()
 	s.seq++
 	job := &Job{
 		ID:        fmt.Sprintf("dl-%d-%d", time.Now().Unix(), s.seq),
-		Title:     title,
+		Title:     displayTitle,
 		URL:       rawURL,
 		Dest:      dest,
 		Poster:    poster,
@@ -799,10 +837,13 @@ func (s *Service) Retry(id string) (*Job, error) {
 		return job.snapshot(), nil
 	}
 
-	rawURL = resolveDirectURL(rawURL)
+	resolvedURL, cdFilename := resolveDirectURL(rawURL)
+	if resolvedURL != "" {
+		rawURL = resolvedURL
+	}
 	dir := filepath.Dir(job.Dest)
-	filename := filepath.Base(job.Dest)
-
+	filename := safeFilename(job.Title, rawURL, cdFilename)
+	job.Dest = filepath.Join(dir, filename)
 	if aria2.Available {
 		if err := s.aria2.EnsureRunning(); err == nil {
 			if gid, err := s.aria2.AddURI(rawURL, dir, filename); err == nil {
