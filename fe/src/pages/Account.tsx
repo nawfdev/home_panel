@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import QRCode from "qrcode";
+import { api } from "../lib/api";
+import { useToast } from "../context/ToastContext";
+import { Panel } from "../components/ui/Panel";
 import {
   KeyIcon,
   ShieldCheckIcon,
@@ -7,7 +10,6 @@ import {
   ComputerDesktopIcon,
   UserCircleIcon,
 } from "@heroicons/react/24/outline";
-
 interface SessionDTO {
   id: string;
   username: string;
@@ -32,6 +34,7 @@ export function Account() {
   const [totpCode, setTotpCode] = useState("");
   const [disablePassword, setDisablePassword] = useState("");
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [sessions, setSessions] = useState<SessionDTO[]>([]);
   const [loadingSessions, setLoadingSessions] = useState(false);
 
   function loadSessions() {
