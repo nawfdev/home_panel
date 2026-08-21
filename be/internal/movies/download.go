@@ -186,7 +186,7 @@ func MoviesDir() (string, error) {
 
 var reUnsafeName = regexp.MustCompile(`[<>:"/\\|?*\x00-\x1f]`)
 
-// safeFilename turns a title + URL into a safe .mp4 filename.
+// safeFilename turns a title + URL into a safe video filename preserving .mkv / .mp4 / .webm.
 func safeFilename(title, rawURL string) string {
 	name := strings.TrimSpace(title)
 	if name == "" {
@@ -207,7 +207,17 @@ func safeFilename(title, rawURL string) string {
 	}
 	ext := strings.ToLower(filepath.Ext(name))
 	if ext != ".mp4" && ext != ".mkv" && ext != ".webm" {
-		name += ".mp4"
+		// Detect extension from the URL path if title didn't specify one
+		uPath := rawURL
+		if q := strings.IndexByte(uPath, '?'); q >= 0 {
+			uPath = uPath[:q]
+		}
+		urlExt := strings.ToLower(filepath.Ext(uPath))
+		if urlExt == ".mkv" || urlExt == ".webm" || urlExt == ".mp4" {
+			name += urlExt
+		} else {
+			name += ".mp4"
+		}
 	}
 	return name
 }
