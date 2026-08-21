@@ -188,7 +188,7 @@ func EnsureWebPlayable(path string) (string, error) {
 	if !audioOK {
 		audioArgs = []string{"-c:a", "aac", "-b:a", "192k"}
 	}
-	args := []string{"-y", "-i", path, "-map", "0:v:0"}
+	args := []string{"-y", "-threads", "0", "-i", path, "-map", "0:v:0"}
 	if len(audioCodecs) > 0 {
 		args = append(args, "-map", "0:a")
 	}
@@ -224,13 +224,10 @@ func EnsureWebPlayableAudio(path string, audioIndex int) (string, error) {
 		}
 	}
 
-	videoCodec, audioCodecs, err := probeCodecs(path)
-	if err != nil {
-		return path, err
-	}
-	if audioIndex >= len(audioCodecs) {
-		return path, fmt.Errorf("audio track %d not found (file has %d)", audioIndex, len(audioCodecs))
-	}
+	args := []string{"-y", "-threads", "0", "-i", path, "-map", "0:v:0", "-map", fmt.Sprintf("0:a:%d", audioIndex)}
+	args = append(args, "-c:v", "copy")
+	args = append(args, audioArgs...)
+	args = append(args, "-sn", "-movflags", "+faststart", sibling)
 	if videoCodec != "" && !browserSafeVideoCodecs[videoCodec] {
 		return path, fmt.Errorf("video codec %q isn't browser-safe and re-encoding video isn't supported", videoCodec)
 	}
