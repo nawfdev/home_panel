@@ -63,6 +63,75 @@ const emptyForm = {
   timeoutSec: "5",
 };
 
+function HeartbeatBar({ history }: { history: Heartbeat[] }) {
+  const [activeHb, setActiveHb] = useState<Heartbeat | null>(null);
+
+  const lastHb = history && history.length > 0 ? history[history.length - 1] : null;
+  const current = activeHb || lastHb;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[11px] mb-1.5 min-h-[22px]">
+        <div className="flex items-center gap-2">
+          {activeHb ? (
+            <span className="flex items-center gap-1.5 bg-white/10 px-2 py-0.5 rounded-md text-gray-200 font-mono text-[10px] shadow-sm">
+              <span className={`w-1.5 h-1.5 rounded-full ${activeHb.status === "up" ? "bg-emerald-400 animate-pulse" : "bg-rose-500"}`} />
+              <span className="font-semibold">{activeHb.status.toUpperCase()}</span>
+              <span className="text-gray-500">·</span>
+              <span className="text-gray-300">{new Date(activeHb.timestamp).toLocaleString()}</span>
+              {activeHb.latencyMs > 0 && (
+                <>
+                  <span className="text-gray-500">·</span>
+                  <span className="text-blue-300">{activeHb.latencyMs.toFixed(1)}ms</span>
+                </>
+              )}
+            </span>
+          ) : (
+            <span className="text-gray-500 text-[10px] uppercase font-semibold tracking-wider">30-Day Heartbeats</span>
+          )}
+        </div>
+        <span className="text-[10px] text-gray-500 font-mono">
+          {current ? `Checked ${new Date(current.timestamp).toLocaleTimeString()}` : "No history yet"}
+        </span>
+      </div>
+
+      <div
+        className="flex items-center gap-1 h-7 bg-black/40 rounded-lg p-1 border border-white/5 overflow-hidden"
+        onMouseLeave={() => setActiveHb(null)}
+      >
+        {Array.from({ length: 30 }).map((_, i) => {
+          const historyIdx = (history?.length || 0) - 30 + i;
+          const hb = historyIdx >= 0 && history ? history[historyIdx] : null;
+          const isSelected = activeHb === hb;
+          return (
+            <div
+              key={i}
+              onClick={() => hb && setActiveHb(hb)}
+              onMouseEnter={() => hb && setActiveHb(hb)}
+              className={`flex-1 h-full rounded-sm transition-all cursor-pointer ${
+                !hb
+                  ? "bg-white/5 cursor-default"
+                  : hb.status === "up"
+                  ? isSelected
+                    ? "bg-emerald-300 ring-2 ring-emerald-400 scale-y-110"
+                    : "bg-emerald-500/80 hover:bg-emerald-300 hover:scale-y-110"
+                  : isSelected
+                  ? "bg-rose-400 ring-2 ring-rose-500 scale-y-110"
+                  : "bg-rose-500 hover:bg-rose-400 hover:scale-y-110"
+              }`}
+              title={
+                hb
+                  ? `${new Date(hb.timestamp).toLocaleString()} — ${hb.status.toUpperCase()} (${hb.latencyMs.toFixed(1)} ms)${hb.message ? " · " + hb.message : ""}`
+                  : "Pending probe"
+              }
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function Monitoring() {
   const { show } = useToast();
   const [data, setData] = useState<MonitorsResponse | null>(null);
@@ -399,41 +468,8 @@ export function Monitoring() {
                     </div>
                   </div>
 
-                  {/* Heartbeat Status Bar (Uptime Kuma Style Pills) */}
-                  <div>
-                    <div className="flex items-center justify-between text-[10px] text-gray-500 mb-1">
-                      <span>30-Day Heartbeats</span>
-                      <span>
-                        {m.history && m.history.length > 0
-                          ? `Last checked: ${new Date(m.history[m.history.length - 1].timestamp).toLocaleTimeString()}`
-                          : "No history yet"}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1 h-7 bg-black/30 rounded-lg p-1 border border-white/5 overflow-hidden">
-                      {Array.from({ length: 30 }).map((_, i) => {
-                        const historyIdx = (m.history?.length || 0) - 30 + i;
-                        const hb = historyIdx >= 0 && m.history ? m.history[historyIdx] : null;
-                        return (
-                          <div
-                            key={i}
-                            className={`flex-1 h-full rounded-sm transition-all cursor-pointer ${
-                              !hb
-                                ? "bg-white/5"
-                                : hb.status === "up"
-                                ? "bg-emerald-400/80 hover:bg-emerald-300"
-                                : "bg-rose-500 hover:bg-rose-400"
-                            }`}
-                            title={
-                              hb
-                                ? `${new Date(hb.timestamp).toLocaleString()} — ${hb.status.toUpperCase()} (${hb.latencyMs.toFixed(1)} ms)`
-                                : "Pending probe"
-                            }
-                          />
-                        );
-                      })}
-                    </div>
-                  </div>
+                  {/* Heartbeat Status Bar (Uptime Kuma Style Interactive Pills) */}
+                  <HeartbeatBar history={m.history || []} />
                 </div>
               );
             })}

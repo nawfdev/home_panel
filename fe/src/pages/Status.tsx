@@ -20,6 +20,56 @@ interface PublicMonitor {
   history: PublicHeartbeat[];
 }
 
+function PublicHeartbeatBar({ history }: { history: PublicHeartbeat[] }) {
+  const [activeHb, setActiveHb] = useState<PublicHeartbeat | null>(null);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between text-[11px] min-h-[20px]">
+        {activeHb ? (
+          <span className="flex items-center gap-1.5 bg-white/10 px-2 py-0.5 rounded text-gray-200 font-mono text-[10px]">
+            <span className={`w-1.5 h-1.5 rounded-full ${activeHb.status === "up" ? "bg-emerald-400" : "bg-rose-500"}`} />
+            <span className="font-semibold">{activeHb.status.toUpperCase()}</span>
+            <span className="text-gray-500">·</span>
+            <span className="text-gray-300">{new Date(activeHb.timestamp).toLocaleString()}</span>
+          </span>
+        ) : (
+          <span className="text-gray-500 text-[10px]">30-Day Uptime</span>
+        )}
+      </div>
+
+      <div
+        className="flex items-center gap-1 h-6 bg-black/30 rounded-lg p-1 border border-white/5 overflow-hidden"
+        onMouseLeave={() => setActiveHb(null)}
+      >
+        {Array.from({ length: 30 }).map((_, i) => {
+          const historyIdx = (history?.length || 0) - 30 + i;
+          const hb = historyIdx >= 0 && history ? history[historyIdx] : null;
+          const isSelected = activeHb === hb;
+          return (
+            <div
+              key={i}
+              onClick={() => hb && setActiveHb(hb)}
+              onMouseEnter={() => hb && setActiveHb(hb)}
+              className={`flex-1 h-full rounded-sm transition-all cursor-pointer ${
+                !hb
+                  ? "bg-white/5 cursor-default"
+                  : hb.status === "up"
+                  ? isSelected
+                    ? "bg-emerald-300 ring-2 ring-emerald-400 scale-y-110"
+                    : "bg-emerald-400/80 hover:bg-emerald-300 hover:scale-y-110"
+                  : isSelected
+                  ? "bg-rose-400 ring-2 ring-rose-500 scale-y-110"
+                  : "bg-rose-500 hover:bg-rose-400 hover:scale-y-110"
+              }`}
+              title={hb ? `${new Date(hb.timestamp).toLocaleString()} — ${hb.status.toUpperCase()}` : "No data"}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 interface PublicStatusResponse {
   success: boolean;
   overall: "operational" | "degraded" | "outage";
@@ -122,21 +172,7 @@ export function Status() {
                   <span className="text-xs font-mono text-gray-400 shrink-0">{m.uptime30d.toFixed(2)}% (30d)</span>
                 </div>
 
-                <div className="flex items-center gap-1 h-6 bg-black/30 rounded-lg p-1 border border-white/5 overflow-hidden">
-                  {Array.from({ length: 30 }).map((_, i) => {
-                    const historyIdx = (m.history?.length || 0) - 30 + i;
-                    const hb = historyIdx >= 0 && m.history ? m.history[historyIdx] : null;
-                    return (
-                      <div
-                        key={i}
-                        className={`flex-1 h-full rounded-sm ${
-                          !hb ? "bg-white/5" : hb.status === "up" ? "bg-emerald-400/80" : "bg-rose-500"
-                        }`}
-                        title={hb ? `${new Date(hb.timestamp).toLocaleString()} — ${hb.status.toUpperCase()}` : "No data"}
-                      />
-                    );
-                  })}
-                </div>
+                <PublicHeartbeatBar history={m.history || []} />
               </div>
             );
           })}
