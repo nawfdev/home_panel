@@ -11,7 +11,7 @@ interface User {
 interface AuthContextValue {
   user: User | null;
   isLoading: boolean;
-  login: (username: string, password: string, code?: string) => Promise<void>;
+  login: (username: string, password: string, code?: string, rememberMe?: boolean) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -28,10 +28,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .finally(() => setIsLoading(false));
   }, []);
 
-  const login = useCallback(async (username: string, password: string, code?: string) => {
+  const login = useCallback(async (username: string, password: string, code?: string, rememberMe?: boolean) => {
     const data = await api<{ user: User }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password, code }),
+      body: JSON.stringify({ username, password, code, rememberMe: !!rememberMe }),
     });
     setUser(data.user);
   }, []);

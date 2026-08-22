@@ -181,8 +181,7 @@ func (h *Passkeys) LoginFinish(w http.ResponseWriter, r *http.Request) {
 	}
 
 	su := session.SessionUser{ID: user.ID, Username: user.Username, Role: user.Role}
-	if err := h.Session.Login(w, r, su); err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "Session creation failed")
+	if err := h.Session.Login(w, r, su, true); err != nil {
 		return
 	}
 

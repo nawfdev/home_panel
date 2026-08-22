@@ -8,16 +8,16 @@ export function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [requiresTwoFactor, setRequiresTwoFactor] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setIsSubmitting(true);
     try {
-      await login(username, password, code);
+      await login(username, password, code, rememberMe);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401 && err.message === "Two-factor code required") {
         setRequiresTwoFactor(true);
@@ -155,6 +155,17 @@ export function Login() {
               />
             </div>
           )}
+          <div className="mb-5 flex items-center justify-between">
+            <label className="flex items-center gap-2.5 text-xs text-gray-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="w-4 h-4 rounded bg-black/40 border-white/10 text-blue-600 focus:ring-blue-500/20 cursor-pointer accent-blue-600"
+              />
+              <span>Ingat saya di perangkat ini (Tetap masuk 30 hari)</span>
+            </label>
+          </div>
           <button type="submit" disabled={isSubmitting} className="btn-primary w-full disabled:opacity-60">
             {isSubmitting ? "Signing in..." : "Login with password"}
           </button>

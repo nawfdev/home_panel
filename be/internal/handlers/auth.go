@@ -98,9 +98,10 @@ func (a *Auth) RequireFeature(feature string) func(http.Handler) http.Handler {
 
 func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Code     string `json:"code"`
+		Username   string `json:"username"`
+		Password   string `json:"password"`
+		Code       string `json:"code"`
+		RememberMe bool   `json:"rememberMe"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
 	if body.Username == "" || body.Password == "" {
@@ -126,8 +127,7 @@ func (a *Auth) Login(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	su := session.SessionUser{ID: user.ID, Username: user.Username, Role: user.Role}
-	if err := a.Session.Login(w, r, su); err != nil {
-		a.Audit.RecordActor(r, user.Username, "auth.login", "panel", "failure", "session creation failed")
+	if err := a.Session.Login(w, r, su, body.RememberMe); err != nil {
 		httpx.Error(w, http.StatusInternalServerError, "Login failed")
 		return
 	}

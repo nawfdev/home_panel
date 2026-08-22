@@ -22,14 +22,15 @@ type SessionUser struct {
 }
 
 type Info struct {
-	ID        string `json:"id"`
-	UserID    int    `json:"userId"`
-	Username  string `json:"username"`
-	IP        string `json:"ip"`
-	UserAgent string `json:"userAgent"`
-	CreatedAt string `json:"createdAt"`
-	LastSeen  string `json:"lastSeen"`
-	Current   bool   `json:"current"`
+	ID         string `json:"id"`
+	UserID     int    `json:"userId"`
+	Username   string `json:"username"`
+	IP         string `json:"ip"`
+	UserAgent  string `json:"userAgent"`
+	RememberMe bool   `json:"rememberMe"`
+	CreatedAt  string `json:"createdAt"`
+	LastSeen   string `json:"lastSeen"`
+	Current    bool   `json:"current"`
 }
 
 type record struct {
@@ -75,23 +76,49 @@ func sessionID() (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
-func (m *Manager) Login(w http.ResponseWriter, r *http.Request, u SessionUser) error {
+const (
+	defaultMaxAge  = 24 * time.Hour      // 24 hours if not remembered
+	rememberMaxAge = 30 * 24 * time.Hour // 30 days when rememberMe is enabled
+)
+
+func (m *Manager) Login(w http.ResponseWriter, r *http.Request, u SessionUser, rememberMe bool) error {
 	id, err := sessionID()
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC()
+	ttl := defaultMaxAge
+	if rememberMe {
+		ttl = rememberMaxAge
+	}
 	s := m.get(r)
+	s.Options.Path = "/"
+	s.Options.HttpOnly = true
+	s.Options.SameSite = http.SameSiteLaxMode
 	s.Options.Secure = requestSecure(r)
+	s.Options.MaxAge = int(ttl.Seconds())
 	s.Values["id"] = u.ID
 	s.Values["username"] = u.Username
 	s.Values["role"] = u.Role
 	s.Values["session_id"] = id
+	s.Values["remember_me"] = rememberMe
 	if err := s.Save(r, w); err != nil {
 		return err
 	}
 	m.mu.Lock()
-	m.active[id] = record{Info: Info{ID: id, UserID: u.ID, Username: u.Username, IP: requestIP(r), UserAgent: r.UserAgent(), CreatedAt: now.Format(time.RFC3339), LastSeen: now.Format(time.RFC3339)}, expires: now.Add(m.maxAge)}
+	m.active[id] = record{
+		Info: Info{
+			ID:         id,
+			UserID:     u.ID,
+			Username:   u.Username,
+			IP:         requestIP(r),
+			UserAgent:  r.UserAgent(),
+			RememberMe: rememberMe,
+			CreatedAt:  now.Format(time.RFC3339),
+			LastSeen:   now.Format(time.RFC3339),
+		},
+		expires: now.Add(ttl),
+	}
 	m.mu.Unlock()
 	return nil
 }
@@ -131,29 +158,38 @@ func (m *Manager) Current(r *http.Request) (SessionUser, bool) {
 		m.mu.Lock()
 		rec, exists := m.active[sid]
 		if !exists {
+			rem, _ := s.Values["remember_me"].(bool)
+			ttl := defaultMaxAge
+			if rem {
+				ttl = rememberMaxAge
+			}
 			// Auto-restore session in memory after server restart so active sessions tracking is never lost
 			rec = record{
 				Info: Info{
-					ID:        sid,
-					UserID:    id,
-					Username:  username,
-					IP:        requestIP(r),
-					UserAgent: r.UserAgent(),
-					CreatedAt: now.Format(time.RFC3339),
-					LastSeen:  now.Format(time.RFC3339),
+					ID:         sid,
+					UserID:     id,
+					Username:   username,
+					IP:         requestIP(r),
+					UserAgent:  r.UserAgent(),
+					RememberMe: rem,
+					CreatedAt:  now.Format(time.RFC3339),
+					LastSeen:   now.Format(time.RFC3339),
 				},
-				expires: now.Add(m.maxAge),
+				expires: now.Add(ttl),
 			}
 		} else if time.Now().After(rec.expires) {
 			delete(m.active, sid)
 			m.mu.Unlock()
 			return SessionUser{}, false
 		} else {
+			rem, _ := s.Values["remember_me"].(bool)
+			ttl := defaultMaxAge
+			if rem {
+				ttl = rememberMaxAge
+			}
 			rec.LastSeen = now.Format(time.RFC3339)
-			rec.expires = now.Add(m.maxAge)
+			rec.expires = now.Add(ttl)
 		}
-		m.active[sid] = rec
-		m.mu.Unlock()
 	}
 
 	return SessionUser{ID: id, Username: username, Role: role}, true
