@@ -158,12 +158,13 @@ func (m *Manager) Current(r *http.Request) (SessionUser, bool) {
 	if sid != "" {
 		m.mu.Lock()
 		rec, exists := m.active[sid]
+		rem, _ := s.Values["remember_me"].(bool)
+		ttl := defaultMaxAge
+		if rem {
+			ttl = rememberMaxAge
+		}
+
 		if !exists {
-			rem, _ := s.Values["remember_me"].(bool)
-			ttl := defaultMaxAge
-			if rem {
-				ttl = rememberMaxAge
-			}
 			// Auto-restore session in memory after server restart so active sessions tracking is never lost
 			rec = record{
 				Info: Info{
@@ -178,18 +179,17 @@ func (m *Manager) Current(r *http.Request) (SessionUser, bool) {
 				},
 				expires: now.Add(ttl),
 			}
+			m.active[sid] = rec
+			m.mu.Unlock()
 		} else if time.Now().After(rec.expires) {
 			delete(m.active, sid)
 			m.mu.Unlock()
 			return SessionUser{}, false
 		} else {
-			rem, _ := s.Values["remember_me"].(bool)
-			ttl := defaultMaxAge
-			if rem {
-				ttl = rememberMaxAge
-			}
 			rec.LastSeen = now.Format(time.RFC3339)
 			rec.expires = now.Add(ttl)
+			m.active[sid] = rec
+			m.mu.Unlock()
 		}
 	}
 

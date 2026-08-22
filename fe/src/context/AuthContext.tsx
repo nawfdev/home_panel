@@ -24,7 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     api<{ user: User }>("/auth/me")
       .then((data) => setUser(data.user))
-      .catch((err) => { if (err instanceof ApiError && err.status === 401) setUser(null); })
+      .catch(() => setUser(null))
       .finally(() => setIsLoading(false));
   }, []);
 
