@@ -1,10 +1,11 @@
 import { useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth, ApiError } from "../context/AuthContext";
 import { api } from "../lib/api";
 import { ServerIcon, FingerPrintIcon } from "@heroicons/react/24/outline";
-
 export function Login() {
   const { login } = useAuth();
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -18,7 +19,7 @@ export function Login() {
     setIsSubmitting(true);
     try {
       await login(username, password, code, rememberMe);
-      window.location.href = "/dashboard";
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       if (err instanceof ApiError && err.status === 401 && err.message === "Two-factor code required") {
         setRequiresTwoFactor(true);
@@ -79,7 +80,7 @@ export function Login() {
       });
 
       if (finishRes.success) {
-        window.location.href = "/dashboard";
+        navigate("/dashboard", { replace: true });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Biometric login failed");

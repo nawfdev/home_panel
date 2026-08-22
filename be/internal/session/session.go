@@ -57,7 +57,8 @@ func (m *Manager) get(r *http.Request) *sessions.Session {
 }
 
 func requestSecure(r *http.Request) bool {
-	return r.TLS != nil || r.URL.Scheme == "https"
+	proto := strings.ToLower(r.Header.Get("X-Forwarded-Proto"))
+	return r.TLS != nil || r.URL.Scheme == "https" || proto == "https" || strings.Contains(r.Header.Get("CF-Visitor"), "https")
 }
 
 func requestIP(r *http.Request) string {
