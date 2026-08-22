@@ -8,10 +8,11 @@ import {
   CategoryScale,
   Tooltip,
   Legend,
+  Filler,
 } from "chart.js";
 import { formatBytes } from "../../lib/format";
 
-Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend);
+Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Legend, Filler);
 
 interface TrafficPoint {
   timestamp: number;
