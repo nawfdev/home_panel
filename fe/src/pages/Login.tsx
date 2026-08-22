@@ -18,6 +18,7 @@ export function Login() {
     setIsSubmitting(true);
     try {
       await login(username, password, code, rememberMe);
+      window.location.href = "/dashboard";
     } catch (err) {
       if (err instanceof ApiError && err.status === 401 && err.message === "Two-factor code required") {
         setRequiresTwoFactor(true);
