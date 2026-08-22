@@ -221,14 +221,12 @@ func videoPlayerHTML(videoSrc, rawURL string) string {
 	return `<div class="np subbg-solid subsize-md subcolor-white subedge-none" id="np" tabindex="0">
 <video class="np-video" id="npvideo" playsinline src="` + htmlEscape(videoSrc) + `"></video>
 <div class="np-sub-overlay" id="npsuboverlay" style="display:none"><span class="np-sub-cue" id="npsubcue"></span></div>
-<div class="np-center"><button class="np-bigplay" id="npbig" aria-label="Play">` + icoPlay + `</button><div class="np-error" id="nperror"><p id="npmsg"></p><div class="np-error-actions"><button class="np-retry" id="npretry">Retry</button><a class="np-retry np-retry-alt" data-vlc-path="` + htmlEscape(rawURL) + `" href="#">` + icoVlc + `<span>Open in VLC</span></a></div></div></div>
+<div class="np-center"><div class="np-center-controls"><button class="np-center-btn" id="npback10" aria-label="Rewind 10s" title="Rewind 10s (J / Left Arrow)">` + icoBack10 + `</button><button class="np-bigplay" id="npbig" aria-label="Play">` + icoPlay + `</button><button class="np-center-btn" id="npfwd10" aria-label="Forward 10s" title="Forward 10s (L / Right Arrow)">` + icoForward10 + `</button></div><div class="np-error" id="nperror"><p id="npmsg"></p><div class="np-error-actions"><button class="np-retry" id="npretry">Retry</button><a class="np-retry np-retry-alt" data-vlc-path="` + htmlEscape(rawURL) + `" href="#">` + icoVlc + `<span>Open in VLC</span></a></div></div></div>
 <div class="np-scrim"></div>
 <div class="np-controls" id="npctrls">
   <div class="np-seek" id="npseek"><div class="np-buffered" id="npbuf"></div><div class="np-played" id="npplayed"></div><div class="np-thumb" id="npthumb"></div></div>
   <div class="np-row">
-    <button class="np-btn" id="npback10" aria-label="Rewind 10s" title="Rewind 10s (J / Left Arrow)">` + icoBack10 + `</button>
     <button class="np-btn" id="npplay" aria-label="Play/Pause">` + icoPlay + `</button>
-    <button class="np-btn" id="npfwd10" aria-label="Forward 10s" title="Forward 10s (L / Right Arrow)">` + icoForward10 + `</button>
     <button class="np-btn" id="npmute" aria-label="Mute">` + icoVol + `</button>
     <input class="np-vol" id="npvol" type="range" min="0" max="1" step="0.05" value="1" aria-label="Volume">
     <span class="np-time mono" id="nptime">0:00 / 0:00</span>
@@ -319,11 +317,18 @@ body{min-height:100vh}
 .np.hide .np-scrim,.np.hide .np-controls{opacity:0;pointer-events:none}
 .np-controls{position:absolute;left:0;right:0;bottom:0;padding:8px 14px 12px;opacity:1;transition:opacity .2s;line-height:normal}
 
-.np-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none}
-.np-bigplay{pointer-events:auto;width:72px;height:72px;border-radius:50%;border:none;background:rgba(20,20,22,.66);color:#fafafa;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(4px);transition:transform .15s,background .15s;opacity:0}
-.np-bigplay svg{width:34px;height:34px;margin-left:3px}
-.np-bigplay:hover{background:rgba(40,40,44,.8);transform:scale(1.06)}
-.np.paused .np-bigplay{opacity:1}
+.np-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:20;transition:opacity .2s ease}
+.np.hide .np-center{opacity:0;pointer-events:none}
+.np-center-controls{display:flex;align-items:center;gap:28px}
+.np-center-btn{pointer-events:auto;width:52px;height:52px;border-radius:50%;border:none;background:rgba(20,20,22,.65);color:#f4f4f5;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(8px);transition:transform .15s,background .15s,color .15s;box-shadow:0 4px 16px rgba(0,0,0,.4)}
+.np-center-btn svg{width:24px;height:24px}
+.np-center-btn:hover{background:rgba(40,40,44,.85);transform:scale(1.1);color:#fff}
+.np-center-btn:active{transform:scale(.95)}
+.np-bigplay{pointer-events:auto;width:68px;height:68px;border-radius:50%;border:none;background:rgba(20,20,22,.75);color:#fafafa;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(8px);transition:transform .15s,background .15s;box-shadow:0 4px 20px rgba(0,0,0,.5)}
+.np-bigplay svg{width:32px;height:32px}
+.np-bigplay.paused svg{margin-left:3px}
+.np-bigplay:hover{background:rgba(40,40,44,.95);transform:scale(1.08)}
+.np-bigplay:active{transform:scale(.95)}
 .np-error{pointer-events:auto;display:none;flex-direction:column;align-items:center;gap:12px;background:rgba(20,20,22,.85);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:18px 22px;max-width:min(340px,80vw);text-align:center;backdrop-filter:blur(4px)}
 .np-error p{color:#e4e4e7;font-size:13px;margin:0}
 .np-error-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
@@ -332,7 +337,7 @@ body{min-height:100vh}
 .np-retry svg{width:15px;height:15px}
 .np-retry-alt{background:transparent;border:1px solid rgba(255,255,255,.2);color:#e4e4e7}
 .np-retry-alt:hover{background:rgba(255,255,255,.08)}
-.np.errored .np-bigplay{display:none}
+.np.errored .np-center-controls{display:none}
 .np.errored .np-error{display:flex}
 
 .np-seek{position:relative;height:5px;background:rgba(255,255,255,.22);border-radius:3px;cursor:pointer;margin-bottom:10px;transition:height .12s}
@@ -427,7 +432,7 @@ const playerJS = `
 
   function fmt(t){ if(!isFinite(t))t=0; t=Math.floor(t); var m=Math.floor(t/60), s=t%60; var h=Math.floor(m/60); m=m%60;
     function p(n){return (n<10?'0':'')+n;} return h>0? h+':'+p(m)+':'+p(s) : m+':'+p(s); }
-  function setPlayIcon(){ var i=v.paused?ICON_PLAY:ICON_PAUSE; playBtn.innerHTML=i; big.innerHTML=ICON_PLAY; np.classList.toggle('paused',v.paused); }
+  function setPlayIcon(){ var i=v.paused?ICON_PLAY:ICON_PAUSE; playBtn.innerHTML=i; big.innerHTML=i; big.classList.toggle('paused',v.paused); np.classList.toggle('paused',v.paused); }
   function showError(msg){ npmsg.textContent=msg; np.classList.add('errored'); }
   function hideError(){ np.classList.remove('errored'); }
   function playErr(){ showError("Playback couldn't start. Check your connection and try again."); }

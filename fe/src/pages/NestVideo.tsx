@@ -422,11 +422,31 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
             </button>
           </div>
         ) : (
-          paused && (
-            <button className="np-bigplay" onClick={toggle} aria-label="Play">
-              <IcoPlay />
+          <div className="flex items-center gap-6 sm:gap-8">
+            <button
+              className="np-center-btn"
+              onClick={() => skip(-10)}
+              aria-label="Rewind 10 seconds"
+              title="Rewind 10s (J / Left Arrow)"
+            >
+              <IcoBack10 />
             </button>
-          )
+            <button
+              className={`np-bigplay ${paused ? "paused" : ""}`}
+              onClick={toggle}
+              aria-label={paused ? "Play" : "Pause"}
+            >
+              {paused ? <IcoPlay /> : <IcoPause />}
+            </button>
+            <button
+              className="np-center-btn"
+              onClick={() => skip(10)}
+              aria-label="Forward 10 seconds"
+              title="Forward 10s (L / Right Arrow)"
+            >
+              <IcoForward10 />
+            </button>
+          </div>
         )}
       </div>
       <div className="np-scrim" />
@@ -438,14 +458,8 @@ export function NestVideo({ src, tracks, audioTracks = [] }: { src: string; trac
           <div className="np-thumb" style={{ left: `${pct}%` }} />
         </div>
         <div className="np-row">
-          <button className="np-btn" onClick={() => skip(-10)} aria-label="Rewind 10 seconds" title="Rewind 10s (J / Left Arrow)">
-            <IcoBack10 />
-          </button>
           <button className="np-btn" onClick={toggle} aria-label="Play/Pause">
             {paused ? <IcoPlay /> : <IcoPause />}
-          </button>
-          <button className="np-btn" onClick={() => skip(10)} aria-label="Forward 10 seconds" title="Forward 10s (L / Right Arrow)">
-            <IcoForward10 />
           </button>
           <button
             className="np-btn"

@@ -466,24 +466,53 @@ h1, h2, h3, h4 {
     align-items: center;
     justify-content: center;
     pointer-events: none;
+    z-index: 20;
+    transition: opacity 0.2s ease;
   }
-  .np-bigplay {
+  .np.hide .np-center {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .np-center-btn {
     pointer-events: auto;
-    width: 72px;
-    height: 72px;
+    width: 52px;
+    height: 52px;
     border-radius: 50%;
     border: none;
-    background: rgba(20, 20, 22, 0.66);
+    background: rgba(20, 20, 22, 0.65);
+    color: #f4f4f5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    backdrop-filter: blur(8px);
+    transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+  .np-center-btn svg { width: 24px; height: 24px; }
+  .np-center-btn:hover { background: rgba(40, 40, 44, 0.85); transform: scale(1.1); color: #ffffff; }
+  .np-center-btn:active { transform: scale(0.95); }
+
+  .np-bigplay {
+    pointer-events: auto;
+    width: 68px;
+    height: 68px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(20, 20, 22, 0.75);
     color: #fafafa;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    backdrop-filter: blur(4px);
-    transition: transform 0.15s, background 0.15s;
+    backdrop-filter: blur(8px);
+    transition: transform 0.15s ease, background 0.15s ease;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   }
-  .np-bigplay svg { width: 34px; height: 34px; margin-left: 3px; }
-  .np-bigplay:hover { background: rgba(40, 40, 44, 0.8); transform: scale(1.06); }
+  .np-bigplay svg { width: 32px; height: 32px; }
+  .np-bigplay.paused svg { margin-left: 3px; }
+  .np-bigplay:hover { background: rgba(40, 40, 44, 0.95); transform: scale(1.08); }
+  .np-bigplay:active { transform: scale(0.95); }
   .np-error {
     pointer-events: auto;
     display: flex;
