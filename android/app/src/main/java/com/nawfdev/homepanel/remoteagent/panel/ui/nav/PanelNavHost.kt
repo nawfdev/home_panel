@@ -38,6 +38,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.QueryStats
+import com.nawfdev.homepanel.remoteagent.panel.ui.adguard.AdGuardScreen
+import com.nawfdev.homepanel.remoteagent.panel.ui.monitoring.MonitoringScreen
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.NavigationDrawerItem
@@ -116,7 +120,8 @@ private val SCREENS = listOf(
     PanelScreen("tunnel", "Tunnel", Icons.Filled.Wifi, feature = "tunnel"),
     PanelScreen("cloudflare", "Cloudflare", Icons.Filled.Cloud, feature = "cloudflare"),
     PanelScreen("network", "Network", Icons.Filled.Wifi, feature = "network"),
-    PanelScreen("docker", "Docker", Icons.Filled.Cable, feature = "docker"),
+    PanelScreen("adguard", "AdGuard", Icons.Filled.Shield, feature = "adguard"),
+    PanelScreen("monitoring", "Uptime & SLA", Icons.Filled.QueryStats, feature = "monitoring"),
     PanelScreen("pm2", "PM2", Icons.Filled.Dns, feature = "pm2"),
     PanelScreen("services", "Services", Icons.Filled.MiscellaneousServices, feature = "services"),
     PanelScreen("logs", "Logs", Icons.Filled.Description, feature = "logs"),
@@ -140,8 +145,8 @@ private sealed class NavLayoutItem {
 
 private val NAV_LAYOUT = listOf(
     NavLayoutItem.Single("dashboard"),
-    NavLayoutItem.Group("Networking", Icons.Filled.Wifi, listOf("tunnel", "cloudflare", "network")),
-    NavLayoutItem.Group("Processes", Icons.Filled.MiscellaneousServices, listOf("docker", "pm2", "services")),
+    NavLayoutItem.Group("Networking", Icons.Filled.Wifi, listOf("tunnel", "cloudflare", "network", "adguard")),
+    NavLayoutItem.Single("monitoring"),
     NavLayoutItem.Group("Diagnostics", Icons.Filled.Description, listOf("logs", "terminal", "remote-desktop")),
     NavLayoutItem.Group("Files", Icons.Filled.Folder, listOf("files", "projects")),
     NavLayoutItem.Single("ai-gateway"),
@@ -318,6 +323,8 @@ private fun PanelShell(prefs: PanelPrefs, apiClient: ApiClient, onLogout: () -> 
                 if (visible.any { it.route == "tunnel" }) composable("tunnel") { TunnelScreen(apiClient) { onLogout() } }
                 if (visible.any { it.route == "cloudflare" }) composable("cloudflare") { CloudflareScreen(apiClient) { onLogout() } }
                 if (visible.any { it.route == "telegram" }) composable("telegram") { TelegramScreen(apiClient) { onLogout() } }
+                if (visible.any { it.route == "adguard" }) composable("adguard") { AdGuardScreen(apiClient) }
+                if (visible.any { it.route == "monitoring" }) composable("monitoring") { MonitoringScreen(apiClient) }
                 if (visible.any { it.route == "projects" }) composable("projects") { ProjectsScreen(apiClient) { onLogout() } }
                 if (visible.any { it.route == "ai-gateway" }) composable("ai-gateway") { AiGatewayScreen(apiClient) { onLogout() } }
                 if (visible.any { it.route == "terminal" }) composable("terminal") { TerminalScreen(prefs) }

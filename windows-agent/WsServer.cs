@@ -31,6 +31,7 @@ internal sealed class WsServer
         _listener.Start();
         _ = AcceptLoop();
     }
+    public void Stop() => _listener?.Stop();
 
     async Task AcceptLoop()
     {

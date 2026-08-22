@@ -18,8 +18,7 @@ import retrofit2.http.Query
 // ignoreUnknownKeys so backend fields we don't model yet are simply skipped.
 
 @Serializable
-data class LoginRequest(val username: String, val password: String)
-
+data class LoginRequest(val username: String, val password: String, val rememberMe: Boolean = true)
 @Serializable
 data class UserDto(
     val id: Int = 0,
@@ -390,6 +389,62 @@ data class Channel(
 
 @Serializable
 data class ChannelsResponse(val success: Boolean = false, val channels: List<Channel> = emptyList())
+// --- AdGuard Home (native status, stats, and protection toggle) ---
+
+@Serializable
+data class AdGuardStatus(
+    val version: String = "",
+    val running: Boolean = false,
+    @kotlinx.serialization.SerialName("protection_enabled") val protectionEnabled: Boolean = false,
+    @kotlinx.serialization.SerialName("dns_addresses") val dnsAddresses: List<String> = emptyList(),
+    @kotlinx.serialization.SerialName("dns_port") val dnsPort: Int = 53,
+    @kotlinx.serialization.SerialName("http_port") val httpPort: Int = 8080,
+)
+
+@Serializable
+data class AdGuardStats(
+    @kotlinx.serialization.SerialName("num_dns_queries") val numDnsQueries: Long = 0,
+    @kotlinx.serialization.SerialName("num_blocked_filtering") val numBlockedFiltering: Long = 0,
+    @kotlinx.serialization.SerialName("num_replaced_safebrowsing") val numReplacedSafebrowsing: Long = 0,
+    @kotlinx.serialization.SerialName("num_replaced_parental") val numReplacedParental: Long = 0,
+    @kotlinx.serialization.SerialName("avg_processing_time") val avgProcessingTime: Double = 0.0,
+)
+
+@Serializable
+data class ProtectionRequest(val enabled: Boolean)
+
+// --- Uptime Monitoring & SLA ---
+
+@Serializable
+data class HeartbeatDto(
+    val timestamp: Long = 0,
+    val status: String = "up",
+    val latencyMs: Double = 0.0,
+    val message: String = "",
+)
+
+@Serializable
+data class MonitorDto(
+    val id: String = "",
+    val name: String = "",
+    val type: String = "http",
+    val target: String = "",
+    val status: String = "up",
+    val intervalSec: Int = 30,
+    val latencyMs: Double = 0.0,
+    val uptime24h: Double = 100.0,
+    val uptime30d: Double = 100.0,
+    val history: List<HeartbeatDto> = emptyList(),
+)
+
+@Serializable
+data class MonitorsListResponse(
+    val success: Boolean = false,
+    val monitors: List<MonitorDto> = emptyList(),
+    val upCount: Int = 0,
+    val downCount: Int = 0,
+    val total: Int = 0,
+)
 
 interface PanelApi {
     @POST("auth/login")
@@ -540,7 +595,21 @@ interface PanelApi {
 
     @GET("tv/channels")
     suspend fun tvChannels(): ChannelsResponse
-
     @POST("files/media-info")
     suspend fun mediaInfo(@Body body: MediaInfoRequest): MediaInfoResponse
+
+    @GET("adguard/control/status")
+    suspend fun getAdGuardStatus(): AdGuardStatus
+
+    @GET("adguard/control/stats")
+    suspend fun getAdGuardStats(): AdGuardStats
+
+    @POST("adguard/control/protection")
+    suspend fun setAdGuardProtection(@Body req: ProtectionRequest): SuccessResponse
+
+    @GET("monitors")
+    suspend fun getMonitors(): MonitorsListResponse
+
+    @POST("monitors/{id}/check")
+    suspend fun checkMonitor(@Path("id") id: String): SuccessResponse
 }

@@ -1,15 +1,18 @@
 package com.nawfdev.homepanel.remoteagent.panel.ui.login
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +37,7 @@ fun LoginScreen(prefs: PanelPrefs, apiClient: ApiClient, onLoggedIn: () -> Unit)
     var baseUrl by remember { mutableStateOf(prefs.baseUrl ?: "") }
     var username by remember { mutableStateOf(prefs.username ?: "") }
     var password by remember { mutableStateOf("") }
+    var rememberMe by remember { mutableStateOf(true) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -51,7 +55,7 @@ fun LoginScreen(prefs: PanelPrefs, apiClient: ApiClient, onLoggedIn: () -> Unit)
             try {
                 prefs.baseUrl = normalized
                 apiClient.invalidate()
-                val res = apiClient.api().login(LoginRequest(username.trim(), password))
+                val res = apiClient.api().login(LoginRequest(username.trim(), password, rememberMe))
                 prefs.token = res.token
                 prefs.username = res.user.username
                 prefs.role = res.user.role
@@ -103,8 +107,31 @@ fun LoginScreen(prefs: PanelPrefs, apiClient: ApiClient, onLoggedIn: () -> Unit)
             modifier = Modifier.padding(top = 12.dp),
         )
 
-        error?.let { ErrorText(it) }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 16.dp)
+                .clickable { rememberMe = !rememberMe },
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Checkbox(
+                checked = rememberMe,
+                onCheckedChange = { rememberMe = it },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = MaterialTheme.colorScheme.primary,
+                    checkmarkColor = MaterialTheme.colorScheme.onPrimary,
+                    uncheckedColor = PanelTextMuted,
+                ),
+            )
+            Text(
+                "Ingat saya di perangkat ini (Tetap masuk 30 hari)",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.typography.bodySmall.color,
+                modifier = Modifier.padding(start = 6.dp),
+            )
+        }
 
+        error?.let { ErrorText(it) }
         PrimaryButton(
             text = if (loading) "Signing in…" else "Sign in",
             onClick = ::submit,

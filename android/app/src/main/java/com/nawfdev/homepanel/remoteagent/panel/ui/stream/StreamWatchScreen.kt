@@ -130,11 +130,14 @@ private fun VideoPlayer(url: String, destPath: String, subtitles: List<SubtitleT
         // is what actually merges the external subtitle tracks above into
         // playback — the leaf source factories don't do that on their own.
         val mediaSource = DefaultMediaSourceFactory(dataSourceFactory).createMediaSource(mediaItem)
-        ExoPlayer.Builder(context).build().apply {
-            setMediaSource(mediaSource)
-            prepare()
-            playWhenReady = true
-        }
+        ExoPlayer.Builder(context)
+            .setSeekBackIncrementMs(10000L)
+            .setSeekForwardIncrementMs(10000L)
+            .build().apply {
+                setMediaSource(mediaSource)
+                prepare()
+                playWhenReady = true
+            }
     }
 
     DisposableEffect(Unit) {
@@ -147,11 +150,13 @@ private fun VideoPlayer(url: String, destPath: String, subtitles: List<SubtitleT
             .padding(top = 8.dp),
     ) {
         AndroidView(
-            factory = {
-                PlayerView(it).apply {
+            factory = { ctx ->
+                PlayerView(ctx).apply {
                     player = exoPlayer
                     useController = true
                     setShowSubtitleButton(true)
+                    setShowRewindButton(true)
+                    setShowFastForwardButton(true)
                 }
             },
             modifier = Modifier
